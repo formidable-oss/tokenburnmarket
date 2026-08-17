@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { CommunityBoard } from "@/components/leaderboard/community-board";
 import { communityBySlug } from "@/lib/community-queries";
 import { parseBoardQuery } from "@/lib/leaderboard";
+import { boardTitle } from "@/lib/share-cards";
 
 /*
   The full Community board. The panel on /c/[slug] is the same component with a
@@ -12,12 +13,21 @@ import { parseBoardQuery } from "@/lib/leaderboard";
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: PageProps<"/c/[slug]/leaderboard">): Promise<Metadata> {
   const community = await communityBySlug((await params).slug);
   if (!community) return { title: "Not found" };
+
+  const { period } = parseBoardQuery(await searchParams);
+  const title = boardTitle(community.name, period);
+  const description = `Who is burning the most in ${community.name}.`;
+  const path = `/c/${community.slug}/leaderboard`;
+
   return {
-    title: `${community.name} leaderboard`,
-    description: `Who is burning the most in ${community.name}.`,
+    title,
+    description,
+    openGraph: { type: "website", url: path, title, description },
+    twitter: { card: "summary_large_image", title, description },
     alternates:
       community.visibility === "public"
         ? { canonical: `/c/${community.slug}/leaderboard` }

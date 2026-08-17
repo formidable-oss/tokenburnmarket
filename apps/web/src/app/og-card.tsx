@@ -1,19 +1,30 @@
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
+import type { ShareCard } from "@/lib/share-cards";
 
 /*
-  Shared composition for share cards (OG and Twitter). Mark and wordmark top-left, one big line,
-  a small live market strip on the right, one quiet line at the bottom.
-  Route-specific cards (issue #13) should reuse renderCard and change the copy and rows.
+  The one composition every share card is drawn with: mark and wordmark top-left,
+  a headline in the pixel face, an optional panel of rows on the right, one quiet
+  line at the bottom. Routes never lay out pixels; they map their data to a
+  ShareCard (lib/share-cards.ts) and hand it here.
 */
 export const CARD_SIZE = { width: 1200, height: 630 };
 
 const BARS = [3, 5, 9, 6, 4];
-const rows = [
-  { who: "@alex", p: 0.42 },
-  { who: "@theo", p: 0.31 },
-  { who: "@mira", p: 0.19 },
-];
+
+const INK = {
+  background: "#050510",
+  surface: "#0f0f1f",
+  sunken: "#0a0a1a",
+  border: "#252535",
+  foreground: "#f0f0f5",
+  muted: "#9090a0",
+  subtle: "#767686",
+  primary: "#ffd900",
+  primaryText: "#ffe452",
+  ember: "#c41e3a",
+  cyber: "#00f0ff",
+};
 
 function Mark({ cell }: { cell: number }) {
   const cells: React.ReactNode[] = [];
@@ -29,7 +40,7 @@ function Mark({ cell }: { cell: number }) {
             top: (9 - r) * cell,
             width: cell,
             height: cell,
-            background: ember ? "#c41e3a" : "#ffd900",
+            background: ember ? INK.ember : INK.primary,
           }}
         />,
       );
@@ -47,7 +58,89 @@ function Mark({ cell }: { cell: number }) {
   );
 }
 
-export async function renderCard() {
+/*
+  The headline is one string plus, at most, one word painted yellow: the same
+  "one primary per view" rule the pages follow.
+*/
+function Headline({ card }: { card: ShareCard }) {
+  const at = card.accent ? card.headline.indexOf(card.accent) : -1;
+  const style = {
+    fontFamily: "Geist Pixel Circle",
+    fontSize: card.headlineSize,
+    lineHeight: 1.08,
+    display: "flex",
+    flexWrap: "wrap" as const,
+  };
+  if (at < 0) return <div style={style}>{card.headline}</div>;
+  return (
+    <div style={style}>
+      {/* The space before the accent is non-breaking: flex layout would eat a trailing one. */}
+      {card.headline.slice(0, at).replace(/ $/, " ")}
+      <span style={{ color: INK.primary }}>{card.accent}</span>
+      {card.headline.slice(at + card.accent!.length)}
+    </div>
+  );
+}
+
+function Panel({ card }: { card: ShareCard }) {
+  const rows = card.rows ?? [];
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: 400,
+        flexShrink: 0,
+        border: `1px solid ${INK.border}`,
+        borderRadius: 14,
+        background: INK.surface,
+        padding: 22,
+        gap: 14,
+      }}
+    >
+      {card.panelTitle ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: 14,
+            color: INK.muted,
+            letterSpacing: 1,
+          }}
+        >
+          {card.live ? (
+            <div style={{ width: 8, height: 8, borderRadius: 8, background: INK.ember }} />
+          ) : null}
+          {card.panelTitle.toUpperCase()}
+        </div>
+      ) : null}
+      {rows.map((row) => (
+        <div key={row.label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 20, gap: 16 }}>
+            <span style={{ color: INK.foreground }}>{row.label}</span>
+            <span style={{ color: row.tone === "price" ? INK.cyber : INK.foreground }}>
+              {row.value}
+            </span>
+          </div>
+          {row.fill === undefined ? null : (
+            <div style={{ display: "flex", height: 6, background: INK.sunken, borderRadius: 3 }}>
+              <div
+                style={{
+                  width: `${Math.round(row.fill * 100)}%`,
+                  background: INK.primary,
+                  borderRadius: 3,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export async function renderCard(card: ShareCard) {
   const [pixel, mono] = await Promise.all([
     readFile(new URL("./GeistPixel-Circle.ttf", import.meta.url)),
     readFile(new URL("./GeistMono-Medium.ttf", import.meta.url)),
@@ -62,63 +155,56 @@ export async function renderCard() {
           display: "flex",
           flexDirection: "column",
           padding: 64,
-          background: "#050510",
-          backgroundImage: "radial-gradient(700px 360px at 90% -10%, rgba(255,217,0,0.09), transparent 60%)",
-          color: "#f0f0f5",
+          background: INK.background,
+          backgroundImage:
+            "radial-gradient(700px 360px at 90% -10%, rgba(255,217,0,0.09), transparent 60%)",
+          color: INK.foreground,
           fontFamily: "Geist Mono",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           <Mark cell={5} />
           <div style={{ fontSize: 30, display: "flex" }}>
-            token<span style={{ color: "#ffe452" }}>burn</span>market
+            token<span style={{ color: INK.primaryText }}>burn</span>market
           </div>
         </div>
 
-        <div style={{ display: "flex", flex: 1, alignItems: "flex-end", justifyContent: "space-between", gap: 48 }}>
-          <div style={{ display: "flex", flex: 1, minWidth: 0, flexDirection: "column", gap: 22 }}>
-            <div style={{ fontFamily: "Geist Pixel Circle", fontSize: 100, lineHeight: 1, display: "flex" }}>
-              Bet your&nbsp;<span style={{ color: "#ffd900" }}>burn</span>.
-            </div>
-            <div style={{ fontSize: 24, color: "#9090a0", maxWidth: 560, lineHeight: 1.35 }}>
-              Your agent usage becomes credits. Credits become bets on who burns what next.
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              width: 320,
-              flexShrink: 0,
-              border: "1px solid #252535",
-              borderRadius: 14,
-              background: "#0f0f1f",
-              padding: 22,
-              gap: 14,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "#9090a0", letterSpacing: 1 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 8, background: "#c41e3a" }} />
-              LIVE · THIS WEEK
-            </div>
-            <div style={{ fontFamily: "Geist Pixel Circle", fontSize: 24, lineHeight: 1.15 }}>Who burns most?</div>
-            {rows.map((r) => (
-              <div key={r.who} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18 }}>
-                  <span>{r.who}</span>
-                  <span style={{ color: "#00f0ff" }}>{Math.round(r.p * 100)}¢</span>
-                </div>
-                <div style={{ display: "flex", height: 6, background: "#0a0a1a", borderRadius: 3 }}>
-                  <div style={{ width: `${r.p * 100}%`, background: "#ffd900", borderRadius: 3 }} />
-                </div>
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 48,
+          }}
+        >
+          <div style={{ display: "flex", flex: 1, minWidth: 0, flexDirection: "column", gap: 20 }}>
+            {card.eyebrow ? (
+              <div style={{ fontSize: 18, color: INK.muted, letterSpacing: 1.4 }}>
+                {card.eyebrow.toUpperCase()}
               </div>
-            ))}
+            ) : null}
+            <Headline card={card} />
+            {card.subline ? (
+              <div style={{ fontSize: 22, color: INK.muted, maxWidth: 560, lineHeight: 1.35 }}>
+                {card.subline}
+              </div>
+            ) : null}
           </div>
+
+          {card.rows && card.rows.length > 0 ? <Panel card={card} /> : null}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18, color: "#767686", marginTop: 40 }}>
-          <span>Play money. Real bragging rights.</span>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: 18,
+            color: INK.subtle,
+            marginTop: 40,
+          }}
+        >
+          <span>{card.footer}</span>
           <span>tokenburnmarket</span>
         </div>
       </div>

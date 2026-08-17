@@ -6,7 +6,8 @@ import { UsagePanel } from "@/components/usage/usage-panel";
 import { builderByHandle, handleFromSegment } from "@/lib/builders";
 import { countryByCode } from "@/lib/countries";
 import { formatCredits } from "@/lib/credits";
-import { builderUsage, PROFILE_WINDOW_DAYS } from "@/lib/usage-queries";
+import { profileTitle } from "@/lib/share-cards";
+import { builderUsage, cachedBurnSeasons, PROFILE_WINDOW_DAYS } from "@/lib/usage-queries";
 
 /*
   Public Builder profile at /@handle. This segment sits at the root, so it only
@@ -22,10 +23,19 @@ async function load(segment: string) {
 export async function generateMetadata({ params }: PageProps<"/[handle]">): Promise<Metadata> {
   const builder = await load((await params).handle);
   if (!builder) return { title: "Not found" };
+
+  // The same cached read the share card uses, so the title and the card agree.
+  const burn = await cachedBurnSeasons(builder.id);
+  const title = profileTitle(builder.handle, burn.weekCostUsd);
+  const description = `${builder.handle} on tokenburnmarket: agent usage, credits and positions.`;
+  const path = `/@${builder.handle}`;
+
   return {
-    title: `${builder.handle}`,
-    description: `${builder.handle} on tokenburnmarket: agent usage, credits and positions.`,
-    alternates: { canonical: `/@${builder.handle}` },
+    title,
+    description,
+    alternates: { canonical: path },
+    openGraph: { type: "profile", url: path, title, description },
+    twitter: { card: "summary_large_image", title, description },
   };
 }
 

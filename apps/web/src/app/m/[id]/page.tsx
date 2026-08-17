@@ -36,7 +36,18 @@ export async function generateMetadata({ params }: PageProps<"/m/[id]">): Promis
   const { id } = await params;
   const market = UUID.test(id) ? await marketById(id) : null;
   if (!market) return { title: "Not found" };
-  return { title: market.question, description: marketRulesText(market.params, market.resolvesAt) };
+
+  const title = market.question;
+  const description = marketRulesText(market.params, market.resolvesAt);
+  const path = `/m/${market.id}`;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: path },
+    openGraph: { type: "website", url: path, title, description },
+    twitter: { card: "summary_large_image", title, description },
+  };
 }
 
 const stamp = new Intl.DateTimeFormat("en-GB", {
