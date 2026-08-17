@@ -1,6 +1,7 @@
 /*
   Database schema. One file, append new tables as tickets land.
-  Credits are whole units, so credit-like values stay integer; timestamps are UTC.
+  Credits carry four decimals everywhere (CREDIT_DECIMALS in core), so every
+  Credit column is numeric(14, 4); timestamps are UTC.
 */
 import {
   bigint,
@@ -16,8 +17,12 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
+/** Credits as stored: four decimals, matching CREDIT_DECIMALS in core. */
+const credits = (name: string) => numeric(name, { precision: 14, scale: 4, mode: "number" });
 
 /*
   A sha256 digest, stored as `bytea` and handled as lowercase hex everywhere
@@ -49,7 +54,7 @@ export const builders = pgTable("builders", {
   avatarUrl: text("avatar_url"),
   xHandle: text("x_handle"),
   country: char("country", { length: 2 }),
-  creditBalance: integer("credit_balance").notNull().default(0),
+  creditBalance: credits("credit_balance").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -263,12 +268,61 @@ export const builderDays = pgTable(
     costUsd: numeric("cost_usd", { precision: 14, scale: 6, mode: "number" }).notNull().default(0),
     totalTokens: bigint("total_tokens", { mode: "number" }).notNull().default(0),
     trustLevelMin: trustLevel("trust_level_min").notNull(),
-    creditsMinted: integer("credits_minted").notNull().default(0),
+    creditsMinted: credits("credits_minted").notNull().default(0),
     /** Which mint curve produced `credits_minted`. Null until the day is minted. */
     mintVersion: integer("mint_version"),
+    /*
+      How many times this day has been minted. Part of the ledger key, so an
+      upward re-mint after late Usage arrives writes a new row for the
+      difference while a plain re-run of the cron writes nothing.
+    */
+    mintRevision: integer("mint_revision").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.builderId, table.day] })],
 );
 
 export type BuilderDay = typeof builderDays.$inferSelect;
+
+/*
+  Why Credits moved. `signup` is the one-off grant, `mint` the daily faucet, the
+  rest are Market flows that later tickets write.
+*/
+export const creditReason = pgEnum("credit_reason", [
+  "signup",
+  "mint",
+  "buy",
+  "sell",
+  "payout",
+  "refund",
+]);
+
+/*
+  The Credit ledger: append only, and the only truth about a balance.
+  `builders.credit_balance` is a cache of `sum(delta)` and is recomputed from
+  here, never incremented blindly.
+
+  `ref_id` names what caused the row, and the unique index over
+  (builder_id, reason, ref_id) is what makes writers idempotent: the signup
+  grant uses a constant ref, the mint uses `${day}:${revision}`. Postgres treats
+  NULLs as distinct, so rows without a ref (none yet) are unconstrained.
+*/
+export const creditLedger = pgTable(
+  "credit_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    builderId: uuid("builder_id")
+      .notNull()
+      .references(() => builders.id, { onDelete: "cascade" }),
+    delta: credits("delta").notNull(),
+    reason: creditReason("reason").notNull(),
+    refId: text("ref_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("credit_ledger_ref_idx").on(table.builderId, table.reason, table.refId),
+    index("credit_ledger_builder_created_idx").on(table.builderId, table.createdAt),
+  ],
+);
+
+export type CreditLedgerRow = typeof creditLedger.$inferSelect;

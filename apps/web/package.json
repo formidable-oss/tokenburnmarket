@@ -10,7 +10,8 @@
     "check": "next typegen && tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "mint:run": "node --env-file=.env.local scripts/mint-run.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
