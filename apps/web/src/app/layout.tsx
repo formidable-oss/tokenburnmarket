@@ -9,16 +9,49 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
+const title = "tokenburnmarket. Bet your burn.";
+const description =
+  "Play-money prediction markets for AI coding agents. Your Claude Code and Codex usage becomes credits, credits become bets on who burns what next. Communities, countries, world.";
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: { default: "tokenburnmarket", template: "%s · tokenburnmarket" },
-  description:
-    "Bet your burn. Your AI coding agent usage becomes credits, credits become bets. Play money, real bragging rights.",
+  title: { default: title, template: "%s · tokenburnmarket" },
+  description,
+  applicationName: "tokenburnmarket",
+  keywords: [
+    "token leaderboard",
+    "Claude Code usage",
+    "Codex usage",
+    "ccusage",
+    "AI coding agents",
+    "prediction market",
+    "play money",
+    "developer leaderboard",
+    "tokenmaxxing",
+  ],
+  authors: [{ name: "Formidable Builders", url: "https://formidable.builders" }],
+  creator: "Formidable Builders",
+  category: "technology",
+  alternates: { canonical: "/" },
+  robots: { index: true, follow: true },
   openGraph: {
-    siteName: "tokenburnmarket",
     type: "website",
+    url: "/",
+    siteName: "tokenburnmarket",
+    title,
+    description,
+    locale: "en_US",
   },
-  twitter: { card: "summary_large_image", site: "@formidablebldrs" },
+  twitter: {
+    card: "summary_large_image",
+    site: "@formidablebldrs",
+    title,
+    description,
+  },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 // Applies the stored theme before first paint so there is no flash of the wrong palette.

@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
 import { MarketPreview } from "@/components/landing/market-preview";
 import { RegionBoards } from "@/components/landing/region-boards";
 import { Steps } from "@/components/landing/steps";
+
+export const metadata: Metadata = {
+  title: "tokenburnmarket. Bet your burn.",
+  description:
+    "Connect your machine, let your agent usage mint credits, then bet them on who burns most this week. Play money, real bragging rights, honest verification.",
+};
 
 const shell = "mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-12";
 
