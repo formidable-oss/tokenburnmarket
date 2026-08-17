@@ -1,0 +1,25 @@
+# tokenburnmarket — Ubiquitous Language
+
+Glossary only. No implementation details.
+
+## Terms
+
+- **Builder** — a signed-in person (GitHub account; handle is the GitHub login). Owns one or more Devices, belongs to Communities, holds Credits.
+- **Device** — a Builder's machine running the Collector. Bound to the Builder by approving a short code in the browser; identified by a keypair generated on first connect; the source of all Usage.
+- **Collector** — the local program (`npx tokenburnmarket`) that reads agent transcripts through ccusage, signs the aggregates, and uploads them. Also exposes an MCP server to the agent.
+- **Usage** — token counts and estimated cost per (Builder, Device, day, provider, model). The only faucet for Credits and the oracle for Markets.
+- **Verified** — see Trust Level. Means "not obviously fake", not proof.
+- **Credit** — the play currency. Minted from Usage once per closed day on a curve that flattens above a daily kink (whales earn more, not proportionally more); a small grant on signup; spent and won on Markets; never bought or cashed out.
+- **Community** — a group of Builders with its own leaderboards and Markets. Joined by invite.
+- **Leaderboard** — a ranking of Builders by a metric over a period, scoped to a Community, a region, or global.
+- **Market** — a question about future Usage with a fixed resolution time and 2+ outcomes, priced by a house-backed automated market maker (always liquid; a winning share pays 1 Credit), paid in Credits, resolved automatically from Usage.
+- **Position** — a Builder's holding of outcome shares in a Market.
+- **Sync** — one signed upload from a Device: changed daily Usage rows plus the Receipt Stream for those days.
+- **Receipt Stream** — the ordered hashes of per-message identifiers behind a day's Usage (no content). Lets the server dedupe two Devices reading the same transcripts and judge whether a day's Usage is coherent.
+- **Trust Level** — how much a Usage row is believed: *Verified* (signed Device + Receipt Stream + passed checks), *Reported* (signed Device, no Receipt Stream — agents where the Collector cannot read identifiers; mints Credits at a discount and is badged on Leaderboards), *Quarantined* (failed checks; excluded from Leaderboards, Credits, and Market resolution pending review).
+- **Outcome** — one answer to a Market's question. Exactly one Outcome wins at resolution (or the Market is Voided).
+- **Voided** — a Market cancelled before or at resolution (e.g. oracle data unusable); all Positions refunded at cost.
+- **Season** — a Leaderboard period: this week (Mon–Sun UTC), this month, or all-time.
+- **Region** — a Builder's self-declared country; scopes a Leaderboard and its Markets.
+- **Model Race** — a global/regional Market on which model (or provider) burns the most tokens over a period.
+- **Top Burner**, **Threshold**, **Head-to-Head** — the Community Market templates: who spends most, will X reach an amount, does A out-burn B.
