@@ -5,6 +5,7 @@
 */
 import {
   bigint,
+  boolean,
   char,
   customType,
   date,
@@ -83,6 +84,12 @@ export const communities = pgTable("communities", {
     .notNull()
     .references(() => builders.id, { onDelete: "cascade" }),
   inviteCode: text("invite_code").notNull().unique(),
+  /*
+    Whether a plain member may open a Market here. On by default, because a
+    Community that cannot bet on itself is a leaderboard; the owner can turn it
+    off when a group wants one voice setting the questions.
+  */
+  marketsMembersCanCreate: boolean("markets_members_can_create").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -360,9 +367,16 @@ export const marketType = pgEnum("market_type", [
 */
 export const marketStatus = pgEnum("market_status", ["open", "closed", "resolved", "voided"]);
 
-/** Free-form template parameters. The rules text on the Market page is built from these. */
+/*
+  Template parameters. A Market opened from a template stores exactly what
+  `MarketTemplateParamsSchema` in core validates, which is everything a resolver
+  needs and nothing else; the question and the rules sentence are derived from
+  it on read, so a change of wording reaches Markets already open.
+*/
 export interface MarketParams {
-  /** Human sentence shown under the question. Written at creation, never derived. */
+  /** Which template these params belong to. Absent on the pre-template Markets. */
+  template?: string;
+  /** Human sentence shown under the question. Only on Markets with no template. */
   rules?: string;
   /** UTC day the measured period starts, inclusive. */
   periodStart?: string;
@@ -398,6 +412,12 @@ export const markets = pgTable(
     resolvesAt: timestamp("resolves_at", { withTimezone: true }).notNull(),
     status: marketStatus("status").notNull().default("open"),
     winningOutcomeId: uuid("winning_outcome_id"),
+    /*
+      What makes the weekly cron idempotent: `template:scope:monday` for a
+      Market the job opened, null for one a person opened. Unique, so a second
+      run of the same week inserts nothing rather than a duplicate.
+    */
+    autoKey: text("auto_key").unique(),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => builders.id, { onDelete: "cascade" }),

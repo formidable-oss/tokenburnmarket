@@ -17,6 +17,7 @@ import {
 import {
   formatClosesIn,
   formatPriceCents,
+  formatResolvesAt,
   isTradable,
   marketRulesText,
   scopeLabel,
@@ -114,6 +115,8 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
         </p>
         <p className="type-data mt-2 text-[0.8rem] text-subtle tabular-nums">
           {tradable ? formatClosesIn(market.closesAt) : `closed ${stamp.format(market.closesAt)} UTC`}
+          {" · settles "}
+          {formatResolvesAt(market.resolvesAt)}
           {" · liquidity b="}
           {formatCredits(market.b)}
         </p>
