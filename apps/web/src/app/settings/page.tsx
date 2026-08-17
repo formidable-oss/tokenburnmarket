@@ -5,6 +5,8 @@ import { currentBuilder } from "@/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
+import { CreditsPanel } from "@/components/credits/credits-panel";
+import { recentCreditEntries } from "@/lib/credit-queries";
 import { activeDevicesFor } from "@/lib/device-auth";
 import { revokeDevice, signOutAction } from "./actions";
 import { SettingsForm } from "./settings-form";
@@ -26,7 +28,10 @@ export default async function SettingsPage() {
   const builder = await currentBuilder();
   if (!builder) redirect("/signin?next=/settings");
 
-  const devices = await activeDevicesFor(builder.id);
+  const [devices, creditEntries] = await Promise.all([
+    activeDevicesFor(builder.id),
+    recentCreditEntries(builder.id),
+  ]);
 
   return (
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
@@ -60,6 +65,10 @@ export default async function SettingsPage() {
           </form>
         </div>
       </div>
+
+      <div className="signal-rail my-10" aria-hidden />
+
+      <CreditsPanel balance={builder.creditBalance} entries={creditEntries} />
 
       <div className="signal-rail my-10" aria-hidden />
 

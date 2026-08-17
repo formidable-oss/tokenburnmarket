@@ -7,6 +7,8 @@ import GitHub from "next-auth/providers/github";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { builders } from "@/db/schema";
+import { grantSignupCredits } from "@/lib/mint";
+import { drizzleMintStore } from "@/lib/mint-store";
 
 /*
   Auth.js v5. GitHub is the only real sign-in; the session is a JWT, so there is
@@ -34,6 +36,10 @@ type Identity = { githubId: string; handle: string; avatarUrl: string | null };
   First sign-in creates the Builder, later sign-ins reuse it. github_id is the
   conflict target rather than handle, so a GitHub rename updates the handle in
   place instead of forking a second Builder.
+
+  The signup grant is asked for on every sign-in rather than only on insert: the
+  ledger ref makes the second ask a no-op, and a Builder created before the
+  ledger existed still gets their Credits the next time they show up.
 */
 async function upsertBuilder({ githubId, handle, avatarUrl }: Identity) {
   const [builder] = await db
@@ -41,6 +47,7 @@ async function upsertBuilder({ githubId, handle, avatarUrl }: Identity) {
     .values({ githubId, handle, avatarUrl })
     .onConflictDoUpdate({ target: builders.githubId, set: { handle, avatarUrl } })
     .returning({ id: builders.id, handle: builders.handle, avatarUrl: builders.avatarUrl });
+  if (builder) await grantSignupCredits(drizzleMintStore, builder.id);
   return builder;
 }
 

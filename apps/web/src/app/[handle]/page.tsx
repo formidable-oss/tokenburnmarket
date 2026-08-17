@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { UsagePanel } from "@/components/usage/usage-panel";
 import { builderByHandle, handleFromSegment } from "@/lib/builders";
 import { countryByCode } from "@/lib/countries";
+import { formatCredits } from "@/lib/credits";
 import { builderUsage, PROFILE_WINDOW_DAYS } from "@/lib/usage-queries";
 
 /*
@@ -72,8 +73,8 @@ export default async function BuilderProfile({ params }: PageProps<"/[handle]">)
         </div>
         <div className="ml-auto text-right">
           <p className="type-label">credits</p>
-          <p className="type-data mt-1 text-[1.6rem] leading-none text-primary">
-            {builder.creditBalance.toLocaleString("en-US")}
+          <p className="type-data mt-1 text-[1.6rem] leading-none text-primary tabular-nums">
+            {formatCredits(builder.creditBalance)}
           </p>
         </div>
       </header>
