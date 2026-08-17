@@ -46,10 +46,17 @@ CLAUDE.md        Entry point for coding agents.
 
 ```sh
 pnpm install
-cp .env.example .env.local     # Neon DATABASE_URL, AUTH_SECRET, GitHub OAuth id + secret
-pnpm dev                        # web on http://localhost:3000
+cp .env.example apps/web/.env.local          # Neon DATABASE_URL, AUTH_SECRET, GitHub OAuth id + secret
+pnpm --filter @tokenburnmarket/web db:migrate   # apply migrations to that database
+pnpm dev                                      # web on http://localhost:3000
 pnpm check && pnpm test && pnpm build
 ```
+
+Without a GitHub OAuth app, set `DEV_USER` to a GitHub handle and `/signin` offers a local
+sign-in as that Builder. That provider is never registered in production.
+
+Schema lives in `apps/web/src/db/schema.ts`. After changing it, run
+`pnpm --filter @tokenburnmarket/web db:generate` and commit the SQL in `apps/web/drizzle/`.
 
 ## Design and decisions
 
