@@ -2,7 +2,16 @@
   Database schema. One file, append new tables as tickets land.
   Credits are whole units, so credit-like values stay integer; timestamps are UTC.
 */
-import { char, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  char,
+  integer,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 /*
   A Builder is a signed-in person. `handle` mirrors the GitHub login and is the
@@ -22,3 +31,49 @@ export const builders = pgTable("builders", {
 });
 
 export type Builder = typeof builders.$inferSelect;
+
+/*
+  A Community is a group of Builders with its own Leaderboards and Markets.
+  `slug` is the public address at /c/:slug. The invite code is the only way in, so
+  it is unique and rotated in place: replacing it invalidates every link already
+  handed out, which is the whole point of rotation.
+*/
+export const communityVisibility = pgEnum("community_visibility", ["public", "unlisted"]);
+
+export const communities = pgTable("communities", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  bio: text("bio"),
+  visibility: communityVisibility("visibility").notNull().default("public"),
+  ownerId: uuid("owner_id")
+    .notNull()
+    .references(() => builders.id, { onDelete: "cascade" }),
+  inviteCode: text("invite_code").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Community = typeof communities.$inferSelect;
+
+export const membershipRole = pgEnum("membership_role", ["owner", "member"]);
+
+/*
+  Membership is the many-to-many between Builders and Communities. The pair is the
+  primary key, so following an invite twice is a no-op instead of a second row.
+*/
+export const memberships = pgTable(
+  "memberships",
+  {
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    builderId: uuid("builder_id")
+      .notNull()
+      .references(() => builders.id, { onDelete: "cascade" }),
+    role: membershipRole("role").notNull().default("member"),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.communityId, table.builderId] })],
+);
+
+export type Membership = typeof memberships.$inferSelect;

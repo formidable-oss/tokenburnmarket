@@ -10,7 +10,8 @@ Glossary only. No implementation details.
 - **Usage** — token counts and estimated cost per (Builder, Device, day, provider, model). The only faucet for Credits and the oracle for Markets.
 - **Verified** — see Trust Level. Means "not obviously fake", not proof.
 - **Credit** — the play currency. Minted from Usage once per closed day on a curve that flattens above a daily kink (whales earn more, not proportionally more); a small grant on signup; spent and won on Markets; never bought or cashed out.
-- **Community** — a group of Builders with its own leaderboards and Markets. Joined by invite.
+- **Community** — a group of Builders with its own leaderboards and Markets. Joined by invite. *Public* Communities appear in the directory; *Unlisted* ones are reachable only by URL and are not indexed. One Builder owns it; the rest are members.
+- **Invite Code** — the secret in a Community's join link. Rotating it replaces the code, so every link handed out before stops working; nobody already in is removed.
 - **Leaderboard** — a ranking of Builders by a metric over a period, scoped to a Community, a region, or global.
 - **Market** — a question about future Usage with a fixed resolution time and 2+ outcomes, priced by a house-backed automated market maker (always liquid; a winning share pays 1 Credit), paid in Credits, resolved automatically from Usage.
 - **Position** — a Builder's holding of outcome shares in a Market.
