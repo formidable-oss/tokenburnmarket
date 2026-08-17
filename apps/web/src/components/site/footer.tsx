@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LogoMark } from "@/components/brand/logo";
 
 export function SiteFooter() {
@@ -7,6 +8,7 @@ export function SiteFooter() {
         <LogoMark size={16} />
         <span>Play money. Real bragging rights.</span>
         <span className="ml-auto flex gap-5">
+          <Link className="hover:text-foreground" href="/docs">Docs</Link>
           <a className="hover:text-foreground" href="https://github.com/formidable-oss/tokenburnmarket">GitHub</a>
           <a className="hover:text-foreground" href="https://formidable.builders">Formidable Builders</a>
           <span>MIT</span>
