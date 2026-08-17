@@ -47,16 +47,21 @@ const bytea = customType<{ data: string; driverData: string | Uint8Array }>({
   Builder survives a GitHub rename. `credit_balance` caches the ledger sum.
   `country` is an ISO 3166-1 alpha-2 code, the Builder's self-declared Region.
 */
-export const builders = pgTable("builders", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  githubId: text("github_id").notNull().unique(),
-  handle: text("handle").notNull().unique(),
-  avatarUrl: text("avatar_url"),
-  xHandle: text("x_handle"),
-  country: char("country", { length: 2 }),
-  creditBalance: credits("credit_balance").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const builders = pgTable(
+  "builders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    githubId: text("github_id").notNull().unique(),
+    handle: text("handle").notNull().unique(),
+    avatarUrl: text("avatar_url"),
+    xHandle: text("x_handle"),
+    country: char("country", { length: 2 }),
+    creditBalance: credits("credit_balance").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Country and continent boards both filter on this column, so it is indexed.
+  (table) => [index("builders_country_idx").on(table.country)],
+);
 
 export type Builder = typeof builders.$inferSelect;
 
@@ -279,7 +284,15 @@ export const builderDays = pgTable(
     mintRevision: integer("mint_revision").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.builderId, table.day] })],
+  (table) => [
+    primaryKey({ columns: [table.builderId, table.day] }),
+    /*
+      Leaderboards read a Season, not a Builder, so they need the day first: the
+      primary key is (builder_id, day) and cannot serve a range over all
+      Builders. This index is what keeps a board a range scan at 10k Builders.
+    */
+    index("builder_days_day_builder_idx").on(table.day, table.builderId),
+  ],
 );
 
 export type BuilderDay = typeof builderDays.$inferSelect;

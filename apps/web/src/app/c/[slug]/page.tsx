@@ -4,11 +4,13 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
+import { CommunityBoard } from "@/components/leaderboard/community-board";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
 import { inviteUrl } from "@/lib/communities";
 import { communityBySlug, membersOf } from "@/lib/community-queries";
+import { BOARD_PREVIEW_LIMIT } from "@/lib/leaderboard-queries";
 import { builderTrustLevel } from "@/lib/trust";
 import { removeMember, rotateInvite } from "./actions";
 
@@ -73,6 +75,23 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
           </p>
         </div>
       </header>
+
+      <div className="signal-rail my-10" aria-hidden />
+
+      <div className="mb-4 flex items-baseline justify-between gap-4">
+        <h2 className="type-label">board</h2>
+        <Link
+          href={`/c/${community.slug}/leaderboard`}
+          className="text-sm text-primary-text hover:underline"
+        >
+          Full board
+        </Link>
+      </div>
+      <CommunityBoard
+        community={community}
+        query={{ period: "week", metric: "cost" }}
+        limit={BOARD_PREVIEW_LIMIT}
+      />
 
       <div className="signal-rail my-10" aria-hidden />
 
@@ -177,7 +196,7 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
 
           <div className="signal-rail my-7" aria-hidden />
           <p className="text-[0.85rem] text-subtle">
-            Community leaderboards and markets land here as those ship.
+            Community markets land here as those ship.
           </p>
         </div>
       </div>

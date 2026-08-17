@@ -63,7 +63,8 @@ Pixel faces are for titles and big numerals, never for paragraphs. Mono is for l
 - **CommandLine** `ui/command-line.tsx`: `$ command [copy]`. Inline copy feedback, no toast. `prompt={null}` drops the sigil for text that is not a command, such as an invite link.
 - **SiteHeader / SiteFooter / ThemeToggle** `site/*`: sticky translucent bar, primary nav with the left-growing underline, day/night toggle.
 - **CostSparkline**, **UsagePanel** `usage/*`: thirty days of burn as server-rendered bars, then totals by agent and by model. No client JavaScript.
-- **MarketPreview**, **RegionBoards**, **Steps** `landing/*`: static previews that define the row anatomy for the real market page (issue #9) and the region tab strip + table for boards (issue #8). Reuse the anatomy, replace the data.
+- **BoardTable**, **RegionTabs**, **BoardSwitches** `leaderboard/*`: the one leaderboard row anatomy (rank, avatar + handle, trust badge, value, places gained) and the link-only region tabs and season/metric switches. Every board renders through them, including the landing preview, so two boards can never disagree about a rank.
+- **MarketPreview**, **Steps** `landing/*`: static preview that defines the row anatomy for the real market page (issue #9), and the three-step explainer. **RegionBoards** `landing/*` is the same tab strip over real data.
 - **LogoMark / Wordmark / Logo** `brand/logo.tsx`.
 
 ## 6. Motion

@@ -36,6 +36,13 @@
       "when": 1786980605617,
       "tag": "0004_fancy_bloodscream",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786992701445,
+      "tag": "0005_sweet_boomerang",
+      "breakpoints": true
     }
   ]
 }
