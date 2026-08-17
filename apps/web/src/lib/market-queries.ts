@@ -13,6 +13,7 @@ import {
   builderDays,
   builders,
   communities,
+  creditLedger,
   devices,
   markets,
   memberships,
@@ -24,6 +25,7 @@ import {
 } from "@/db/schema";
 import { periodRange } from "./leaderboard";
 import type { MarketScope, MarketStatus } from "./markets";
+import { marketRef } from "./resolution";
 
 export interface OutcomePrice {
   id: string;
@@ -162,6 +164,10 @@ export interface MarketDetail extends MarketSummary {
   opensAt: Date;
   resolvesAt: Date;
   winningOutcomeId: string | null;
+  /** Set while settling waits on a quarantine review, cleared once it settles. */
+  holdUntil: Date | null;
+  /** Why the Market is held or voided, in the words the resolver wrote. */
+  resolutionNote: string | null;
 }
 
 export async function marketById(id: string): Promise<MarketDetail | null> {
@@ -173,6 +179,8 @@ export async function marketById(id: string): Promise<MarketDetail | null> {
       opensAt: markets.opensAt,
       resolvesAt: markets.resolvesAt,
       winningOutcomeId: markets.winningOutcomeId,
+      holdUntil: markets.holdUntil,
+      resolutionNote: markets.resolutionNote,
     })
     .from(markets)
     .leftJoin(communities, eq(communities.id, markets.communityId))
@@ -209,6 +217,31 @@ export async function positionsIn(marketId: string, builderId: string): Promise<
     })
     .from(positions)
     .where(and(eq(positions.marketId, marketId), eq(positions.builderId, builderId), gt(positions.shares, 0)));
+}
+
+/** What settling paid the viewer on this Market, if anything. Their business alone. */
+export interface ViewerSettlement {
+  reason: "payout" | "refund";
+  credits: number;
+}
+
+export async function settlementFor(
+  marketId: string,
+  builderId: string,
+): Promise<ViewerSettlement | null> {
+  const [row] = await db
+    .select({ reason: creditLedger.reason, credits: creditLedger.delta })
+    .from(creditLedger)
+    .where(
+      and(
+        eq(creditLedger.builderId, builderId),
+        eq(creditLedger.refId, marketRef(marketId)),
+        inArray(creditLedger.reason, ["payout", "refund"]),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  return { reason: row.reason as ViewerSettlement["reason"], credits: row.credits };
 }
 
 export interface TradeRow {

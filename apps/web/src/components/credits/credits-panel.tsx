@@ -2,7 +2,14 @@
   Credits on /settings: the balance, then the rows that add up to it. The ledger
   is the honest version of a balance, so it is a table and not a summary.
 */
-import { creditEntryDay, creditReasonLabel, formatCredits, formatDelta } from "@/lib/credits";
+import Link from "next/link";
+import {
+  creditEntryDay,
+  creditEntryMarketId,
+  creditReasonLabel,
+  formatCredits,
+  formatDelta,
+} from "@/lib/credits";
 import type { CreditEntry } from "@/lib/credit-queries";
 
 const stamp = new Intl.DateTimeFormat("en-GB", {
@@ -29,7 +36,8 @@ export function CreditsPanel({
 
       <p className="mt-4 max-w-[52ch] text-[0.95rem] text-muted">
         Credits are minted from your usage the day after it closes, on a curve that flattens above
-        20 dollars. Reported days mint at half. They buy positions and nothing else.
+        20 dollars. Reported days mint at half. They buy positions, and a settled market pays them
+        back one credit per winning share.
       </p>
 
       {entries.length === 0 ? (
@@ -48,13 +56,20 @@ export function CreditsPanel({
           <tbody className="type-data">
             {entries.map((entry) => {
               const day = creditEntryDay(entry.reason, entry.refId);
+              const marketId = creditEntryMarketId(entry.reason, entry.refId);
               return (
                 <tr key={entry.id} className="border-t border-border-faint">
                   <td className="py-1.5 pr-3 text-muted tabular-nums">
                     {stamp.format(entry.createdAt)}
                   </td>
                   <td className="py-1.5 pr-3">
-                    {creditReasonLabel(entry.reason)}
+                    {marketId ? (
+                      <Link href={`/m/${marketId}`} className="hover:text-primary-text">
+                        {creditReasonLabel(entry.reason)}
+                      </Link>
+                    ) : (
+                      creditReasonLabel(entry.reason)
+                    )}
                     {day ? <span className="ml-2 text-subtle tabular-nums">{day}</span> : null}
                   </td>
                   <td className="py-1.5 pl-3 text-right tabular-nums">{formatDelta(entry.delta)}</td>

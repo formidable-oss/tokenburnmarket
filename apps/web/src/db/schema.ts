@@ -413,6 +413,14 @@ export const markets = pgTable(
     status: marketStatus("status").notNull().default("open"),
     winningOutcomeId: uuid("winning_outcome_id"),
     /*
+      Set when settling found Quarantined Usage behind the question: the answer
+      is not knowable yet, so the resolver waits until this time and voids the
+      Market if the review has still not cleared by then.
+    */
+    holdUntil: timestamp("hold_until", { withTimezone: true }),
+    /** Why a Market is held or voided, in the words traders are shown. */
+    resolutionNote: text("resolution_note"),
+    /*
       What makes the weekly cron idempotent: `template:scope:monday` for a
       Market the job opened, null for one a person opened. Unique, so a second
       run of the same week inserts nothing rather than a duplicate.

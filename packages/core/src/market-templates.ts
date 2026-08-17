@@ -150,6 +150,21 @@ export type OutcomeRef =
   | { kind: "threshold_met" }
   | { kind: "threshold_missed" };
 
+const OutcomeRefSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("builder"), builderId: z.string() }).strict(),
+  z.object({ kind: z.literal("builder_other"), excludes: z.array(z.string()) }).strict(),
+  z.object({ kind: z.literal("model"), model: z.string() }).strict(),
+  z.object({ kind: z.literal("model_other"), excludes: z.array(z.string()) }).strict(),
+  z.object({ kind: z.literal("threshold_met") }).strict(),
+  z.object({ kind: z.literal("threshold_missed") }).strict(),
+]);
+
+/** Reads a stored Outcome `ref` back, or null when it is not one a resolver knows. */
+export function parseOutcomeRef(ref: unknown): OutcomeRef | null {
+  const parsed = OutcomeRefSchema.safeParse(ref);
+  return parsed.success ? parsed.data : null;
+}
+
 export interface TemplateOutcome {
   label: string;
   ref: OutcomeRef;
