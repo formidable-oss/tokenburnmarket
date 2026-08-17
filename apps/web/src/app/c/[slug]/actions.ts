@@ -35,6 +35,23 @@ export async function rotateInvite(formData: FormData) {
 }
 
 /*
+  Turns member market creation on or off. Off leaves the owner as the only
+  person who can open a Market here; it never closes a Market already open.
+*/
+export async function setMembersCanCreateMarkets(formData: FormData) {
+  const slug = formData.get("slug")?.toString() ?? "";
+  const community = await ownedCommunity(slug);
+  if (!community) return;
+
+  await db
+    .update(communities)
+    .set({ marketsMembersCanCreate: formData.get("allow")?.toString() === "true" })
+    .where(eq(communities.id, community.id));
+
+  revalidatePath(`/c/${community.slug}`);
+}
+
+/*
   Removes a member. The owner row is excluded in SQL as well as in the UI, so a
   hand-made request cannot leave the Community without an owner.
 */

@@ -14,7 +14,7 @@ import { MarketList } from "@/components/markets/market-list";
 import { BOARD_PREVIEW_LIMIT } from "@/lib/leaderboard-queries";
 import { openMarketsForCommunity } from "@/lib/market-queries";
 import { builderTrustLevel } from "@/lib/trust";
-import { removeMember, rotateInvite } from "./actions";
+import { removeMember, rotateInvite, setMembersCanCreateMarkets } from "./actions";
 
 /*
   Public Community page. Unlisted Communities render the same, minus the directory
@@ -217,12 +217,30 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
           <h2 className="type-label" id="community-markets">
             markets
           </h2>
-          {viewerIsMember ? (
+          {viewerIsMember && (community.marketsMembersCanCreate || viewerIsOwner) ? (
             <Link href="/markets/new" className="type-label text-subtle hover:text-foreground">
               open a market
             </Link>
           ) : null}
         </div>
+        {viewerIsOwner ? (
+          <form action={setMembersCanCreateMarkets} className="mt-4 flex flex-wrap items-center gap-4">
+            <input type="hidden" name="slug" value={community.slug} />
+            <input
+              type="hidden"
+              name="allow"
+              value={community.marketsMembersCanCreate ? "false" : "true"}
+            />
+            <p className="text-[0.9rem] text-muted">
+              {community.marketsMembersCanCreate
+                ? "Any member can open a market here."
+                : "Only you can open a market here."}
+            </p>
+            <Button type="submit" variant="secondary">
+              {community.marketsMembersCanCreate ? "Restrict to owner" : "Let members open markets"}
+            </Button>
+          </form>
+        ) : null}
         {openMarkets.length === 0 ? (
           <p className="mt-4 max-w-[52ch] text-[0.95rem] text-muted">
             No open markets here yet.{" "}

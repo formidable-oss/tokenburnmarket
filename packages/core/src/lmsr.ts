@@ -17,6 +17,20 @@ export function lmsrLiquidityForMembers(members: number): number {
   return 20 + 5 * Math.max(0, Math.floor(members));
 }
 
+/** A global or country Market starts deeper than a Community one (ADR 0002). */
+export const LMSR_GLOBAL_BASE = 100;
+
+/*
+  And stops deepening somewhere: the house's worst case is `b * ln(n)`, so an
+  uncapped `b` would put an unbounded mint behind a single Market.
+*/
+export const LMSR_GLOBAL_MAX = 1_000;
+
+/** Liquidity for a Market anyone in scope can trade, from how many that is. */
+export function lmsrLiquidityForAudience(participants: number): number {
+  return Math.min(LMSR_GLOBAL_MAX, LMSR_GLOBAL_BASE + 5 * Math.max(0, Math.floor(participants)));
+}
+
 function assertMarket(shares: readonly number[], b: number): void {
   if (shares.length < 2) throw new RangeError("a Market needs at least 2 outcomes");
   if (!Number.isFinite(b) || b <= 0) throw new RangeError("b must be a positive finite number");

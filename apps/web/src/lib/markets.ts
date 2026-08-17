@@ -3,6 +3,7 @@
   Market reads on screen, and how its rules sentence is built. No database here,
   so every rule below is unit tested.
 */
+import { marketTemplateRulesText, parseTemplateParams } from "@tokenburnmarket/core";
 import type { MarketParams, marketScope, marketStatus, marketType } from "@/db/schema";
 
 export type MarketScope = (typeof marketScope.enumValues)[number];
@@ -149,12 +150,23 @@ export function formatClosesIn(closesAt: Date, now: Date = new Date()): string {
   return `closes in ${Math.floor(hours / 24)}d`;
 }
 
+/** The settlement time, spelled out the way the rest of the site spells times. */
+export function formatResolvesAt(resolvesAt: Date): string {
+  return `${new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(resolvesAt)} UTC`;
+}
+
 /*
-  The rules sentence under the question. Written at creation when the template
-  has one, otherwise assembled from the period so a Market always says what it
-  measures and when it settles.
+  The rules sentence under the question. Derived from the template's params, so
+  every Market of a template says the same thing in the same words. Markets
+  opened before templates existed fall back to the sentence stored with them.
 */
 export function marketRulesText(params: MarketParams, resolvesAt: Date): string {
+  const template = parseTemplateParams(params);
+  if (template) return marketTemplateRulesText(template);
   if (typeof params.rules === "string" && params.rules.trim() !== "") return params.rules.trim();
 
   const stamp = new Intl.DateTimeFormat("en-GB", {

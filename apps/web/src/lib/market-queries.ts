@@ -5,7 +5,7 @@
   Prices are never stored. They are `lmsrPrices` over the shares outstanding, so
   a list and a Market page always agree, and there is no cache to go stale.
 */
-import { lmsrPrices } from "@tokenburnmarket/core";
+import { lmsrPrices, type MemberSnapshot } from "@tokenburnmarket/core";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "@/db";
@@ -19,6 +19,7 @@ import {
   outcomes,
   positions,
   trades,
+  usageDays,
   type MarketParams,
 } from "@/db/schema";
 import { periodRange } from "./leaderboard";
@@ -400,3 +401,107 @@ export const cachedSiteStats = unstable_cache(
   ["site-stats"],
   { revalidate: 300, tags: ["leaderboard"] },
 );
+/*
+  The models a Model Race runs on: the most burnt over the ranking window, in
+  scope. Quarantined Usage is left out here as it is everywhere else, so a fake
+  day cannot put a model on the board. Empty until anyone has synced.
+*/
+export async function modelsInPlay(
+  limit: number,
+  country: string | null = null,
+  now: Date = new Date(),
+): Promise<string[]> {
+  const tokens = sql<number>`coalesce(sum(
+    ${usageDays.inputTokens} + ${usageDays.cachedInputTokens} + ${usageDays.cacheWriteTokens}
+    + ${usageDays.outputTokens} + ${usageDays.reasoningTokens}
+  ), 0)`;
+
+  const rows = await db
+    .select({ model: usageDays.model, tokens })
+    .from(usageDays)
+    .innerJoin(builders, eq(builders.id, usageDays.builderId))
+    .where(
+      and(
+        gte(usageDays.day, rankingSince(now)),
+        sql`${usageDays.trustLevel} <> 'quarantined'`,
+        country ? eq(builders.country, country) : undefined,
+      ),
+    )
+    .groupBy(usageDays.model)
+    .orderBy(desc(tokens))
+    .limit(limit);
+
+  return rows.map((row) => row.model);
+}
+
+/** A Community as the template forms and the weekly job both need it. */
+export interface CommunityForMarkets {
+  id: string;
+  slug: string;
+  name: string;
+  ownerId: string;
+  membersCanCreate: boolean;
+  /** Ranked by recent Usage: a Top Burner names the first few and pools the rest. */
+  members: MemberSnapshot[];
+}
+
+/** How far back Usage is read when ranking members for a Top Burner. */
+export const RANKING_WINDOW_DAYS = 28;
+
+function rankingSince(now: Date): string {
+  return new Date(now.getTime() - RANKING_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+}
+
+/*
+  Communities with their members already ranked, in one query. Ranking is by
+  Usage cost over the last few weeks, because a Top Burner names only the first
+  seven members and pools the rest under "someone else": the order decides who
+  is worth a price of their own, and recent burn is the honest guess.
+*/
+export async function communitiesForMarkets(
+  options: { builderId?: string; now?: Date } = {},
+): Promise<CommunityForMarkets[]> {
+  const since = rankingSince(options.now ?? new Date());
+  const mine = options.builderId
+    ? sql`exists (
+        select 1 from ${memberships}
+        where ${memberships.communityId} = ${communities.id}
+          and ${memberships.builderId} = ${options.builderId}
+      )`
+    : undefined;
+  const burn = sql`coalesce(sum(${builderDays.costUsd}), 0)`;
+
+  const rows = await db
+    .select({
+      id: communities.id,
+      slug: communities.slug,
+      name: communities.name,
+      ownerId: communities.ownerId,
+      membersCanCreate: communities.marketsMembersCanCreate,
+      builderId: builders.id,
+      handle: builders.handle,
+    })
+    .from(communities)
+    .innerJoin(memberships, eq(memberships.communityId, communities.id))
+    .innerJoin(builders, eq(builders.id, memberships.builderId))
+    .leftJoin(builderDays, and(eq(builderDays.builderId, builders.id), gte(builderDays.day, since)))
+    .where(mine)
+    .groupBy(
+      communities.id,
+      communities.slug,
+      communities.name,
+      communities.ownerId,
+      communities.marketsMembersCanCreate,
+      builders.id,
+      builders.handle,
+    )
+    .orderBy(asc(communities.name), desc(burn), asc(builders.handle));
+
+  const grouped = new Map<string, CommunityForMarkets>();
+  for (const row of rows) {
+    const community = grouped.get(row.id) ?? { ...row, members: [] };
+    community.members.push({ builderId: row.builderId, handle: row.handle });
+    grouped.set(row.id, community);
+  }
+  return [...grouped.values()];
+}
