@@ -3,8 +3,12 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
 import { MarketPreview } from "@/components/landing/market-preview";
-import { RegionBoards } from "@/components/landing/region-boards";
+import { RegionBoards, type RegionBoardPreview } from "@/components/landing/region-boards";
 import { Steps } from "@/components/landing/steps";
+import { formatMetric } from "@/components/leaderboard/board-table";
+import { PERIOD_LABELS } from "@/lib/leaderboard";
+import { BOARD_PREVIEW_LIMIT, cachedBoard, scopeForRegion } from "@/lib/leaderboard-queries";
+import { regionBySlug } from "@/lib/regions";
 
 export const metadata: Metadata = {
   title: "tokenburnmarket. Bet your burn.",
@@ -14,7 +18,41 @@ export const metadata: Metadata = {
 
 const shell = "mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-12";
 
-export default function Home() {
+/*
+  The landing preview shows the world, three busy continents and Romania. The
+  full set of Regions lives at /leaderboard; five tabs is as much as a landing
+  section can carry without becoming the leaderboard page.
+*/
+const PREVIEW_REGIONS = ["world", "europe", "north-america", "asia", "ro"];
+
+async function previewBoards(): Promise<RegionBoardPreview[]> {
+  const regions = PREVIEW_REGIONS.map((slug) => regionBySlug(slug)).filter(
+    (region) => region !== null,
+  );
+
+  return Promise.all(
+    regions.map(async (region) => {
+      const board = await cachedBoard({
+        scope: scopeForRegion(region),
+        period: "week",
+        metric: "cost",
+        limit: BOARD_PREVIEW_LIMIT,
+        // Eight rows is too shallow for a rank change to mean anything.
+        comparePrevious: false,
+      });
+      return {
+        slug: region.slug,
+        name: region.name,
+        rows: board.rows,
+        caption: `${formatMetric(board.total, "cost")} ${PERIOD_LABELS.week}`,
+      };
+    }),
+  );
+}
+
+export default async function Home() {
+  const boards = await previewBoards();
+
   return (
     <>
       {/* Hero */}
@@ -77,7 +115,7 @@ export default function Home() {
             All leaderboards
           </Link>
         </div>
-        <RegionBoards />
+        <RegionBoards boards={boards} metric="cost" season={PERIOD_LABELS.week} />
       </section>
 
       {/* Honesty strip */}
