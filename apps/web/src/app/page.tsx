@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
 import { MarketPreview } from "@/components/landing/market-preview";
-import { LeaderboardPreview } from "@/components/landing/leaderboard-preview";
+import { RegionBoards } from "@/components/landing/region-boards";
 import { Steps } from "@/components/landing/steps";
 
 const shell = "mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-12";
@@ -55,20 +55,22 @@ export default function Home() {
         <div className="signal-rail" aria-hidden />
       </div>
 
-      {/* Leaderboards */}
-      <section className={`${shell} grid gap-10 py-20 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16 lg:py-24`} aria-labelledby="boards">
-        <div>
-          <h2 id="boards" className="type-heading">
-            Your crew. Your country. Everyone.
-          </h2>
-          <p className="mt-4 max-w-[36ch] text-[0.95rem] text-muted">
-            Every community gets its own board and a fresh market each week. Country and global boards run on the same numbers.
-          </p>
-          <Link href="/leaderboard" className="mt-6 inline-block text-sm text-primary-text hover:underline">
-            See the global board
+      {/* Leaderboards by region */}
+      <section className={`${shell} py-20 lg:py-24`} aria-labelledby="boards">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 id="boards" className="type-heading">
+              Who is burning, everywhere.
+            </h2>
+            <p className="mt-3 max-w-[44ch] text-[0.95rem] text-muted">
+              World, continent, and country boards run on the same numbers as your community. Pick a region.
+            </p>
+          </div>
+          <Link href="/leaderboard" className="text-sm text-primary-text hover:underline">
+            All leaderboards
           </Link>
         </div>
-        <LeaderboardPreview />
+        <RegionBoards />
       </section>
 
       {/* Honesty strip */}

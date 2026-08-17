@@ -62,7 +62,7 @@ Pixel faces are for titles and big numerals, never for paragraphs. Mono is for l
 - **Badge** `ui/badge.tsx`: verified, reported, won, neutral. Always contains a word.
 - **CommandLine** `ui/command-line.tsx`: `$ command [copy]`. Inline copy feedback, no toast.
 - **SiteHeader / SiteFooter / ThemeToggle** `site/*`: sticky translucent bar, primary nav with the left-growing underline, day/night toggle.
-- **MarketPreview**, **LeaderboardPreview**, **Steps** `landing/*`: static previews that define the row anatomy for the real market page (issue #9) and boards (issue #8). Reuse the anatomy, replace the data.
+- **MarketPreview**, **RegionBoards**, **Steps** `landing/*`: static previews that define the row anatomy for the real market page (issue #9) and the region tab strip + table for boards (issue #8). Reuse the anatomy, replace the data.
 - **LogoMark / Wordmark / Logo** `brand/logo.tsx`.
 
 ## 6. Motion
