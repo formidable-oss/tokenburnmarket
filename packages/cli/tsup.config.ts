@@ -13,7 +13,8 @@ export default defineConfig({
   outDir: "dist",
   clean: true,
   bundle: true,
-  noExternal: ["@tokenburnmarket/core"],
+  // zod comes in with core's payload schema, and the Collector installs nothing.
+  noExternal: ["@tokenburnmarket/core", "zod"],
   // Core re-exports everything from one entry, including zod. Without this the
   // schemas the CLI does not use would ship with it.
   treeshake: true,

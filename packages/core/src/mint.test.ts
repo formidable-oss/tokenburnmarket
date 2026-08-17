@@ -6,7 +6,7 @@ import {
   REPORTED_MINT_MULTIPLIER,
   mintCurve,
   mintForDay,
-} from "./mint.js";
+} from "./mint";
 
 const cost = fc.double({ min: 0, max: 100_000, noNaN: true, noDefaultInfinity: true });
 

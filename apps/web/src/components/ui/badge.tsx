@@ -2,13 +2,15 @@
   Trust and status badges. Color never carries meaning alone: every badge has a word.
   verified: signed device + receipt stream + checks passed
   reported: signed device, no receipt stream (agents we cannot read identifiers for)
+  quarantined: failed a check, out of boards and mint until reviewed
   won: settled in the holder's favor
 */
-type Tone = "verified" | "reported" | "won" | "neutral";
+type Tone = "verified" | "reported" | "quarantined" | "won" | "neutral";
 
 const tones: Record<Tone, string> = {
   verified: "border-primary-border text-primary-text",
   reported: "border-border-strong text-muted",
+  quarantined: "border-[color:var(--ember)] text-[color:var(--ember)]",
   won: "border-[color:var(--won)] text-[color:var(--won)]",
   neutral: "border-border text-subtle",
 };

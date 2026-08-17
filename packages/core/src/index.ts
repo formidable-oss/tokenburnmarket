@@ -7,8 +7,8 @@
 export const CORE_VERSION = "0.1.0";
 
 // Trust Levels
-export { TRUST_LEVELS, weakestTrustLevel } from "./trust.js";
-export type { TrustLevel } from "./trust.js";
+export { TRUST_LEVELS, weakestTrustLevel } from "./trust";
+export type { TrustLevel } from "./trust";
 
 // Credit mint (ADR 0004)
 export {
@@ -24,8 +24,8 @@ export {
   roundCredits,
   roundCreditsDown,
   roundCreditsUp,
-} from "./mint.js";
-export type { DailyMint } from "./mint.js";
+} from "./mint";
+export type { DailyMint } from "./mint";
 
 // LMSR market maker (ADR 0002)
 export {
@@ -37,14 +37,14 @@ export {
   lmsrPrice,
   lmsrPrices,
   lmsrProceedsOfSell,
-} from "./lmsr.js";
+} from "./lmsr";
 
 // Plausibility checks (ADR 0003)
 export {
   DEFAULT_PLAUSIBILITY_LIMITS,
   checkPlausibility,
   resolvePlausibilityLimits,
-} from "./plausibility.js";
+} from "./plausibility";
 export type {
   PlausibilityCode,
   PlausibilityContext,
@@ -52,11 +52,11 @@ export type {
   PlausibilityReason,
   PlausibilityResult,
   UsageDayInput,
-} from "./plausibility.js";
+} from "./plausibility";
 
 // Canonical JSON and Ed25519 signing
-export { CanonicalJsonError, canonicalBytes, canonicalJson } from "./canonical-json.js";
-export type { CanonicalValue } from "./canonical-json.js";
+export { CanonicalJsonError, canonicalBytes, canonicalJson } from "./canonical-json";
+export type { CanonicalValue } from "./canonical-json";
 export {
   SigningUnavailableError,
   fromBase64,
@@ -64,8 +64,8 @@ export {
   signPayload,
   toBase64,
   verifyPayload,
-} from "./signing.js";
-export type { DeviceKeyPair } from "./signing.js";
+} from "./signing";
+export type { DeviceKeyPair } from "./signing";
 
 // Sync payload
 export {
@@ -81,5 +81,5 @@ export {
   syncSigningInput,
   usageDayInputFromSyncDay,
   verifySyncBody,
-} from "./sync.js";
-export type { SignedSync, SyncDay, SyncPayload, SyncVerification } from "./sync.js";
+} from "./sync";
+export type { SignedSync, SyncDay, SyncPayload, SyncVerification } from "./sync";

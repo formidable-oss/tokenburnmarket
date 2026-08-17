@@ -59,9 +59,10 @@ Pixel faces are for titles and big numerals, never for paragraphs. Mono is for l
 ## 5. Components (built)
 
 - **Button** `ui/button.tsx`: primary, secondary, ghost. 40px target. Accepts `as={Link}`.
-- **Badge** `ui/badge.tsx`: verified, reported, won, neutral. Always contains a word.
+- **Badge** `ui/badge.tsx`: verified, reported, quarantined, won, neutral. Always contains a word. Quarantined is the one place ember appears outside the honesty strip.
 - **CommandLine** `ui/command-line.tsx`: `$ command [copy]`. Inline copy feedback, no toast. `prompt={null}` drops the sigil for text that is not a command, such as an invite link.
 - **SiteHeader / SiteFooter / ThemeToggle** `site/*`: sticky translucent bar, primary nav with the left-growing underline, day/night toggle.
+- **CostSparkline**, **UsagePanel** `usage/*`: thirty days of burn as server-rendered bars, then totals by agent and by model. No client JavaScript.
 - **MarketPreview**, **RegionBoards**, **Steps** `landing/*`: static previews that define the row anatomy for the real market page (issue #9) and the region tab strip + table for boards (issue #8). Reuse the anatomy, replace the data.
 - **LogoMark / Wordmark / Logo** `brand/logo.tsx`.
 

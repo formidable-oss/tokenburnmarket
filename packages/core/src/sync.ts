@@ -6,9 +6,9 @@
 // verify against bytes the server never read.
 
 import { z } from "zod";
-import { canonicalJson } from "./canonical-json.js";
-import type { UsageDayInput } from "./plausibility.js";
-import { signPayload, verifyPayload } from "./signing.js";
+import { canonicalJson } from "./canonical-json";
+import type { UsageDayInput } from "./plausibility";
+import { signPayload, verifyPayload } from "./signing";
 
 /** Bumped when the payload shape changes in a way old Collectors cannot produce. */
 export const SYNC_PAYLOAD_VERSION = 1;

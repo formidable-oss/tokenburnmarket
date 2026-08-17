@@ -2,7 +2,7 @@
 // One UTC day of a Builder's cost turns into Credits on a curve that flattens
 // above a kink, so whales earn more but not proportionally more.
 
-import type { TrustLevel } from "./trust.js";
+import type { TrustLevel } from "./trust";
 
 /**
  * Version of the mint curve. Stored next to every minted amount so a future

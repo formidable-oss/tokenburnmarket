@@ -5,7 +5,7 @@ import {
   type PlausibilityContext,
   type UsageDayInput,
   checkPlausibility,
-} from "./plausibility.js";
+} from "./plausibility";
 
 const NOW = new Date("2026-08-17T12:00:00.000Z");
 

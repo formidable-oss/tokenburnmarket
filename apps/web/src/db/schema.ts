@@ -3,8 +3,14 @@
   Credits are whole units, so credit-like values stay integer; timestamps are UTC.
 */
 import {
+  bigint,
   char,
+  customType,
+  date,
+  index,
   integer,
+  jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -12,6 +18,23 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+
+/*
+  A sha256 digest, stored as `bytea` and handled as lowercase hex everywhere
+  above the driver. Writes go out in Postgres text form, `\x…`; reads come back
+  as either that string or raw bytes depending on the driver, so both are
+  accepted and normalised to hex.
+*/
+const bytea = customType<{ data: string; driverData: string | Uint8Array }>({
+  dataType: () => "bytea",
+  toDriver: (value) => `\\x${value}`,
+  fromDriver: (value) =>
+    typeof value === "string"
+      ? value.startsWith("\\x")
+        ? value.slice(2)
+        : value
+      : Buffer.from(value).toString("hex"),
+});
 
 /*
   A Builder is a signed-in person. `handle` mirrors the GitHub login and is the
@@ -96,6 +119,12 @@ export const devices = pgTable("devices", {
   publicKey: text("public_key").notNull().unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  /*
+    The Sync watermark: the newest UTC day this Device has had accepted. It only
+    moves forward, which is what makes a retroactive jump detectable; days older
+    than the backfill window are Quarantined rather than silently taken.
+  */
+  lastSyncedDay: date("last_synced_day"),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });
 
@@ -126,3 +155,120 @@ export const deviceConnectCodes = pgTable("device_connect_codes", {
 });
 
 export type DeviceConnectCode = typeof deviceConnectCodes.$inferSelect;
+
+/*
+  Trust Level as stored (CONTEXT.md, ADR 0003). The values mirror `TrustLevel`
+  in @tokenburnmarket/core; the sync code checks the two against each other.
+*/
+export const trustLevel = pgEnum("trust_level", ["verified", "reported", "quarantined"]);
+
+/** One reason a row is not plainly Verified. Codes come from core, plus `duplicate_of_device`. */
+export interface UsageReason {
+  code: string;
+  message: string;
+  observed?: number;
+  limit?: number;
+}
+
+/*
+  Usage: one row per (Device, day, provider, model), written by a Sync.
+
+  Rows stay per Device on purpose. Two Devices reading the same transcripts each
+  keep their own row, and `duplicate_of_device_id` marks the later one so the
+  Builder-day rollup counts the Usage once. Token counts are bigint because a
+  heavy cache-reading day passes two billion tokens.
+
+  `quarantine_reasons` holds every reason attached to the row, including the
+  benign `no_receipt_stream` that makes a row Reported rather than Verified.
+*/
+export const usageDays = pgTable(
+  "usage_days",
+  {
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    builderId: uuid("builder_id")
+      .notNull()
+      .references(() => builders.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    /** The agent the Usage came from, as ccusage names it: claude, codex, gemini. */
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+    cachedInputTokens: bigint("cached_input_tokens", { mode: "number" }).notNull().default(0),
+    cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }).notNull().default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+    reasoningTokens: bigint("reasoning_tokens", { mode: "number" }).notNull().default(0),
+    costUsd: numeric("cost_usd", { precision: 14, scale: 6, mode: "number" }).notNull().default(0),
+    trustLevel: trustLevel("trust_level").notNull(),
+    quarantineReasons: jsonb("quarantine_reasons").$type<UsageReason[]>().notNull().default([]),
+    receiptCount: integer("receipt_count").notNull().default(0),
+    /** Set when another Device of this Builder already reported these receipts. */
+    duplicateOfDeviceId: uuid("duplicate_of_device_id").references(() => devices.id, {
+      onDelete: "set null",
+    }),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.deviceId, table.day, table.provider, table.model] }),
+    index("usage_days_builder_day_idx").on(table.builderId, table.day),
+  ],
+);
+
+export type UsageDayRow = typeof usageDays.$inferSelect;
+
+/*
+  Receipt Stream storage: the sha256 of a per-message identifier, never content.
+
+  Keyed by (Device, hash) so re-syncing a day is a no-op, and indexed by
+  (Builder, hash) so a Sync can ask the only question that matters: has another
+  Device of this Builder already reported this message.
+*/
+export const receipts = pgTable(
+  "receipts",
+  {
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    builderId: uuid("builder_id")
+      .notNull()
+      .references(() => builders.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    hash: bytea("hash").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.deviceId, table.hash] }),
+    index("receipts_builder_hash_idx").on(table.builderId, table.hash),
+    index("receipts_builder_day_idx").on(table.builderId, table.day),
+  ],
+);
+
+export type Receipt = typeof receipts.$inferSelect;
+
+/*
+  Builder-day rollup: the row Leaderboards, the mint and Market resolution read.
+  Recomputed from `usage_days` on every Sync that touches the day, so it is
+  always derivable and never the source of truth.
+
+  `trust_level_min` is the weakest Trust Level among the day's rows, so one
+  Quarantined row keeps the whole day out of boards without deleting anything.
+*/
+export const builderDays = pgTable(
+  "builder_days",
+  {
+    builderId: uuid("builder_id")
+      .notNull()
+      .references(() => builders.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    costUsd: numeric("cost_usd", { precision: 14, scale: 6, mode: "number" }).notNull().default(0),
+    totalTokens: bigint("total_tokens", { mode: "number" }).notNull().default(0),
+    trustLevelMin: trustLevel("trust_level_min").notNull(),
+    creditsMinted: integer("credits_minted").notNull().default(0),
+    /** Which mint curve produced `credits_minted`. Null until the day is minted. */
+    mintVersion: integer("mint_version"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.builderId, table.day] })],
+);
+
+export type BuilderDay = typeof builderDays.$inferSelect;

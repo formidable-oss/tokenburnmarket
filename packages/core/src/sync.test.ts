@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { checkPlausibility } from "./plausibility.js";
-import { generateDeviceKeyPair, signPayload, verifyPayload } from "./signing.js";
+import { checkPlausibility } from "./plausibility";
+import { generateDeviceKeyPair, signPayload, verifyPayload } from "./signing";
 import {
   SYNC_PAYLOAD_VERSION,
   type SyncPayload,
@@ -10,7 +10,7 @@ import {
   syncSigningInput,
   usageDayInputFromSyncDay,
   verifySyncBody,
-} from "./sync.js";
+} from "./sync";
 
 const DEVICE_ID = "6f1c0b1e-2b7a-4d6f-9a4a-1f2b3c4d5e6f";
 
