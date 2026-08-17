@@ -16,6 +16,7 @@ import {
   currentConfigPath,
   type DeviceConfig,
 } from "./config.js";
+import { mcpSetupLines } from "./setup.js";
 
 /** How often the CLI asks whether the code was approved. */
 const POLL_INTERVAL_MS = 2000;
@@ -128,6 +129,8 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
     log("");
     log(`connected as @${result.handle}`);
     log(`Device saved to ${configPath}`);
+    log("");
+    for (const line of mcpSetupLines()) log(line);
     return config;
   }
 

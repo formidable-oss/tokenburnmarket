@@ -226,3 +226,49 @@ export function lmsrAdverseMove(
       : previewedAveragePrice - executedAveragePrice;
   return delta / previewedAveragePrice;
 }
+
+/**
+ * The largest number of shares a budget of `credits` buys, or that selling
+ * raises at most `credits`. The inverse of `lmsrQuote`, found by bisection over
+ * the same pricing functions rather than a second formula, so a quote priced by
+ * budget and one priced by shares can never disagree.
+ *
+ * `maxShares` caps the search: a sell is capped by what the seller holds, and a
+ * buy by the Market's own share limit. The answer is rounded down to Credit
+ * precision, so the resulting trade always costs at most `credits`.
+ */
+export function lmsrSharesForCredits(
+  shares: readonly number[],
+  b: number,
+  outcome: number,
+  side: TradeSide,
+  credits: number,
+  maxShares: number,
+): number {
+  assertMarket(shares, b);
+  assertOutcome(shares, outcome);
+  if (!Number.isFinite(credits) || credits <= 0) return 0;
+
+  const ceiling = side === "sell" ? Math.min(maxShares, shares[outcome]) : maxShares;
+  if (!(ceiling > 0)) return 0;
+
+  const priced = (amount: number) =>
+    side === "buy"
+      ? lmsrCostToBuy(shares, b, outcome, amount)
+      : lmsrProceedsOfSell(shares, b, outcome, amount);
+
+  // Spending the whole budget is impossible past the ceiling, so stop there.
+  if (priced(ceiling) <= credits) return roundCreditsDown(ceiling);
+
+  let low = 0;
+  let high = ceiling;
+  // 60 halvings take the interval below Credit precision for any realistic book.
+  for (let i = 0; i < 60; i += 1) {
+    const mid = (low + high) / 2;
+    if (priced(mid) <= credits) low = mid;
+    else high = mid;
+  }
+  const answer = roundCreditsDown(low);
+  // Rounding down can only ever cost less, never more, but check rather than assume.
+  return priced(answer) <= credits ? answer : roundCreditsDown(low - 10 ** -CREDIT_DECIMALS);
+}

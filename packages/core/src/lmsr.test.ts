@@ -9,6 +9,8 @@ import {
   lmsrPrice,
   lmsrPrices,
   lmsrProceedsOfSell,
+  lmsrQuote,
+  lmsrSharesForCredits,
 } from "./lmsr";
 
 const liquidity = fc.double({ min: 5, max: 500, noNaN: true, noDefaultInfinity: true });
@@ -203,5 +205,37 @@ describe("lmsrLiquidityForMembers", () => {
     expect(lmsrLiquidityForMembers(0)).toBe(20);
     expect(lmsrLiquidityForMembers(12)).toBe(80);
     expect(lmsrLiquidityForMembers(-3)).toBe(20);
+  });
+});
+
+describe("lmsrSharesForCredits", () => {
+  const book = [40, 10, 0];
+  const b = 50;
+
+  it("never spends more than the budget, and leaves almost none of it", () => {
+    fc.assert(
+      fc.property(fc.double({ min: 0.01, max: 500, noNaN: true }), (credits) => {
+        const shares = lmsrSharesForCredits(book, b, 0, "buy", credits, 100_000);
+        expect(lmsrCostToBuy(book, b, 0, shares)).toBeLessThanOrEqual(credits);
+        // One more step of Credit precision would break the budget, so nothing was left behind.
+        expect(lmsrCostToBuy(book, b, 0, shares + 0.001)).toBeGreaterThan(credits - 0.001);
+      }),
+    );
+  });
+
+  it("caps a sell at the shares on offer", () => {
+    const shares = lmsrSharesForCredits(book, b, 1, "sell", 1_000_000, 4);
+    expect(shares).toBeLessThanOrEqual(4);
+    expect(lmsrProceedsOfSell(book, b, 1, shares)).toBeLessThanOrEqual(1_000_000);
+  });
+
+  it("buys nothing for nothing", () => {
+    expect(lmsrSharesForCredits(book, b, 0, "buy", 0, 100)).toBe(0);
+    expect(lmsrSharesForCredits(book, b, 0, "buy", -5, 100)).toBe(0);
+  });
+
+  it("agrees with lmsrQuote on what the shares cost", () => {
+    const shares = lmsrSharesForCredits(book, b, 2, "buy", 25, 100_000);
+    expect(lmsrQuote(book, b, 2, "buy", shares).credits).toBeLessThanOrEqual(25);
   });
 });

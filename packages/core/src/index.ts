@@ -40,6 +40,7 @@ export {
   lmsrPrices,
   lmsrProceedsOfSell,
   lmsrQuote,
+  lmsrSharesForCredits,
 } from "./lmsr";
 export type { LmsrQuote, TradeSide } from "./lmsr";
 

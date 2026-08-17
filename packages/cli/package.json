@@ -1,6 +1,6 @@
 {
   "name": "tokenburnmarket",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Connect your machine to tokenburnmarket: sync agent usage via ccusage, run the MCP server, place bets.",
   "license": "MIT",
   "type": "module",
@@ -8,12 +8,39 @@
     "tokenburnmarket": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/formidable-oss/tokenburnmarket.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://tokenburnmarket.com",
+  "bugs": {
+    "url": "https://github.com/formidable-oss/tokenburnmarket/issues"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "claude-code",
+    "codex",
+    "ccusage",
+    "token-usage",
+    "prediction-market",
+    "cli"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "build": "tsup"
+    "build": "tsup",
+    "prepublishOnly": "pnpm run check && pnpm run test && pnpm run build"
   },
   "devDependencies": {
     "@types/node": "^24",
@@ -22,6 +49,8 @@
     "vitest": "^3"
   },
   "dependencies": {
-    "@tokenburnmarket/core": "workspace:*"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@tokenburnmarket/core": "workspace:*",
+    "zod": "^4.4.3"
   }
 }
