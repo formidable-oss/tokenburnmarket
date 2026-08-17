@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
 import { inviteUrl } from "@/lib/communities";
 import { communityBySlug, membersOf } from "@/lib/community-queries";
+import { MarketList } from "@/components/markets/market-list";
 import { BOARD_PREVIEW_LIMIT } from "@/lib/leaderboard-queries";
+import { openMarketsForCommunity } from "@/lib/market-queries";
 import { builderTrustLevel } from "@/lib/trust";
 import { removeMember, rotateInvite } from "./actions";
 
@@ -45,7 +47,11 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
   const community = await communityBySlug(slug);
   if (!community) notFound();
 
-  const [session, members] = await Promise.all([auth(), membersOf(community.id)]);
+  const [session, members, openMarkets] = await Promise.all([
+    auth(),
+    membersOf(community.id),
+    openMarketsForCommunity(community.id),
+  ]);
   const viewerId = session?.user?.id ?? null;
   const viewerIsMember = Boolean(viewerId && members.some((m) => m.id === viewerId));
   const viewerIsOwner = viewerId === community.ownerId;
@@ -194,12 +200,33 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
             </>
           )}
 
-          <div className="signal-rail my-7" aria-hidden />
-          <p className="text-[0.85rem] text-subtle">
-            Community markets land here as those ship.
-          </p>
         </div>
       </div>
+
+      <div className="signal-rail my-10" aria-hidden />
+
+      <section aria-labelledby="community-markets">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="type-label" id="community-markets">
+            markets
+          </h2>
+          {viewerIsMember ? (
+            <Link href="/markets/new" className="type-label text-subtle hover:text-foreground">
+              open a market
+            </Link>
+          ) : null}
+        </div>
+        {openMarkets.length === 0 ? (
+          <p className="mt-4 max-w-[52ch] text-[0.95rem] text-muted">
+            No open markets here yet.{" "}
+            {viewerIsMember ? "Open one and the group can trade it." : "Members can open one."}
+          </p>
+        ) : (
+          <div className="mt-4">
+            <MarketList markets={openMarkets} />
+          </div>
+        )}
+      </section>
     </section>
   );
 }
