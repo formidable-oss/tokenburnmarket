@@ -1,0 +1,102 @@
+import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
+import { builderByHandle, handleFromSegment } from "@/lib/builders";
+import { countryByCode } from "@/lib/countries";
+
+/*
+  Public Builder profile at /@handle. This segment sits at the root, so it only
+  answers when it looks like a handle; anything else falls through to a 404.
+*/
+
+async function load(segment: string) {
+  const handle = handleFromSegment(decodeURIComponent(segment));
+  if (!handle) return null;
+  return builderByHandle(handle);
+}
+
+export async function generateMetadata({ params }: PageProps<"/[handle]">): Promise<Metadata> {
+  const builder = await load((await params).handle);
+  if (!builder) return { title: "Not found" };
+  return {
+    title: `${builder.handle}`,
+    description: `${builder.handle} on tokenburnmarket: agent usage, credits and positions.`,
+    alternates: { canonical: `/@${builder.handle}` },
+  };
+}
+
+const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
+
+export default async function BuilderProfile({ params }: PageProps<"/[handle]">) {
+  const builder = await load((await params).handle);
+  if (!builder) notFound();
+
+  const region = countryByCode(builder.country);
+
+  return (
+    <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
+      <header className="flex flex-wrap items-center gap-5">
+        {builder.avatarUrl ? (
+          <Image
+            src={builder.avatarUrl}
+            alt=""
+            width={64}
+            height={64}
+            className="rounded-(--radius-panel) border border-border"
+            unoptimized
+          />
+        ) : null}
+        <div>
+          <h1 className="type-heading">{builder.handle}</h1>
+          <p className="type-data mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.8rem] text-subtle">
+            <span>joined {dateFormat.format(builder.createdAt)}</span>
+            {region ? <span>region {region.name}</span> : null}
+            {builder.xHandle ? (
+              <a
+                className="underline decoration-border-strong hover:text-foreground"
+                href={`https://x.com/${builder.xHandle}`}
+                rel="me noreferrer"
+                target="_blank"
+              >
+                @{builder.xHandle} on X
+              </a>
+            ) : null}
+          </p>
+        </div>
+        <div className="ml-auto text-right">
+          <p className="type-label">credits</p>
+          <p className="type-data mt-1 text-[1.6rem] leading-none text-primary">
+            {builder.creditBalance.toLocaleString("en-US")}
+          </p>
+        </div>
+      </header>
+
+      <div className="signal-rail my-10" aria-hidden />
+
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr] lg:gap-8">
+        <div className="rounded-(--radius-panel) border border-border bg-surface p-6 sm:p-8">
+          <div className="flex items-center gap-2">
+            <h2 className="type-label">usage</h2>
+            <Badge tone="neutral">nothing yet</Badge>
+          </div>
+          <p className="mt-4 max-w-[46ch] text-[0.95rem] text-muted">
+            Usage appears here once {builder.handle} connects a machine and the collector uploads a
+            first day. Tokens, cost and trust level, per provider and model.
+          </p>
+          <Link href="/docs" className="mt-6 inline-block text-sm text-primary-text hover:underline">
+            How connecting works
+          </Link>
+        </div>
+
+        <div className="rounded-(--radius-panel) border border-border bg-surface p-6 sm:p-8">
+          <h2 className="type-label">positions</h2>
+          <p className="mt-4 max-w-[42ch] text-[0.95rem] text-muted">
+            Open bets and settled ones show up here after the first trade.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
