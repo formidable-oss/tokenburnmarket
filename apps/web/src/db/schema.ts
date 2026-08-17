@@ -522,3 +522,45 @@ export const trades = pgTable(
 );
 
 export type Trade = typeof trades.$inferSelect;
+
+/*
+  What an Admin decided about a Quarantined Usage row. `verified` and `reported`
+  put the row back into Leaderboards, Credits and Market resolution at that Trust
+  Level; `keep` leaves it out and records why.
+*/
+export const quarantineDecision = pgEnum("quarantine_decision", ["verified", "reported", "keep"]);
+
+/*
+  The review log for Quarantined Usage. Append only: a row is a decision that was
+  made, not the current state, which stays on `usage_days.trust_level`. The four
+  columns before `decision` are the Usage row's key, repeated rather than joined
+  through a surrogate because `usage_days` has none.
+
+  No foreign key back to `usage_days`: a composite reference would sit in the way
+  of the Sync upsert for no gain, and the note on a row that later left with its
+  Device is still worth reading.
+*/
+export const quarantineReviews = pgTable(
+  "quarantine_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    decision: quarantineDecision("decision").notNull(),
+    /** What the reviewer wanted the next reviewer to know. */
+    note: text("note"),
+    reviewerId: uuid("reviewer_id")
+      .notNull()
+      .references(() => builders.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("quarantine_reviews_row_idx").on(table.deviceId, table.day, table.provider, table.model),
+  ],
+);
+
+export type QuarantineReviewRow = typeof quarantineReviews.$inferSelect;

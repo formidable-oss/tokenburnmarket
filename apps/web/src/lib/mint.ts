@@ -93,6 +93,12 @@ export interface MintStore {
    */
   candidates(throughDay: string): Promise<MintCandidate[]>;
   /**
+   * One Builder-day, whatever state it is in, or null when there is no such row.
+   * The mint runs over `candidates`; this is for the admin path, which knows
+   * exactly which day it just changed and should not scan the whole table.
+   */
+  candidateFor(builderId: string, day: string): Promise<MintCandidate | null>;
+  /**
    * Write one mint: the ledger row, then the Builder-day it advances. Returns
    * false when the ledger row was already there, which is how a second runner
    * finds out it lost the race. The Builder-day update is applied either way,
@@ -137,6 +143,34 @@ export async function runMint(store: MintStore, now: Date): Promise<MintRunResul
 
   if (touched.size > 0) await store.refreshBalances([...touched]);
   return { throughDay, minted, credits, builders: touched.size };
+}
+
+/**
+ * Mint one Builder-day now, for a day whose Usage just changed under it: an
+ * Admin clearing a Quarantined row is the only caller today.
+ *
+ * Same three rules as the cron, so it can be called as often as anyone likes:
+ * a day that has not closed and settled is left to the cron, the curve decides
+ * the target, and the ledger ref makes a repeat a no-op. Returns the Credits
+ * this call added, which is zero whenever the day was already worth as much.
+ */
+export async function remintBuilderDay(
+  store: MintStore,
+  builderId: string,
+  day: string,
+  now: Date,
+): Promise<number> {
+  if (day > lastMintableDay(now)) return 0;
+  const candidate = await store.candidateFor(builderId, day);
+  if (!candidate) return 0;
+
+  const write = planMint(candidate);
+  if (!write) return 0;
+  const inserted = await store.recordMint(write);
+  if (!inserted) return 0;
+
+  await store.refreshBalances([builderId]);
+  return write.delta;
 }
 
 /**

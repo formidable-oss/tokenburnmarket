@@ -12,6 +12,7 @@ import {
   grantSignupCredits,
   lastMintableDay,
   planMint,
+  remintBuilderDay,
   runMint,
   type MintCandidate,
   type MintStore,
@@ -72,6 +73,9 @@ function memoryStore(candidates: MintCandidate[]): Memory {
     async candidates(throughDay) {
       return [...days.values()].filter((row) => row.day <= throughDay && row.costUsd > 0);
     },
+    async candidateFor(builderId, dayKey) {
+      return days.get(`${builderId}|${dayKey}`) ?? null;
+    },
     async recordMint(write) {
       const inserted = insert({
         builderId: write.builderId,
@@ -122,6 +126,34 @@ describe("planMint", () => {
 
   it("never claws back a day whose usage shrank", () => {
     expect(planMint(day({ costUsd: 5, creditsMinted: 12 }))).toBeNull();
+  });
+});
+
+describe("remintBuilderDay", () => {
+  it("mints a day an admin just cleared, and adds nothing on a second call", async () => {
+    // Quarantined at first, so the cron left it at zero.
+    const store = memoryStore([day({ costUsd: 30, trustLevelMin: "quarantined" })]);
+    await runMint(store, NOW);
+    expect(store.ledger).toHaveLength(0);
+
+    store.days.get(`${BUILDER}|${DAY}`)!.trustLevelMin = "verified";
+    const expected = mintForDay(30, "verified").credits;
+
+    expect(await remintBuilderDay(store, BUILDER, DAY, NOW)).toBeCloseTo(expected, 4);
+    expect(await remintBuilderDay(store, BUILDER, DAY, NOW)).toBe(0);
+    expect(store.ledger).toHaveLength(1);
+    expect(store.balances.get(BUILDER)).toBeCloseTo(expected, 4);
+  });
+
+  it("leaves a day that has not cleared the buffer to the cron", async () => {
+    const store = memoryStore([day({ day: "2026-08-16", costUsd: 30 })]);
+    expect(await remintBuilderDay(store, BUILDER, "2026-08-16", NOW)).toBe(0);
+    expect(store.ledger).toHaveLength(0);
+  });
+
+  it("adds nothing for a builder day nobody has rolled up", async () => {
+    const store = memoryStore([]);
+    expect(await remintBuilderDay(store, BUILDER, DAY, NOW)).toBe(0);
   });
 });
 

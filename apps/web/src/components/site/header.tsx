@@ -3,6 +3,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+import { isAdmin } from "@/lib/admin";
 import { ThemeToggle } from "./theme-toggle";
 
 const nav = [
@@ -33,6 +34,14 @@ export async function SiteHeader() {
           <ThemeToggle />
           {handle ? (
             <>
+              {isAdmin(handle) ? (
+                <Link
+                  href="/admin"
+                  className="nav-link hidden px-2 text-[0.82rem] text-muted hover:text-foreground sm:block"
+                >
+                  Admin
+                </Link>
+              ) : null}
               <Link
                 href="/settings"
                 className="nav-link hidden px-2 text-[0.82rem] text-muted hover:text-foreground sm:block"
