@@ -29,6 +29,8 @@ export type { DailyMint } from "./mint";
 
 // LMSR market maker (ADR 0002)
 export {
+  DEFAULT_SLIPPAGE_TOLERANCE,
+  lmsrAdverseMove,
   lmsrCost,
   lmsrCostToBuy,
   lmsrHouseProfit,
@@ -37,7 +39,9 @@ export {
   lmsrPrice,
   lmsrPrices,
   lmsrProceedsOfSell,
+  lmsrQuote,
 } from "./lmsr";
+export type { LmsrQuote, TradeSide } from "./lmsr";
 
 // Plausibility checks (ADR 0003)
 export {

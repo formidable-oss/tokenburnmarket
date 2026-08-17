@@ -339,3 +339,166 @@ export const creditLedger = pgTable(
 );
 
 export type CreditLedgerRow = typeof creditLedger.$inferSelect;
+
+/*
+  How wide a Market's audience is. A `community` Market names its Community, a
+  `country` Market names its Region, a `global` Market names neither.
+*/
+export const marketScope = pgEnum("market_scope", ["community", "country", "global"]);
+
+/** The templates from CONTEXT.md. `params` carries whatever the template needs. */
+export const marketType = pgEnum("market_type", [
+  "top_burner",
+  "threshold",
+  "head_to_head",
+  "model_race",
+]);
+
+/*
+  open: trading. closed: past `closes_at`, waiting on Usage. resolved: one
+  Outcome paid out. voided: cancelled, Positions refunded at cost.
+*/
+export const marketStatus = pgEnum("market_status", ["open", "closed", "resolved", "voided"]);
+
+/** Free-form template parameters. The rules text on the Market page is built from these. */
+export interface MarketParams {
+  /** Human sentence shown under the question. Written at creation, never derived. */
+  rules?: string;
+  /** UTC day the measured period starts, inclusive. */
+  periodStart?: string;
+  /** UTC day the measured period ends, inclusive. */
+  periodEnd?: string;
+  /** What `threshold` Markets compare against, in USD of Usage. */
+  thresholdUsd?: number;
+  [key: string]: unknown;
+}
+
+/*
+  A Market: a question about future Usage, priced by the LMSR (ADR 0002).
+
+  `b` is the liquidity parameter fixed at creation; it never changes, because
+  moving it would reprice every Position already held. `winning_outcome_id`
+  carries no foreign key on purpose: outcomes reference the Market, and a cycle
+  between the two tables would make either row impossible to insert first.
+*/
+export const markets = pgTable(
+  "markets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scope: marketScope("scope").notNull(),
+    communityId: uuid("community_id").references(() => communities.id, { onDelete: "cascade" }),
+    country: char("country", { length: 2 }),
+    type: marketType("type").notNull(),
+    question: text("question").notNull(),
+    params: jsonb("params").$type<MarketParams>().notNull().default({}),
+    b: numeric("b", { precision: 14, scale: 4, mode: "number" }).notNull(),
+    opensAt: timestamp("opens_at", { withTimezone: true }).notNull().defaultNow(),
+    closesAt: timestamp("closes_at", { withTimezone: true }).notNull(),
+    /** When Usage is read to settle. Later than `closes_at` to absorb late Syncs. */
+    resolvesAt: timestamp("resolves_at", { withTimezone: true }).notNull(),
+    status: marketStatus("status").notNull().default("open"),
+    winningOutcomeId: uuid("winning_outcome_id"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => builders.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("markets_status_closes_idx").on(table.status, table.closesAt),
+    index("markets_community_idx").on(table.communityId, table.status),
+  ],
+);
+
+export type Market = typeof markets.$inferSelect;
+
+/*
+  One answer to a Market's question. `ref` says what the resolver should measure
+  (a Builder, a model, a provider); `label` is what a person reads. `sort` fixes
+  the display order, which is also the order the LMSR sees the shares vector in,
+  so prices on screen line up with prices on the server.
+*/
+export const outcomes = pgTable(
+  "outcomes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    marketId: uuid("market_id")
+      .notNull()
+      .references(() => markets.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    ref: jsonb("ref").$type<Record<string, unknown>>().notNull().default({}),
+    sharesOutstanding: numeric("shares_outstanding", {
+      precision: 14,
+      scale: 4,
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    sort: integer("sort").notNull().default(0),
+  },
+  (table) => [uniqueIndex("outcomes_market_sort_idx").on(table.marketId, table.sort)],
+);
+
+export type Outcome = typeof outcomes.$inferSelect;
+
+/*
+  What a Builder holds in one Outcome. `cost_basis` is what they paid for the
+  shares still held, reduced proportionally on a sell, so profit at resolution
+  reads straight off the row. Shares are never negative: there is no shorting.
+*/
+export const positions = pgTable(
+  "positions",
+  {
+    marketId: uuid("market_id")
+      .notNull()
+      .references(() => markets.id, { onDelete: "cascade" }),
+    outcomeId: uuid("outcome_id")
+      .notNull()
+      .references(() => outcomes.id, { onDelete: "cascade" }),
+    builderId: uuid("builder_id")
+      .notNull()
+      .references(() => builders.id, { onDelete: "cascade" }),
+    shares: numeric("shares", { precision: 14, scale: 4, mode: "number" }).notNull().default(0),
+    costBasis: credits("cost_basis").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.marketId, table.outcomeId, table.builderId] }),
+    index("positions_builder_idx").on(table.builderId),
+  ],
+);
+
+export type Position = typeof positions.$inferSelect;
+
+export const tradeSide = pgEnum("trade_side", ["buy", "sell"]);
+
+/*
+  Every fill against the AMM, append only. `price_after` is the Outcome's
+  instantaneous price once the trade landed, which is what draws the price
+  chart: the Market's own history, not a separate time series to keep in step.
+
+  `credits` is always positive; `side` says which way it moved. The matching
+  ledger row uses the trade id as its ref, so the two reconcile row for row.
+*/
+export const trades = pgTable(
+  "trades",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    marketId: uuid("market_id")
+      .notNull()
+      .references(() => markets.id, { onDelete: "cascade" }),
+    outcomeId: uuid("outcome_id")
+      .notNull()
+      .references(() => outcomes.id, { onDelete: "cascade" }),
+    builderId: uuid("builder_id")
+      .notNull()
+      .references(() => builders.id, { onDelete: "cascade" }),
+    side: tradeSide("side").notNull(),
+    shares: numeric("shares", { precision: 14, scale: 4, mode: "number" }).notNull(),
+    credits: credits("credits").notNull(),
+    priceAfter: numeric("price_after", { precision: 9, scale: 6, mode: "number" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("trades_market_created_idx").on(table.marketId, table.createdAt)],
+);
+
+export type Trade = typeof trades.$inferSelect;
