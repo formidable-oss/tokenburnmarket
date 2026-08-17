@@ -20,6 +20,6 @@ Glossary only. No implementation details.
 - **Outcome** — one answer to a Market's question. Exactly one Outcome wins at resolution (or the Market is Voided).
 - **Voided** — a Market cancelled before or at resolution (e.g. oracle data unusable); all Positions refunded at cost.
 - **Season** — a Leaderboard period: this week (Mon–Sun UTC), this month, or all-time.
-- **Region** — a Builder's self-declared country; scopes a Leaderboard and its Markets.
+- **Region** — a Builder's self-declared country, and the continent it belongs to; either scopes a Leaderboard and its Markets. The world is the widest Region.
 - **Model Race** — a global/regional Market on which model (or provider) burns the most tokens over a period.
 - **Top Burner**, **Threshold**, **Head-to-Head** — the Community Market templates: who spends most, will X reach an amount, does A out-burn B.
