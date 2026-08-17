@@ -7,22 +7,26 @@
 
 export interface ParsedArgs {
   command: string;
+  /** The word after the command, where there is one: `daemon install`, `hook uninstall`. */
+  subcommand: string;
   flags: Record<string, string>;
   switches: Set<string>;
 }
 
 /** Flags that take a value. Anything else spelled `--x` is a switch. */
-const VALUE_FLAGS = new Set(["server", "name", "since"]);
+const VALUE_FLAGS = new Set(["server", "name", "since", "interval"]);
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {
   const flags: Record<string, string> = {};
   const switches = new Set<string>();
   let command = "";
+  let subcommand = "";
 
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i]!;
     if (!token.startsWith("-")) {
       if (!command) command = token;
+      else if (!subcommand) subcommand = token;
       continue;
     }
 
@@ -43,5 +47,5 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     switches.add(bare);
   }
 
-  return { command, flags, switches };
+  return { command, subcommand, flags, switches };
 }

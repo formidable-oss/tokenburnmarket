@@ -156,4 +156,39 @@ describe.skipIf(!hasDatabase)("executeTrade against the dev database", async () 
     expect(after.balance).toBeGreaterThanOrEqual(0);
     expect(after.balance).toBeLessThan(balanceRow.balance);
   });
+
+  it("quotes a budget in shares, and writes nothing", async () => {
+    const { quoteTrade } = await import("./trade-store");
+    const before = await db.select().from(trades).where(eq(trades.marketId, marketId));
+
+    const budget = 5;
+    const quote = await quoteTrade(builderId, marketId, {
+      outcomeId: outcomeIds[0],
+      side: "buy",
+      credits: budget,
+    });
+
+    expect(quote.ok).toBe(true);
+    if (!quote.ok) return;
+    // The whole point of a budget: it is a ceiling, and it is nearly met.
+    expect(quote.plan.quote.credits).toBeLessThanOrEqual(budget);
+    expect(quote.plan.quote.credits).toBeGreaterThan(budget * 0.99);
+    expect(quote.shares).toBeGreaterThan(0);
+    expect(quote.balanceAfter).toBeCloseTo(quote.balance - quote.plan.quote.credits, 4);
+
+    const after = await db.select().from(trades).where(eq(trades.marketId, marketId));
+    expect(after).toHaveLength(before.length);
+  });
+
+  it("refuses to quote a sell of shares nobody holds", async () => {
+    const { quoteTrade } = await import("./trade-store");
+    const quote = await quoteTrade(builderId, marketId, {
+      outcomeId: outcomeIds[0],
+      side: "sell",
+      shares: 1_000_000,
+    });
+    expect(quote.ok).toBe(false);
+    if (quote.ok) return;
+    expect(quote.code).toBe("insufficient_shares");
+  });
 });

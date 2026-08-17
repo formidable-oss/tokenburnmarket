@@ -13,9 +13,11 @@
   negative. The two locks are always taken in that order, Market then Builder,
   so two trades can never wait on each other.
 */
+import { lmsrSharesForCredits, type TradeSide } from "@tokenburnmarket/core";
 import { and, eq, sql } from "drizzle-orm";
-import { dbTx } from "@/db";
+import { db, dbTx } from "@/db";
 import { builders, creditLedger, markets, outcomes, positions, trades } from "@/db/schema";
+import { MAX_TRADE_SHARES } from "./markets";
 import { planTrade, type TradePlan, type TradeRejection, type TradeRequest } from "./trade";
 
 export interface TradeReceipt {
@@ -177,4 +179,142 @@ export async function executeTrade(
 
     return { ok: true, tradeId, plan, balanceAfter: updated?.balance ?? 0 };
   });
+}
+
+/**
+ * What a trader wants, before it is known how many shares that is. A budget in
+ * Credits is what an agent naturally asks for ("bet 50 on yes"), and it becomes
+ * a share count against the live book.
+ */
+export interface TradeIntent {
+  outcomeId: string;
+  side: TradeSide;
+  /** Shares to trade. Ignored when `credits` is set. */
+  shares?: number;
+  /** Credits to spend on a buy, or to raise on a sell. */
+  credits?: number;
+}
+
+export interface TradeQuote {
+  ok: true;
+  /** The share count the intent resolves to, which is what an execution must be given. */
+  shares: number;
+  plan: TradePlan;
+  balance: number;
+  balanceAfter: number;
+  /** What the trader already holds in this Outcome. */
+  positionShares: number;
+}
+
+/**
+ * Price an intent without touching anything. Same rules as `executeTrade`, run
+ * through the same `planTrade`, but read outside a transaction and with no row
+ * locks: a quote is an offer, and the writer re-prices it under the lock anyway.
+ *
+ * This is what a caller shows before asking someone to confirm. It is never a
+ * promise, and the price it reports can move before the trade lands.
+ */
+export async function quoteTrade(
+  builderId: string,
+  marketId: string,
+  intent: TradeIntent,
+  now: Date = new Date(),
+): Promise<TradeQuote | TradeRejection> {
+  const [market] = await db
+    .select({ status: markets.status, closesAt: markets.closesAt, b: markets.b })
+    .from(markets)
+    .where(eq(markets.id, marketId))
+    .limit(1);
+  if (!market) return missingMarket;
+
+  const [balanceRow] = await db
+    .select({ balance: currentBalance })
+    .from(builders)
+    .where(eq(builders.id, builderId))
+    .limit(1);
+  if (!balanceRow) return missingMarket;
+
+  const book = await db
+    .select({ id: outcomes.id, sharesOutstanding: outcomes.sharesOutstanding })
+    .from(outcomes)
+    .where(eq(outcomes.marketId, marketId))
+    .orderBy(outcomes.sort);
+
+  const [held] = await db
+    .select({ shares: positions.shares, costBasis: positions.costBasis })
+    .from(positions)
+    .where(
+      and(
+        eq(positions.marketId, marketId),
+        eq(positions.outcomeId, intent.outcomeId),
+        eq(positions.builderId, builderId),
+      ),
+    );
+
+  const tradeBook = {
+    status: market.status,
+    closesAt: market.closesAt,
+    b: market.b,
+    outcomeIds: book.map((outcome) => outcome.id),
+    sharesOutstanding: book.map((outcome) => outcome.sharesOutstanding),
+  };
+  const trader = {
+    balance: Number(balanceRow.balance),
+    positionShares: held?.shares ?? 0,
+    positionCostBasis: held?.costBasis ?? 0,
+  };
+
+  const outcomeIndex = tradeBook.outcomeIds.indexOf(intent.outcomeId);
+  if (outcomeIndex < 0) {
+    return { ok: false, code: "unknown_outcome", message: "That outcome is not in this market." };
+  }
+
+  /*
+    A budget becomes a share count here, against the book as it stands. It is the
+    inverse of the same pricing function `planTrade` then charges, so the quote
+    that comes back spends at most what was asked for.
+  */
+  const shares =
+    intent.credits !== undefined
+      ? lmsrSharesForCredits(
+          tradeBook.sharesOutstanding,
+          tradeBook.b,
+          outcomeIndex,
+          intent.side,
+          intent.credits,
+          intent.side === "sell" ? trader.positionShares : MAX_TRADE_SHARES,
+        )
+      : (intent.shares ?? 0);
+
+  if (shares <= 0) {
+    return {
+      ok: false,
+      code: intent.side === "sell" ? "insufficient_shares" : "insufficient_balance",
+      message: "That is not enough to trade.",
+    };
+  }
+
+  const plan = planTrade(
+    tradeBook,
+    trader,
+    {
+      outcomeId: intent.outcomeId,
+      side: intent.side,
+      shares,
+      // No preview was shown, so there is nothing to check the price against.
+      previewAveragePrice: 0,
+      acceptSlippage: false,
+    },
+    now,
+  );
+  if (!plan.ok) return plan;
+
+  return {
+    ok: true,
+    shares,
+    plan,
+    balance: trader.balance,
+    balanceAfter: Math.round((trader.balance + plan.delta) * 10_000) / 10_000,
+    positionShares: trader.positionShares,
+  };
 }
