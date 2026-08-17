@@ -5,8 +5,16 @@ import { useState } from "react";
 /*
   A one-line terminal command with a copy affordance.
   Copy feedback is inline text, not a toast: it is the only feedback needed here.
+  `prompt` is the sigil in front of the text; pass null for content that is not a
+  command, such as an invite link.
 */
-export function CommandLine({ command }: { command: string }) {
+export function CommandLine({
+  command,
+  prompt = "$",
+}: {
+  command: string;
+  prompt?: string | null;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -21,8 +29,14 @@ export function CommandLine({ command }: { command: string }) {
 
   return (
     <div className="flex h-11 items-stretch overflow-hidden rounded-(--radius-control) border border-border-strong bg-surface-sunken">
-      <span aria-hidden className="type-data flex items-center pl-3.5 text-subtle select-none">$</span>
-      <code className="type-data flex flex-1 items-center px-2.5 text-[0.92rem] text-foreground">
+      {prompt ? (
+        <span aria-hidden className="type-data flex items-center pl-3.5 text-subtle select-none">
+          {prompt}
+        </span>
+      ) : null}
+      <code
+        className={`type-data flex flex-1 items-center overflow-x-auto px-2.5 text-[0.92rem] text-foreground ${prompt ? "" : "pl-3.5"}`}
+      >
         {command}
       </code>
       <button
