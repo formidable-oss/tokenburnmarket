@@ -1,0 +1,58 @@
+name: e2e
+
+on: [push, pull_request]
+
+# The smoke suite renders real pages, so it needs a real database. Forks and
+# clones do not have that secret, and a red check nobody can fix is worse than
+# no check: the first step says so and everything after it is skipped.
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Sign-in is never exercised here. Auth.js still wants a secret to boot.
+      AUTH_SECRET: ci-not-a-real-secret-only-used-to-boot-the-app
+      AUTH_TRUST_HOST: "true"
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      BASE_URL: http://localhost:3000
+    steps:
+      - name: Check for a database
+        id: db
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "No DATABASE_URL secret on this repository. Skipping the smoke suite."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.db.outputs.run == 'true'
+      - uses: pnpm/action-setup@v4
+        if: steps.db.outputs.run == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.db.outputs.run == 'true'
+        with: { node-version: 24, cache: pnpm }
+
+      - run: pnpm install --frozen-lockfile
+        if: steps.db.outputs.run == 'true'
+      - run: pnpm --filter @tokenburnmarket/web exec playwright install --with-deps chromium
+        if: steps.db.outputs.run == 'true'
+      - run: pnpm build
+        if: steps.db.outputs.run == 'true'
+
+      - name: Start the built app
+        if: steps.db.outputs.run == 'true'
+        run: |
+          pnpm --filter @tokenburnmarket/web start &
+          npx --yes wait-on http://localhost:3000/docs --timeout 90000
+
+      - run: pnpm --filter @tokenburnmarket/web e2e
+        if: steps.db.outputs.run == 'true'
+
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.db.outputs.run == 'true'
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
