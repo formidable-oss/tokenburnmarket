@@ -15,6 +15,13 @@
       "when": 1786977485158,
       "tag": "0001_amused_retro_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786977997231,
+      "tag": "0002_true_chimera",
+      "breakpoints": true
     }
   ]
 }
