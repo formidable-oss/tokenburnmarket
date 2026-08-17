@@ -33,6 +33,18 @@ export function creditReasonLabel(reason: CreditReason): string {
   return REASON_LABELS[reason];
 }
 
+/*
+  The Market a settlement row came from. Payouts and refunds are the only rows
+  that point at one, and they carry it as `market:<id>`, which is also the key
+  that keeps settling idempotent.
+*/
+const MARKET_REF = /^market:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+export function creditEntryMarketId(reason: CreditReason, refId: string | null): string | null {
+  if ((reason !== "payout" && reason !== "refund") || !refId) return null;
+  return MARKET_REF.exec(refId)?.[1] ?? null;
+}
+
 /** The day a mint row covers, when the ref carries one. Other reasons have no day. */
 export function creditEntryDay(reason: CreditReason, refId: string | null): string | null {
   if (reason !== "mint" || !refId) return null;

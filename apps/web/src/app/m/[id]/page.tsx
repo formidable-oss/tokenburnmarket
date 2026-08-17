@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { auth, currentBuilder } from "@/auth";
 import { OutcomeRow } from "@/components/markets/outcome-rows";
 import { PriceChart } from "@/components/markets/price-chart";
+import { ResolutionPanel } from "@/components/markets/resolution-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCredits, formatDelta } from "@/lib/credits";
@@ -12,6 +13,7 @@ import {
   positionsIn,
   priceHistory,
   recentTrades,
+  settlementFor,
   type MarketDetail,
 } from "@/lib/market-queries";
 import {
@@ -73,11 +75,12 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
   const session = await auth();
   const viewerId = session?.user?.id ?? null;
 
-  const [history, tape, holdings, builder] = await Promise.all([
+  const [history, tape, holdings, builder, settlement] = await Promise.all([
     priceHistory(market.id),
     recentTrades(market.id),
     viewerId ? positionsIn(market.id, viewerId) : Promise.resolve([]),
     viewerId ? currentBuilder() : Promise.resolve(null),
+    viewerId ? settlementFor(market.id, viewerId) : Promise.resolve(null),
   ]);
 
   const held = Object.fromEntries(holdings.map((row) => [row.outcomeId, row.shares]));
@@ -126,7 +129,15 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
 
       <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:gap-12">
         <div>
-          <section className="rounded-(--radius-panel) border border-border bg-surface px-5 py-4 sm:px-6">
+          <ResolutionPanel
+            status={market.status}
+            winnerLabel={market.winningOutcomeId ? (labels.get(market.winningOutcomeId) ?? null) : null}
+            note={market.resolutionNote}
+            holdUntil={market.holdUntil}
+            settlement={settlement}
+          />
+
+          <section className="mt-8 rounded-(--radius-panel) border border-border bg-surface px-5 py-4 first:mt-0 sm:px-6">
             <h2 className="type-label">outcomes</h2>
             <ol className="mt-2 divide-y divide-border-faint">
               {market.outcomes.map((outcome) => (
@@ -197,8 +208,11 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
             <h2 className="type-label">{tradable ? "trade" : "trading is closed"}</h2>
             {!tradable ? (
               <p className="mt-4 text-[0.95rem] text-muted">
-                This market stopped taking trades. Positions settle from Usage at{" "}
-                {stamp.format(market.resolvesAt)} UTC.
+                {market.status === "resolved" || market.status === "voided"
+                  ? "This market is settled. Nothing more moves here."
+                  : `This market stopped taking trades. Positions settle from Usage at ${stamp.format(
+                      market.resolvesAt,
+                    )} UTC.`}
               </p>
             ) : viewerId && builder ? (
               <div className="mt-5">

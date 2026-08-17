@@ -21,6 +21,7 @@ Glossary only. No implementation details.
 - **Trust Level** — how much a Usage row is believed: *Verified* (signed Device + Receipt Stream + passed checks), *Reported* (signed Device, no Receipt Stream — agents where the Collector cannot read identifiers; mints Credits at a discount and is badged on Leaderboards), *Quarantined* (failed checks; excluded from Leaderboards, Credits, and Market resolution pending review).
 - **Outcome** — one answer to a Market's question. Exactly one Outcome wins at resolution (or the Market is Voided).
 - **Voided** — a Market cancelled before or at resolution (e.g. oracle data unusable); all Positions refunded at cost.
+- **Hold** — a Market whose resolution waits because Usage it points at is Quarantined. It settles as soon as the review clears; if that has not happened a day later, the Market is Voided.
 - **Season** — a Leaderboard period: this week (Mon–Sun UTC), this month, or all-time.
 - **Region** — a Builder's self-declared country, and the continent it belongs to; either scopes a Leaderboard and its Markets. The world is the widest Region.
 - **Model Race** — a global/regional Market on which model (or provider) burns the most tokens over a period.

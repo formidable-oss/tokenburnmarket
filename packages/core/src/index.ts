@@ -120,6 +120,7 @@ export {
   marketTemplateQuestion,
   marketTemplateRulesText,
   nextUtcWeek,
+  parseOutcomeRef,
   parseTemplateParams,
   periodClosesAt,
   utcWeekOf,
@@ -138,3 +139,12 @@ export type {
   ThresholdParams,
   TopBurnerParams,
 } from "./market-templates";
+
+// Market resolution: reading a period of Usage back into one winning Outcome
+export { QUARANTINE_HOLD_REASON, outcomeRefMatches, resolveMarket } from "./resolve";
+export type {
+  BuilderUsageSnapshot,
+  MarketResolution,
+  ModelUsageSnapshot,
+  ResolutionSnapshot,
+} from "./resolve";
