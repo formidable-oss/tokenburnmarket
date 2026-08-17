@@ -1,4 +1,85 @@
-// @tokenburnmarket/core — pure, dependency-free domain logic.
-// Contract: mint curve, LMSR market maker, plausibility checks, sync payload schema.
-// Nothing here touches the network, filesystem, or database.
-export const CORE_VERSION = "0.0.0";
+// @tokenburnmarket/core: pure domain logic shared by the web app and the Collector.
+//
+// Contract: mint curve (ADR 0004), LMSR market maker (ADR 0002), plausibility
+// checks and Trust Levels (ADR 0003), Sync payload schema and Ed25519 signing.
+// Nothing here touches the network, the filesystem, or the database, and the
+// only runtime dependency is zod. Runs unchanged in Node and in the browser.
+export const CORE_VERSION = "0.1.0";
+
+// Trust Levels
+export { TRUST_LEVELS, weakestTrustLevel } from "./trust.js";
+export type { TrustLevel } from "./trust.js";
+
+// Credit mint (ADR 0004)
+export {
+  CREDIT_DECIMALS,
+  MINT_CURVE_VERSION,
+  MINT_KINK_USD,
+  MINT_TAIL_COEFFICIENT,
+  REPORTED_MINT_MULTIPLIER,
+  SIGNUP_GRANT_CREDITS,
+  mintCurve,
+  mintForDay,
+  mintMultiplierFor,
+  roundCredits,
+  roundCreditsDown,
+  roundCreditsUp,
+} from "./mint.js";
+export type { DailyMint } from "./mint.js";
+
+// LMSR market maker (ADR 0002)
+export {
+  lmsrCost,
+  lmsrCostToBuy,
+  lmsrHouseProfit,
+  lmsrLiquidityForMembers,
+  lmsrMaxHouseLoss,
+  lmsrPrice,
+  lmsrPrices,
+  lmsrProceedsOfSell,
+} from "./lmsr.js";
+
+// Plausibility checks (ADR 0003)
+export {
+  DEFAULT_PLAUSIBILITY_LIMITS,
+  checkPlausibility,
+  resolvePlausibilityLimits,
+} from "./plausibility.js";
+export type {
+  PlausibilityCode,
+  PlausibilityContext,
+  PlausibilityLimits,
+  PlausibilityReason,
+  PlausibilityResult,
+  UsageDayInput,
+} from "./plausibility.js";
+
+// Canonical JSON and Ed25519 signing
+export { CanonicalJsonError, canonicalBytes, canonicalJson } from "./canonical-json.js";
+export type { CanonicalValue } from "./canonical-json.js";
+export {
+  SigningUnavailableError,
+  fromBase64,
+  generateDeviceKeyPair,
+  signPayload,
+  toBase64,
+  verifyPayload,
+} from "./signing.js";
+export type { DeviceKeyPair } from "./signing.js";
+
+// Sync payload
+export {
+  MAX_RECEIPTS_PER_DAY,
+  MAX_SYNC_DAYS,
+  ReceiptHashSchema,
+  SYNC_PAYLOAD_VERSION,
+  SignedSyncSchema,
+  SyncDaySchema,
+  SyncPayloadSchema,
+  UtcDaySchema,
+  createSignedSync,
+  syncSigningInput,
+  usageDayInputFromSyncDay,
+  verifySyncBody,
+} from "./sync.js";
+export type { SignedSync, SyncDay, SyncPayload, SyncVerification } from "./sync.js";
