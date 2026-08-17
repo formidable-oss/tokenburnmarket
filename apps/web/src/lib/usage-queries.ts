@@ -7,8 +7,10 @@
   profile without them.
 */
 import { and, eq, gte, isNull, sql } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 import { db } from "@/db";
-import { usageDays } from "@/db/schema";
+import { builderDays, usageDays } from "@/db/schema";
+import { periodRange } from "./leaderboard";
 import { dayRange, summarizeUsage, type UsageSummary } from "./usage";
 
 /** How far back a profile looks. One month reads as a habit, not a lifetime. */
@@ -54,3 +56,52 @@ export async function builderUsage(
 
   return summarizeUsage(rows, days);
 }
+
+/** A Builder's burn over the two Seasons a share card and a title quote. */
+export interface BurnSeasons {
+  weekCostUsd: number;
+  monthCostUsd: number;
+  /** Weakest Trust Level over the counted days this month, which is what a badge would say. */
+  trust: "verified" | "reported";
+}
+
+/*
+  Read off `builder_days`, the same rollup Leaderboards use, so a profile card and
+  a board can never quote two different numbers for the same week. Quarantined
+  days are excluded here as they are there (ADR 0003).
+
+  Public, viewer independent and therefore cached: the card and the page title
+  both want it, and neither is worth a second query.
+*/
+export const cachedBurnSeasons = unstable_cache(
+  async (builderId: string): Promise<BurnSeasons> => {
+    const now = new Date();
+    const week = periodRange("week", now);
+    const month = periodRange("month", now);
+
+    const [row] = await db
+      .select({
+        week: sql<number>`coalesce(sum(${builderDays.costUsd}) filter (
+          where ${builderDays.day} >= ${week.start} and ${builderDays.day} <= ${week.end}
+        ), 0)::double precision`,
+        month: sql<number>`coalesce(sum(${builderDays.costUsd}) filter (
+          where ${builderDays.day} >= ${month.start} and ${builderDays.day} <= ${month.end}
+        ), 0)::double precision`,
+        reported: sql<boolean>`coalesce(bool_or(${builderDays.trustLevelMin} = 'reported') filter (
+          where ${builderDays.day} >= ${month.start} and ${builderDays.day} <= ${month.end}
+        ), true)`,
+      })
+      .from(builderDays)
+      .where(
+        and(eq(builderDays.builderId, builderId), sql`${builderDays.trustLevelMin} <> 'quarantined'`),
+      );
+
+    return {
+      weekCostUsd: Number(row?.week ?? 0),
+      monthCostUsd: Number(row?.month ?? 0),
+      trust: row?.reported === false ? "verified" : "reported",
+    };
+  },
+  ["builder-burn-seasons"],
+  { revalidate: 300, tags: ["leaderboard"] },
+);

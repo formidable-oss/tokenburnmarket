@@ -64,7 +64,8 @@ Pixel faces are for titles and big numerals, never for paragraphs. Mono is for l
 - **SiteHeader / SiteFooter / ThemeToggle** `site/*`: sticky translucent bar, primary nav with the left-growing underline, day/night toggle.
 - **CostSparkline**, **UsagePanel** `usage/*`: thirty days of burn as server-rendered bars, then totals by agent and by model. No client JavaScript.
 - **BoardTable**, **RegionTabs**, **BoardSwitches** `leaderboard/*`: the one leaderboard row anatomy (rank, avatar + handle, trust badge, value, places gained) and the link-only region tabs and season/metric switches. Every board renders through them, including the landing preview, so two boards can never disagree about a rank.
-- **MarketPreview**, **Steps** `landing/*`: static preview that defines the row anatomy for the real market page (issue #9), and the three-step explainer. **RegionBoards** `landing/*` is the same tab strip over real data.
+- **MarketPreview**, **StatsStrip**, **Steps** `landing/*`: the busiest open market in the market row anatomy, falling back to a worked example labelled as one when nothing is open; four site numbers under the hero; the three-step explainer. **RegionBoards** `landing/*` is the same tab strip over real data.
+- **Share cards** `app/og-card.tsx` with `lib/share-cards.ts`: one 1200x630 composition for every card. Mark and wordmark top left, a mono eyebrow, a headline in the pixel face with at most one word in primary, an optional panel of rows on the right, one quiet line at the bottom. A route maps its data to a `ShareCard` and never lays out pixels. Cyan is reserved for prices there too, and the ember dot only appears next to numbers that move.
 - **LogoMark / Wordmark / Logo** `brand/logo.tsx`.
 
 ## 6. Motion

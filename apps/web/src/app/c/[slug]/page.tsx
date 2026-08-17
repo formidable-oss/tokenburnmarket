@@ -24,10 +24,17 @@ import { removeMember, rotateInvite } from "./actions";
 export async function generateMetadata({ params }: PageProps<"/c/[slug]">): Promise<Metadata> {
   const community = await communityBySlug((await params).slug);
   if (!community) return { title: "Not found" };
+
+  const title = community.name;
+  const description = community.bio ?? `${community.name} on tokenburnmarket.`;
+  const path = `/c/${community.slug}`;
+
   return {
-    title: community.name,
-    description: community.bio ?? `${community.name} on tokenburnmarket.`,
-    alternates: community.visibility === "public" ? { canonical: `/c/${community.slug}` } : undefined,
+    title,
+    description,
+    openGraph: { type: "website", url: path, title, description },
+    twitter: { card: "summary_large_image", title, description },
+    alternates: community.visibility === "public" ? { canonical: path } : undefined,
     robots: community.visibility === "unlisted" ? { index: false, follow: false } : undefined,
   };
 }

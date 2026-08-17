@@ -6,11 +6,14 @@
   a list and a Market page always agree, and there is no cache to go stale.
 */
 import { lmsrPrices } from "@tokenburnmarket/core";
-import { and, asc, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 import { db } from "@/db";
 import {
+  builderDays,
   builders,
   communities,
+  devices,
   markets,
   memberships,
   outcomes,
@@ -18,6 +21,7 @@ import {
   trades,
   type MarketParams,
 } from "@/db/schema";
+import { periodRange } from "./leaderboard";
 import type { MarketScope, MarketStatus } from "./markets";
 
 export interface OutcomePrice {
@@ -284,3 +288,115 @@ export async function builderCount(): Promise<number> {
   const [row] = await db.select({ builders: sql<number>`count(*)::int` }).from(builders);
   return row?.builders ?? 0;
 }
+
+export interface FeaturedMarket extends MarketSummary {
+  /** Fills so far, which is the only honest measure of "most active" we have. */
+  trades: number;
+  /** Credits currently staked on this Market, at what people paid. */
+  creditsInPlay: number;
+}
+
+/*
+  The one open Market the landing page shows: the busiest thing a stranger is
+  allowed to see, which means global or a public Community. Unlisted Communities
+  are reachable only by URL (CONTEXT.md), so their Markets never surface here.
+
+  Busiest is fills, then the soonest close, so a tie goes to the Market that is
+  about to matter. Null when nothing is open, and the caller shows the example.
+*/
+export async function featuredOpenMarket(now = new Date()): Promise<FeaturedMarket | null> {
+  const fills = sql<number>`(select count(*) from ${trades} where ${trades.marketId} = ${markets.id})`;
+
+  const [row] = await db
+    .select({
+      ...marketColumns,
+      trades: sql<number>`${fills}::int`,
+      creditsInPlay: sql<number>`(
+        select coalesce(sum(${positions.costBasis}), 0)
+        from ${positions} where ${positions.marketId} = ${markets.id}
+      )::double precision`,
+    })
+    .from(markets)
+    .leftJoin(communities, eq(communities.id, markets.communityId))
+    .where(
+      and(
+        eq(markets.status, "open"),
+        gt(markets.closesAt, now),
+        or(eq(markets.scope, "global"), eq(communities.visibility, "public")),
+      ),
+    )
+    .orderBy(desc(fills), asc(markets.closesAt))
+    .limit(1);
+  if (!row) return null;
+
+  const book = await db
+    .select({
+      id: outcomes.id,
+      label: outcomes.label,
+      sharesOutstanding: outcomes.sharesOutstanding,
+    })
+    .from(outcomes)
+    .where(eq(outcomes.marketId, row.id))
+    .orderBy(asc(outcomes.sort));
+
+  return {
+    ...row,
+    trades: Number(row.trades),
+    creditsInPlay: Number(row.creditsInPlay),
+    outcomes: priceBook(book, row.b),
+  };
+}
+
+/** The four numbers under the landing hero. None of them depend on the viewer. */
+export interface SiteStats {
+  buildersConnected: number;
+  weekCostUsd: number;
+  openMarkets: number;
+  creditsInPlay: number;
+}
+
+/*
+  Cached for five minutes, like the boards: a stat that is five minutes old is
+  still true enough to put under a hero, and the landing page is the one page
+  every stranger loads.
+*/
+export const cachedSiteStats = unstable_cache(
+  async (): Promise<SiteStats> => {
+    const week = periodRange("week", new Date());
+
+    const [[connected], [burn], [open], [staked]] = await Promise.all([
+      db
+        .select({ n: sql<number>`count(distinct ${devices.builderId})::int` })
+        .from(devices)
+        .where(isNull(devices.revokedAt)),
+      db
+        .select({ cost: sql<number>`coalesce(sum(${builderDays.costUsd}), 0)::double precision` })
+        .from(builderDays)
+        .where(
+          and(
+            sql`${builderDays.trustLevelMin} <> 'quarantined'`,
+            gte(builderDays.day, week.start!),
+            lte(builderDays.day, week.end),
+          ),
+        ),
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(markets)
+        .where(and(eq(markets.status, "open"), gt(markets.closesAt, sql`now()`))),
+      db
+        .select({ credits: sql<number>`coalesce(sum(${positions.costBasis}), 0)::double precision` })
+        .from(positions)
+        .innerJoin(markets, eq(markets.id, positions.marketId))
+        .where(eq(markets.status, "open")),
+    ]);
+
+    return {
+      buildersConnected: Number(connected?.n ?? 0),
+      weekCostUsd: Number(burn?.cost ?? 0),
+      openMarkets: Number(open?.n ?? 0),
+      creditsInPlay: Number(staked?.credits ?? 0),
+    };
+  },
+  ["site-stats"],
+  { revalidate: 300, tags: ["leaderboard"] },
+);

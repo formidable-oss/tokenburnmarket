@@ -4,10 +4,13 @@ import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
 import { MarketPreview } from "@/components/landing/market-preview";
 import { RegionBoards, type RegionBoardPreview } from "@/components/landing/region-boards";
+import { StatsStrip } from "@/components/landing/stats-strip";
 import { Steps } from "@/components/landing/steps";
 import { formatMetric } from "@/components/leaderboard/board-table";
+import { marketPreviewData, statCells } from "@/lib/landing";
 import { PERIOD_LABELS } from "@/lib/leaderboard";
 import { BOARD_PREVIEW_LIMIT, cachedBoard, scopeForRegion } from "@/lib/leaderboard-queries";
+import { cachedSiteStats, featuredOpenMarket } from "@/lib/market-queries";
 import { regionBySlug } from "@/lib/regions";
 
 export const metadata: Metadata = {
@@ -51,7 +54,13 @@ async function previewBoards(): Promise<RegionBoardPreview[]> {
 }
 
 export default async function Home() {
-  const boards = await previewBoards();
+  const [boards, stats, featured] = await Promise.all([
+    previewBoards(),
+    cachedSiteStats(),
+    featuredOpenMarket(),
+  ]);
+  // No open Market yet means the example, which shows the same anatomy with made-up numbers.
+  const preview = featured ? marketPreviewData(featured) : undefined;
 
   return (
     <>
@@ -82,8 +91,17 @@ export default async function Home() {
         </div>
 
         <div className="rise" style={{ "--i": 2 } as React.CSSProperties}>
-          <MarketPreview />
+          <MarketPreview market={preview} />
         </div>
+      </section>
+
+      <div className={shell}>
+        <div className="signal-rail" aria-hidden />
+      </div>
+
+      {/* Live stats */}
+      <section className={`${shell} py-10 lg:py-12`} aria-label="Site totals">
+        <StatsStrip cells={statCells(stats)} />
       </section>
 
       <div className={shell}>
