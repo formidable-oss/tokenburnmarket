@@ -38,7 +38,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "tsup && vitest run --passWithNoTests",
     "build": "tsup",
     "prepublishOnly": "pnpm run check && pnpm run test && pnpm run build"
   },

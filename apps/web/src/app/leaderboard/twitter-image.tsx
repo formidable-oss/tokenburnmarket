@@ -6,3 +6,6 @@ export const size = CARD_SIZE;
 export const contentType = "image/png";
 
 export default ShareCard;
+
+// Reads the live board; never prerender at build time (no DATABASE_URL in CI).
+export const dynamic = "force-dynamic";
