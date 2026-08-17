@@ -9,7 +9,7 @@ import {
   lmsrPrice,
   lmsrPrices,
   lmsrProceedsOfSell,
-} from "./lmsr.js";
+} from "./lmsr";
 
 const liquidity = fc.double({ min: 5, max: 500, noNaN: true, noDefaultInfinity: true });
 const share = fc.double({ min: -2000, max: 2000, noNaN: true, noDefaultInfinity: true });

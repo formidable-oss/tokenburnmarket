@@ -8,7 +8,7 @@
 // Every ceiling is configurable. Defaults are deliberately loose: a false
 // Quarantine costs a real Builder their day, a missed one costs play money.
 
-import type { TrustLevel } from "./trust.js";
+import type { TrustLevel } from "./trust";
 
 export type PlausibilityCode =
   | "negative_counts"

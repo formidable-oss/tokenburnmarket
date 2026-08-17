@@ -7,7 +7,7 @@
 // Key encoding on the wire: base64. Public keys are raw 32-byte Ed25519 keys,
 // private keys are PKCS#8. Signatures are raw 64 bytes.
 
-import { canonicalBytes } from "./canonical-json.js";
+import { canonicalBytes } from "./canonical-json";
 
 const ALGORITHM = "Ed25519";
 

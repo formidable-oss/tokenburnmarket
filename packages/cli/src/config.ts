@@ -69,6 +69,12 @@ export interface DeviceConfig {
   publicKey: string;
   privateKey: string;
   connectedAt: string;
+  /*
+    The Sync watermark the server last returned. Held here so a Sync knows which
+    days to collect without a round trip; the server is still the authority, and
+    a missing or stale value only costs a wider window.
+  */
+  lastSyncedDay?: string | null;
 }
 
 /** Read the stored Device, or null when this machine has never connected. */

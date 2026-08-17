@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
+import { auth } from "@/auth";
+import { UsagePanel } from "@/components/usage/usage-panel";
 import { builderByHandle, handleFromSegment } from "@/lib/builders";
 import { countryByCode } from "@/lib/countries";
+import { builderUsage, PROFILE_WINDOW_DAYS } from "@/lib/usage-queries";
 
 /*
   Public Builder profile at /@handle. This segment sits at the root, so it only
@@ -34,6 +35,10 @@ export default async function BuilderProfile({ params }: PageProps<"/[handle]">)
   if (!builder) notFound();
 
   const region = countryByCode(builder.country);
+  const session = await auth();
+  // Quarantined rows are the Builder's own business until an admin queue exists.
+  const isOwner = session?.user?.id === builder.id;
+  const usage = await builderUsage(builder.id, { includeQuarantined: isOwner });
 
   return (
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
@@ -75,20 +80,8 @@ export default async function BuilderProfile({ params }: PageProps<"/[handle]">)
 
       <div className="signal-rail my-10" aria-hidden />
 
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr] lg:gap-8">
-        <div className="rounded-(--radius-panel) border border-border bg-surface p-6 sm:p-8">
-          <div className="flex items-center gap-2">
-            <h2 className="type-label">usage</h2>
-            <Badge tone="neutral">nothing yet</Badge>
-          </div>
-          <p className="mt-4 max-w-[46ch] text-[0.95rem] text-muted">
-            Usage appears here once {builder.handle} connects a machine and the collector uploads a
-            first day. Tokens, cost and trust level, per provider and model.
-          </p>
-          <Link href="/docs" className="mt-6 inline-block text-sm text-primary-text hover:underline">
-            How connecting works
-          </Link>
-        </div>
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr] lg:gap-8">
+        <UsagePanel summary={usage} windowDays={PROFILE_WINDOW_DAYS} isOwner={isOwner} />
 
         <div className="rounded-(--radius-panel) border border-border bg-surface p-6 sm:p-8">
           <h2 className="type-label">positions</h2>

@@ -8,7 +8,7 @@
 // All amounts in and out are Credits. Costs are rounded up and proceeds down to
 // Credit precision so a buy followed by an immediate sell can never profit.
 
-import { CREDIT_DECIMALS, roundCreditsDown, roundCreditsUp } from "./mint.js";
+import { CREDIT_DECIMALS, roundCreditsDown, roundCreditsUp } from "./mint";
 
 export { CREDIT_DECIMALS };
 

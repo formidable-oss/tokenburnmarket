@@ -12,7 +12,7 @@ export interface ParsedArgs {
 }
 
 /** Flags that take a value. Anything else spelled `--x` is a switch. */
-const VALUE_FLAGS = new Set(["server", "name"]);
+const VALUE_FLAGS = new Set(["server", "name", "since"]);
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {
   const flags: Record<string, string> = {};

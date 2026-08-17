@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { CanonicalJsonError, canonicalBytes, canonicalJson } from "./canonical-json.js";
+import { CanonicalJsonError, canonicalBytes, canonicalJson } from "./canonical-json";
 
 describe("canonicalJson", () => {
   it("sorts object keys at every depth", () => {

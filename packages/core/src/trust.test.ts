@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mintForDay } from "./mint.js";
-import { weakestTrustLevel } from "./trust.js";
+import { mintForDay } from "./mint";
+import { weakestTrustLevel } from "./trust";
 
 describe("weakestTrustLevel", () => {
   it("lets a single Quarantined row decide the Builder-day", () => {

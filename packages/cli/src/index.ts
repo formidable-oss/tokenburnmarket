@@ -2,20 +2,24 @@
 /*
   tokenburnmarket, the Collector.
 
-  Implemented: connect (bind this machine to a Builder) and status (what is
-  stored here). sync, daemon and mcp arrive with their own tickets.
+  Implemented: connect (bind this machine to a Builder), sync (upload usage) and
+  status (what is stored here). daemon and mcp arrive with their own tickets.
 */
 import { parseArgs } from "./args.js";
 import { connect } from "./connect.js";
 import { currentConfigPath, readConfig, resolveServerUrl } from "./config.js";
+import { sync } from "./sync.js";
 
 const USAGE = `tokenburnmarket
 
   connect [--server URL] [--name NAME]   bind this machine to your account
+  sync [--since N] [--dry-run]           upload usage for the days that changed
   status                                 show what is stored on this machine
 
   --server URL   the server to talk to, also settable as TBM_SERVER
   --name NAME    what this device is called, defaults to the hostname
+  --since N      collect the last N days instead of the days since the last sync
+  --dry-run      show what would be uploaded, upload nothing
 `;
 
 /** What `status` prints. Never the token, never the private key. */
@@ -32,6 +36,7 @@ function status(): void {
   console.log(`Device id   ${config.deviceId}`);
   console.log(`Server      ${config.serverUrl}`);
   console.log(`Connected   ${config.connectedAt}`);
+  console.log(`Synced to   ${config.lastSyncedDay ?? "never"}`);
   console.log(`Config      ${path}`);
 }
 
@@ -50,6 +55,14 @@ async function main(): Promise<number> {
         deviceName: flags.name,
       });
       return 0;
+    case "sync": {
+      const since = flags.since === undefined ? undefined : Number.parseInt(flags.since, 10);
+      if (since !== undefined && (!Number.isFinite(since) || since < 0)) {
+        console.error("--since takes a number of days, for example --since 7");
+        return 1;
+      }
+      return sync({ sinceDays: since, dryRun: switches.has("dry-run") });
+    }
     case "status":
       status();
       return 0;
