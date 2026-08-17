@@ -4,13 +4,24 @@
   "description": "Connect your machine to tokenburnmarket: sync agent usage via ccusage, run the MCP server, place bets.",
   "license": "MIT",
   "type": "module",
-  "bin": { "tokenburnmarket": "./dist/index.js" },
-  "files": ["dist"],
+  "bin": {
+    "tokenburnmarket": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsup"
   },
-  "dependencies": {},
-  "devDependencies": { "typescript": "^5", "vitest": "^3", "@types/node": "^24" }
+  "devDependencies": {
+    "@types/node": "^24",
+    "tsup": "^8.5.1",
+    "typescript": "^5",
+    "vitest": "^3"
+  },
+  "dependencies": {
+    "@tokenburnmarket/core": "workspace:*"
+  }
 }

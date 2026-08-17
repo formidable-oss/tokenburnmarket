@@ -1,10 +1,10 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth, signOut } from "@/auth";
 import { db } from "@/db";
-import { builders } from "@/db/schema";
+import { builders, devices } from "@/db/schema";
 import { normalizeCountry, normalizeXHandle } from "@/lib/profile";
 
 export type SettingsState = {
@@ -46,6 +46,26 @@ export async function saveSettings(
   revalidatePath("/settings");
   revalidatePath(`/@${session.user.handle}`);
   return { status: "saved", message: "Saved." };
+}
+
+/*
+  Revoking is a tombstone, not a delete: the Usage a Device already uploaded stays
+  attributed to it, and `requireDevice` refuses the Device on its next request.
+  Scoped to the signed-in Builder, so a stolen device id revokes nothing.
+*/
+export async function revokeDevice(formData: FormData) {
+  const session = await auth();
+  if (!session?.user?.id) return;
+
+  const deviceId = formData.get("deviceId")?.toString();
+  if (!deviceId) return;
+
+  await db
+    .update(devices)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(devices.id, deviceId), eq(devices.builderId, session.user.id)));
+
+  revalidatePath("/settings");
 }
 
 export async function signOutAction() {

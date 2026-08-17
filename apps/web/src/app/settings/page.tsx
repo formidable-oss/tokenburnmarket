@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentBuilder } from "@/auth";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { signOutAction } from "./actions";
+import { CommandLine } from "@/components/ui/command-line";
+import { activeDevicesFor } from "@/lib/device-auth";
+import { revokeDevice, signOutAction } from "./actions";
 import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
@@ -12,9 +15,18 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+/** UTC, minute precision. Devices sync from every timezone; one clock keeps rows comparable. */
+const syncedAt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 export default async function SettingsPage() {
   const builder = await currentBuilder();
   if (!builder) redirect("/signin?next=/settings");
+
+  const devices = await activeDevicesFor(builder.id);
 
   return (
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
@@ -39,7 +51,7 @@ export default async function SettingsPage() {
             >
               /@{builder.handle}
             </Link>
-            . Devices land here in a later release.
+            .
           </p>
           <form action={signOutAction} className="mt-6">
             <Button type="submit" variant="secondary">
@@ -48,6 +60,53 @@ export default async function SettingsPage() {
           </form>
         </div>
       </div>
+
+      <div className="signal-rail my-10" aria-hidden />
+
+      <h2 className="type-label">devices</h2>
+      <p className="mt-3 max-w-[52ch] text-[0.95rem] text-muted">
+        Every machine that uploads usage signs it with a key you approved. Revoking one stops it on
+        its next request and keeps the usage it already sent.
+      </p>
+
+      {devices.length === 0 ? (
+        <div className="mt-6 max-w-[34rem]">
+          <p className="text-[0.95rem] text-muted">
+            No devices yet. Run this on the machine you code from, then approve the code here.
+          </p>
+          <div className="mt-4">
+            <CommandLine command="npx tokenburnmarket connect" />
+          </div>
+        </div>
+      ) : (
+        <ul className="mt-6 rounded-(--radius-panel) border border-border bg-surface">
+          {devices.map((device, index) => (
+            <li
+              key={device.id}
+              className={`flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4 ${
+                index > 0 ? "border-t border-border-faint" : ""
+              }`}
+            >
+              <span className="type-data min-w-[12rem] flex-1 text-[0.95rem] text-foreground">
+                {device.name}
+              </span>
+              <span className="type-data text-[0.82rem] text-muted">
+                {device.lastSyncAt ? (
+                  <>last sync {syncedAt.format(device.lastSyncAt)} UTC</>
+                ) : (
+                  <Badge tone="neutral">never synced</Badge>
+                )}
+              </span>
+              <form action={revokeDevice}>
+                <input type="hidden" name="deviceId" value={device.id} />
+                <Button type="submit" variant="ghost">
+                  Revoke
+                </Button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
