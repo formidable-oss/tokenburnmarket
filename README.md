@@ -70,6 +70,42 @@ Schema lives in `apps/web/src/db/schema.ts`. After changing it, run
 
 Work is broken into tracer-bullet issues labeled `ready-for-agent`, each listing what blocks it. Pick one whose blockers are done, open a PR against `main`. Keep copy short and human, keep numbers tabular, keep yellow for one action per view. See `DESIGN.md`.
 
+## Production
+
+Live at **https://tokenburnmarket.vercel.app**. Docs at [/docs](https://tokenburnmarket.vercel.app/docs).
+
+Vercel project `tokenburnmarket` under the `teamstockestates-projects` scope, Root Directory `apps/web`, connected to this repository for automatic deploys. The pnpm workspace installs from the repo root, so `packages/core` builds with the app. Cron schedules come from `apps/web/vercel.json`, which is the project root Vercel builds.
+
+Environment variables, set for Production and Preview:
+
+| variable | value |
+| --- | --- |
+| `DATABASE_URL` | Neon Postgres. One database serves development and production for now; split it before there are real users. |
+| `AUTH_SECRET` | 32 random bytes, base64. Generated for the deployment, not shared with development. |
+| `CRON_SECRET` | The bearer token the cron routes check. Without it they answer 401. |
+| `ADMIN_HANDLES` | `alexconstantin` |
+| `NEXT_PUBLIC_APP_URL` | `https://tokenburnmarket.vercel.app` |
+| `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` | Not set yet. Sign-in is dark until they are. See below. |
+
+### Sign-in needs a GitHub OAuth app
+
+A human has to create it; there is no API for this. Once it exists, sign-in works with no code change.
+
+1. Go to https://github.com/settings/developers (or the org's developer settings) and choose **New OAuth App**.
+2. Application name `tokenburnmarket`, homepage URL `https://tokenburnmarket.vercel.app`.
+3. Authorization callback URL: `https://tokenburnmarket.vercel.app/api/auth/callback/github`.
+4. Register, then **Generate a new client secret**.
+5. `vercel env add AUTH_GITHUB_ID production` and `vercel env add AUTH_GITHUB_SECRET production`, then the same for `preview`.
+6. Redeploy: `vercel deploy --prod`.
+
+For preview deployments, add a second OAuth app whose callback is the preview URL, or accept that sign-in only works in production.
+
+### Cron schedules on the Hobby plan
+
+The account behind this project is on Vercel Hobby, which refuses any cron that runs more than once a day. `/api/cron/resolve` is meant to run every ten minutes (`*/10 * * * *`) and currently runs once a day at 01:10 UTC, so a market settles up to a day after it closes. Trading still stops on the close time, which the trade path enforces against the clock rather than the job.
+
+Restore it by upgrading the scope to Pro and putting `*/10 * * * *` back in `apps/web/vercel.json`.
+
 ## Status
 
-Pre-alpha. Identity and landing exist; connect, sync, markets, and boards are in progress. Follow the issues.
+Pre-alpha, deployed. Landing, boards, communities, connect, sync, markets and docs are live at the URL above. Sign-in waits on the GitHub OAuth app. Follow the issues.

@@ -95,4 +95,19 @@ elsewhere. It holds a device token and a private key, and is written owner-only.
 
 `npx tokenburnmarket --help` lists every command.
 
+## Releasing
+
+Not on npm yet, so `npx tokenburnmarket` does not resolve for anyone else. A
+human with publish rights on the name does this once:
+
+```sh
+pnpm -r build
+cd packages/cli
+npm publish --access public
+```
+
+Bump `version` in `package.json` first, and check that `files` and `bin` in that
+file cover what you mean to ship (`npm pack --dry-run` prints the tarball).
+Until this happens, run the collector from a clone with `node packages/cli/dist/index.js`.
+
 MIT licensed.
