@@ -16,6 +16,16 @@ import { SIGNUP_REF, type MintCandidate, type MintStore, type MintWrite } from "
  * `builders.credit_balance` as the ledger says it should be. Written rather
  * than incremented, so a balance can never drift away from its rows.
  */
+/** The columns the mint reads off a Builder-day, shared by both candidate queries. */
+const candidateColumns = {
+  builderId: builderDays.builderId,
+  day: builderDays.day,
+  costUsd: builderDays.costUsd,
+  trustLevelMin: builderDays.trustLevelMin,
+  creditsMinted: builderDays.creditsMinted,
+  mintRevision: builderDays.mintRevision,
+};
+
 const balanceFromLedger = sql`coalesce((
   select sum(${creditLedger.delta})
   from ${creditLedger}
@@ -45,17 +55,19 @@ export function mintCandidateFilter(throughDay: string) {
 export const drizzleMintStore: MintStore = {
   async candidates(throughDay): Promise<MintCandidate[]> {
     return db
-      .select({
-        builderId: builderDays.builderId,
-        day: builderDays.day,
-        costUsd: builderDays.costUsd,
-        trustLevelMin: builderDays.trustLevelMin,
-        creditsMinted: builderDays.creditsMinted,
-        mintRevision: builderDays.mintRevision,
-      })
+      .select(candidateColumns)
       .from(builderDays)
       .where(mintCandidateFilter(throughDay))
       .orderBy(builderDays.day);
+  },
+
+  async candidateFor(builderId, day): Promise<MintCandidate | null> {
+    const [row] = await db
+      .select(candidateColumns)
+      .from(builderDays)
+      .where(and(eq(builderDays.builderId, builderId), eq(builderDays.day, day)))
+      .limit(1);
+    return row ?? null;
   },
 
   async recordMint(write: MintWrite) {

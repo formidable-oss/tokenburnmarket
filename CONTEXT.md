@@ -25,4 +25,5 @@ Glossary only. No implementation details.
 - **Region** — a Builder's self-declared country, and the continent it belongs to; either scopes a Leaderboard and its Markets. The world is the widest Region.
 - **Model Race** — a global/regional Market on which model (or provider) burns the most tokens over a period.
 - **Top Burner**, **Threshold**, **Head-to-Head** — the Community Market templates: who spends most, will X reach an amount, does A out-burn B.
-- **Admin** — a Builder on the deployment's handle list. The only ones who may open a global or Region Market; a Community Market needs membership instead, and the owner can reserve it to themselves.
+- **Admin** — a Builder on the deployment's handle list. The only ones who may open a global or Region Market; a Community Market needs membership instead, and the owner can reserve it to themselves. Also the only ones who may review Quarantined Usage.
+- **Review** — an Admin's decision about one Quarantined Usage row: approve it as Verified or Reported, which puts the day back into Leaderboards, Credits and Market resolution, or keep it out with a note. Approving only ever adds Credits; a day already minted is never clawed back.
