@@ -74,7 +74,7 @@ Work is broken into tracer-bullet issues labeled `ready-for-agent`, each listing
 
 Live at **https://tokenburnmarket.vercel.app**. Docs at [/docs](https://tokenburnmarket.vercel.app/docs).
 
-Vercel project `tokenburnmarket` under the `teamstockestates-projects` scope, Root Directory `apps/web`, connected to this repository for automatic deploys. The pnpm workspace installs from the repo root, so `packages/core` builds with the app. Cron schedules come from `apps/web/vercel.json`, which is the project root Vercel builds.
+Vercel project `tokenburnmarket` under the `stockestate` team (Pro), Root Directory `apps/web`, connected to this repository for automatic deploys. The pnpm workspace installs from the repo root, so `packages/core` builds with the app. Cron schedules come from `apps/web/vercel.json`, which is the project root Vercel builds.
 
 Environment variables, set for Production and Preview:
 
@@ -100,11 +100,9 @@ A human has to create it; there is no API for this. Once it exists, sign-in work
 
 For preview deployments, add a second OAuth app whose callback is the preview URL, or accept that sign-in only works in production.
 
-### Cron schedules on the Hobby plan
+### Cron schedules
 
-The account behind this project is on Vercel Hobby, which refuses any cron that runs more than once a day. `/api/cron/resolve` is meant to run every ten minutes (`*/10 * * * *`) and currently runs once a day at 01:10 UTC, so a market settles up to a day after it closes. Trading still stops on the close time, which the trade path enforces against the clock rather than the job.
-
-Restore it by upgrading the scope to Pro and putting `*/10 * * * *` back in `apps/web/vercel.json`.
+`/api/cron/mint` runs daily at 01:00 UTC, `/api/cron/markets` Mondays at 00:05 UTC, `/api/cron/resolve` every ten minutes. Sub-daily crons need a Pro team; the project lives on one. Deployment Protection is switched off for this project because the app is public and the cron endpoints authenticate with `CRON_SECRET`.
 
 ## Status
 
