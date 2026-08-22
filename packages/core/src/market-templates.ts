@@ -27,13 +27,13 @@ export const MODEL_RACE_MODELS = MAX_TEMPLATE_OUTCOMES - 1;
   any. Ordered as a reader would expect to see them, not as a prediction.
 */
 export const KNOWN_MODELS: readonly string[] = [
-  "claude-opus-4",
-  "claude-sonnet-4",
-  "gpt-5",
-  "gpt-5-mini",
-  "gemini-2.5-pro",
-  "gemini-2.5-flash",
-  "grok-4",
+  "gpt-5.6-sol",
+  "claude-fable-5",
+  "claude-opus-5",
+  "ox-alpha",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+  "gemini-3-pro",
 ];
 
 const DAY_MS = 86_400_000;

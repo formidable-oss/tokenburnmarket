@@ -27,15 +27,15 @@ export interface MarketPreviewData {
 
 const EXAMPLE: MarketPreviewData = {
   href: "/markets",
-  where: "formidable · this week",
-  question: "Who burns most this week?",
+  where: "global · this week",
+  question: "Which model burns most this week?",
   inPlay: "1,240 cr in play",
   closes: "closes Sun 23:59 UTC",
   outcomes: [
-    { label: "@alex", price: 0.42, trust: "verified" },
-    { label: "@theo", price: 0.31, trust: "verified" },
-    { label: "@mira", price: 0.19, trust: "reported" },
-    { label: "someone else", price: 0.08 },
+    { label: "GPT-5.6 Sol", price: 0.44 },
+    { label: "Claude Fable 5", price: 0.27 },
+    { label: "Claude Opus 5", price: 0.19 },
+    { label: "Ox Alpha", price: 0.1 },
   ],
 };
 

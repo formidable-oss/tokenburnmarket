@@ -144,9 +144,12 @@ describe("weekly auto-creation", () => {
   });
 
   it("races the models people actually use, and the known list before anyone has", async () => {
-    expect(raceModels(["gpt-5", "claude-opus-4"])).toEqual(["gpt-5", "claude-opus-4"]);
+    expect(raceModels(["gpt-5.6-sol", "claude-opus-5"])).toEqual([
+      "gpt-5.6-sol",
+      "claude-opus-5",
+    ]);
     // One model is not a race, so the fallback list stands in until there are two.
-    expect(raceModels(["gpt-5"]).length).toBeGreaterThan(1);
-    expect(raceModels([]).length).toBeGreaterThan(1);
+    expect(raceModels(["gpt-5.6-sol"])).toContain("claude-fable-5");
+    expect(raceModels([])).toContain("ox-alpha");
   });
 });
