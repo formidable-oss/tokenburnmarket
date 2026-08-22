@@ -5,7 +5,7 @@ import { CommandLine } from "@/components/ui/command-line";
 export const metadata: Metadata = {
   title: "Setup",
   description:
-    "Connect your machine to tokenburnmarket, keep it synced with a hook or a daemon, and point Claude Code or Codex at the MCP server.",
+    "Connect your machine to tokenburnmarket, point Claude Code or Codex at the MCP server, and it keeps itself synced.",
   alternates: { canonical: "/docs/setup" },
 };
 
@@ -43,6 +43,10 @@ export default function DocsSetupPage() {
         machine.
       </p>
       <p className="mt-3 text-[0.95rem] text-muted">
+        Once approved it runs the first sync right there and prints the link to your profile. A
+        machine with years of transcripts takes about half a minute the first time.
+      </p>
+      <p className="mt-3 text-[0.95rem] text-muted">
         Connecting a second time replaces the stored device. Revoke the old one in{" "}
         <Link href="/settings" className="text-primary-text hover:underline">
           settings
@@ -71,7 +75,7 @@ export default function DocsSetupPage() {
         </div>
         <div className="flex gap-4">
           <dt className="type-data w-28 shrink-0 text-foreground">--since 7</dt>
-          <dd>The last seven days instead, for a machine you just connected.</dd>
+          <dd>The last seven days instead, whatever the watermark says.</dd>
         </div>
         <div className="flex gap-4">
           <dt className="type-data w-28 shrink-0 text-foreground">--dry-run</dt>
@@ -79,7 +83,7 @@ export default function DocsSetupPage() {
         </div>
         <div className="flex gap-4">
           <dt className="type-data w-28 shrink-0 text-foreground">--quiet</dt>
-          <dd>Prints nothing unless something went wrong. What the hook uses.</dd>
+          <dd>Prints nothing unless something went wrong. For cron lines and scripts.</dd>
         </div>
         <div className="flex gap-4">
           <dt className="type-data w-28 shrink-0 text-foreground">status</dt>
@@ -89,29 +93,30 @@ export default function DocsSetupPage() {
 
       <div className="signal-rail my-10" aria-hidden />
 
-      <h2 className="type-heading">Keep it current</h2>
+      <h2 className="type-heading">Keep it synced</h2>
       <p className="mt-3 text-[0.95rem] text-muted">
-        Three ways, in order of how much you have to think about them.
+        Point Claude Code at the MCP server. That is the whole of it: the server syncs itself every
+        time the agent starts it, and gives the agent the trading tools below.
       </p>
-
-      <h3 className="type-label mt-8">a claude code hook</h3>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        Syncs when a session finishes, which is the moment the numbers are complete and you are not
-        waiting on anything.
-      </p>
-      <div className="mt-4 grid max-w-[30rem] gap-2">
-        <CommandLine command="npx tokenburnmarket hook install" />
-        <CommandLine command="npx tokenburnmarket hook uninstall" />
+      <div className="mt-4 max-w-[38rem]">
+        <CommandLine command="claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp" />
       </div>
-      <p className="mt-4 text-[0.95rem] text-muted">
-        It merges a Stop hook into <span className="type-data">~/.claude/settings.json</span>,
-        leaves the rest of that file alone, and prints what it changed. Running it twice changes
-        nothing.
+      <p className="mt-5 text-[0.95rem] text-muted">
+        Codex gets the same from <span className="type-data">~/.codex/config.toml</span>:
+      </p>
+      <pre className="type-data mt-4 max-w-[38rem] overflow-x-auto rounded-(--radius-panel) border border-border bg-surface-sunken p-4 text-[0.88rem] text-foreground">
+        {codexConfig}
+      </pre>
+      <p className="mt-5 text-[0.95rem] text-muted">
+        A startup sync stands down when the last one was under ten minutes ago, so two agents open
+        at once read your transcripts once. Nothing it does is visible from inside the agent.{" "}
+        <span className="type-data">npx tokenburnmarket mcp setup</span> prints both of these again
+        when the terminal has scrolled away.
       </p>
 
-      <h3 className="type-label mt-8">a daemon</h3>
+      <h3 className="type-label mt-8">no agent on this machine</h3>
       <p className="mt-3 text-[0.95rem] text-muted">
-        A foreground loop, one per machine, held by a lock file.
+        Run a daemon instead. A foreground loop, one per machine, held by a lock file.
       </p>
       <div className="mt-4 grid max-w-[30rem] gap-2">
         <CommandLine command="npx tokenburnmarket daemon --interval 15m" />
@@ -123,31 +128,9 @@ export default function DocsSetupPage() {
         writes.
       </p>
 
-      <h3 className="type-label mt-8">by hand</h3>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        <span className="type-data">sync</span> is fast and safe to run whenever.
-      </p>
-
       <div className="signal-rail my-10" aria-hidden />
 
-      <h2 className="type-heading">MCP server</h2>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        Trade from inside the agent you are already talking to. Point Claude Code at it:
-      </p>
-      <div className="mt-4 max-w-[38rem]">
-        <CommandLine command="claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp" />
-      </div>
-      <p className="mt-5 text-[0.95rem] text-muted">
-        Or Codex, in <span className="type-data">~/.codex/config.toml</span>:
-      </p>
-      <pre className="type-data mt-4 max-w-[38rem] overflow-x-auto rounded-(--radius-panel) border border-border bg-surface-sunken p-4 text-[0.88rem] text-foreground">
-        {codexConfig}
-      </pre>
-      <p className="mt-5 text-[0.95rem] text-muted">
-        <span className="type-data">npx tokenburnmarket mcp setup</span> prints both of these again
-        when the terminal has scrolled away.
-      </p>
-
+      <h2 className="type-heading">MCP tools</h2>
       <table className="mt-6 w-full border-collapse text-left text-[0.92rem]">
         <thead>
           <tr className="border-b border-border">
@@ -198,8 +181,9 @@ export default function DocsSetupPage() {
       <p className="mt-3 text-[0.95rem] text-muted">
         <span className="type-data">TBM_SERVER</span> points the collector at another server, the
         same as <span className="type-data">--server</span>.{" "}
-        <span className="type-data">TBM_CLAUDE_SETTINGS</span> changes the settings file the hook
-        edits. <span className="type-data">npx tokenburnmarket --help</span> lists every command.
+        <span className="type-data">TBM_CCUSAGE</span> names a local ccusage command to run instead
+        of <span className="type-data">npx -y ccusage@latest</span>.{" "}
+        <span className="type-data">npx tokenburnmarket --help</span> lists every command.
       </p>
     </article>
   );

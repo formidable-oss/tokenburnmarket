@@ -85,6 +85,11 @@ export interface DeviceConfig {
     a missing or stale value only costs a wider window.
   */
   lastSyncedDay?: string | null;
+  /**
+   * When the last upload succeeded. What an automatic sync checks before
+   * spending six seconds re-reading transcripts that cannot have changed much.
+   */
+  lastSyncedAt?: string;
 }
 
 /** Read the stored Device, or null when this machine has never connected. */

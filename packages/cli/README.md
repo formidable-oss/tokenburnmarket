@@ -14,31 +14,28 @@ npx tokenburnmarket connect
 ```
 
 It prints a short code and a URL. Approve it in the browser and this machine is
-bound to your account. The private key it generates never leaves the machine.
+bound to your account, then it runs the first sync and prints where to see
+yourself. The private key it generates never leaves the machine.
 
-## Sync
-
-```
-npx tokenburnmarket sync            # the days since the last sync
-npx tokenburnmarket sync --since 7  # the last seven days
-npx tokenburnmarket sync --dry-run  # what would go, without sending it
-npx tokenburnmarket status          # what is stored on this machine
-```
-
-Three ways to keep it current, in order of how much you have to think about it.
-
-**A Claude Code hook.** Syncs when a session finishes, which is the moment the
-numbers are complete and you are not waiting on anything.
+## Keep it synced
 
 ```
-npx tokenburnmarket hook install
-npx tokenburnmarket hook uninstall
+claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp
 ```
 
-It merges a `Stop` hook into `~/.claude/settings.json`, leaves everything else in
-that file alone, and prints what it changed. Running it twice changes nothing.
+That is the whole of it for Claude Code. The MCP server syncs itself every time
+the agent starts it, skipping if the last one was under ten minutes ago, and
+gives the agent the trading tools below. Codex gets the same from
+`~/.codex/config.toml`:
 
-**A daemon.** A foreground loop, one per machine, held by a lock file.
+```toml
+[mcp_servers.tokenburnmarket]
+command = "npx"
+args = ["-y", "tokenburnmarket", "mcp"]
+```
+
+On a machine that never opens an agent, run a daemon instead. It is a
+foreground loop, one per machine, held by a lock file.
 
 ```
 npx tokenburnmarket daemon --interval 15m
@@ -48,21 +45,18 @@ npx tokenburnmarket daemon install
 `daemon install` prints the launchd job or the systemd user unit for this
 machine, pointing at this node and this script. It prints; it never writes.
 
-**By hand.** `sync` is fast and safe to run whenever.
-
-## MCP server
+## Sync by hand
 
 ```
-claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp
+npx tokenburnmarket sync            # the days since the last sync
+npx tokenburnmarket sync --since 7  # the last seven days
+npx tokenburnmarket sync --dry-run  # what would go, without sending it
+npx tokenburnmarket status          # what is stored on this machine
 ```
 
-Or in `~/.codex/config.toml`:
+`sync` is safe to run whenever. A sync you run yourself is never skipped.
 
-```toml
-[mcp_servers.tokenburnmarket]
-command = "npx"
-args = ["-y", "tokenburnmarket", "mcp"]
-```
+## MCP tools
 
 Five tools:
 
@@ -87,7 +81,7 @@ Credits are play money. A winning share pays 1 credit.
 | variable | what it does |
 | --- | --- |
 | `TBM_SERVER` | the server to talk to, same as `--server` |
-| `TBM_CLAUDE_SETTINGS` | the settings file `hook install` edits |
+| `TBM_CCUSAGE` | a local ccusage command to run instead of `npx -y ccusage@latest` |
 
 Config lives in the platform config directory: `~/Library/Application Support/tokenburnmarket`
 on macOS, `%APPDATA%\tokenburnmarket` on Windows, `$XDG_CONFIG_HOME/tokenburnmarket`
@@ -97,17 +91,12 @@ elsewhere. It holds a device token and a private key, and is written owner-only.
 
 ## Releasing
 
-Not on npm yet, so `npx tokenburnmarket` does not resolve for anyone else. A
-human with publish rights on the name does this once:
-
 ```sh
-pnpm -r build
 cd packages/cli
-npm publish --access public
+npm publish
 ```
 
-Bump `version` in `package.json` first, and check that `files` and `bin` in that
-file cover what you mean to ship (`npm pack --dry-run` prints the tarball).
-Until this happens, run the collector from a clone with `node packages/cli/dist/index.js`.
+`prepublishOnly` runs check, test and build first. Bump `version` in
+`package.json` before, and `npm pack --dry-run` prints what would ship.
 
 MIT licensed.
