@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
-import { MarketPreview } from "@/components/landing/market-preview";
+import { ModelUsagePreview } from "@/components/landing/model-usage-preview";
 import { RegionBoards, type RegionBoardPreview } from "@/components/landing/region-boards";
 import { StatsStrip } from "@/components/landing/stats-strip";
 import { Steps } from "@/components/landing/steps";
 import { formatMetric } from "@/components/leaderboard/board-table";
-import { marketPreviewData, statCells } from "@/lib/landing";
+import { modelUsagePreviewData, statCells } from "@/lib/landing";
 import { PERIOD_LABELS } from "@/lib/leaderboard";
 import { BOARD_PREVIEW_LIMIT, cachedBoard, scopeForRegion } from "@/lib/leaderboard-queries";
-import { cachedSiteStats, featuredOpenMarket } from "@/lib/market-queries";
+import { cachedGlobalModelUsage, cachedSiteStats } from "@/lib/market-queries";
 import { regionBySlug } from "@/lib/regions";
 
 export const metadata: Metadata = {
@@ -54,13 +54,12 @@ async function previewBoards(): Promise<RegionBoardPreview[]> {
 }
 
 export default async function Home() {
-  const [boards, stats, featured] = await Promise.all([
+  const [boards, stats, modelUsage] = await Promise.all([
     previewBoards(),
     cachedSiteStats(),
-    featuredOpenMarket(),
+    cachedGlobalModelUsage(),
   ]);
-  // No open Market yet means the example, which shows the same anatomy with made-up numbers.
-  const preview = featured ? marketPreviewData(featured) : undefined;
+  const modelPreview = modelUsagePreviewData(modelUsage);
 
   return (
     <>
@@ -91,7 +90,7 @@ export default async function Home() {
         </div>
 
         <div className="rise" style={{ "--i": 2 } as React.CSSProperties}>
-          <MarketPreview market={preview} />
+          <ModelUsagePreview data={modelPreview} />
         </div>
       </section>
 

@@ -1,6 +1,7 @@
 /*
-  Database reads for Markets. Kept out of lib/markets.ts so the pure rules stay
-  testable without a database, and out of the pages so a query is written once.
+  Database reads for Markets and the landing page's market-adjacent totals.
+  Kept out of lib/markets.ts so the pure rules stay testable without a database,
+  and out of the pages so a query is written once.
 
   Prices are never stored. They are `lmsrPrices` over the shares outstanding, so
   a list and a Market page always agree, and there is no cache to go stale.
@@ -434,6 +435,55 @@ export const cachedSiteStats = unstable_cache(
   ["site-stats"],
   { revalidate: 300, tags: ["leaderboard"] },
 );
+
+export interface GlobalModelUsage {
+  totalTokens: number;
+  models: { model: string; tokens: number }[];
+}
+
+export const GLOBAL_MODEL_PREVIEW_LIMIT = 5;
+
+/** Current-week global model totals for the landing hero. */
+export async function globalModelUsage(
+  limit = GLOBAL_MODEL_PREVIEW_LIMIT,
+  now = new Date(),
+): Promise<GlobalModelUsage> {
+  const week = periodRange("week", now);
+  const tokens = sql<number>`sum(
+    ${usageDays.inputTokens} + ${usageDays.cachedInputTokens} + ${usageDays.cacheWriteTokens}
+    + ${usageDays.outputTokens} + ${usageDays.reasoningTokens}
+  )`;
+  const totalTokens = sql<number>`sum(sum(
+    ${usageDays.inputTokens} + ${usageDays.cachedInputTokens} + ${usageDays.cacheWriteTokens}
+    + ${usageDays.outputTokens} + ${usageDays.reasoningTokens}
+  )) over ()`;
+
+  const rows = await db
+    .select({ model: usageDays.model, tokens, totalTokens })
+    .from(usageDays)
+    .where(
+      and(
+        gte(usageDays.day, week.start!),
+        lte(usageDays.day, week.end),
+        sql`${usageDays.trustLevel} <> 'quarantined'`,
+      ),
+    )
+    .groupBy(usageDays.model)
+    .orderBy(desc(tokens))
+    .limit(limit);
+
+  return {
+    totalTokens: Number(rows[0]?.totalTokens ?? 0),
+    models: rows.map((row) => ({ model: row.model, tokens: Number(row.tokens) })),
+  };
+}
+
+export const cachedGlobalModelUsage = unstable_cache(
+  async () => globalModelUsage(),
+  ["global-model-usage"],
+  { revalidate: 60, tags: ["leaderboard"] },
+);
+
 /*
   The models a Model Race runs on: the most burnt over the ranking window, in
   scope. Quarantined Usage is left out here as it is everywhere else, so a fake

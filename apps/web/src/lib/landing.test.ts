@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { marketPreviewData, statCells } from "./landing";
+import { marketPreviewData, modelUsagePreviewData, statCells } from "./landing";
 
 const now = new Date("2026-08-17T12:00:00.000Z");
 
@@ -43,6 +43,34 @@ describe("marketPreviewData", () => {
       { label: "@alex", price: 0.42 },
       { label: "@theo", price: 0.31 },
     ]);
+  });
+});
+
+describe("modelUsagePreviewData", () => {
+  it("turns current global usage into model names, token totals and honest bar shares", () => {
+    const preview = modelUsagePreviewData({
+      totalTokens: 1_498_914_428,
+      models: [
+        { model: "gpt-5.6-sol", tokens: 703_353_949 },
+        { model: "claude-fable-5", tokens: 108_034_583 },
+      ],
+    });
+
+    expect(preview).toEqual({
+      live: true,
+      where: "global · this week",
+      total: "1.5B tokens",
+      question: "Models burning this week.",
+      source: "synced usage · quarantined rows excluded",
+      models: [
+        { label: "GPT-5.6 Sol", value: "703.4M", share: 703_353_949 / 1_498_914_428 },
+        { label: "Claude Fable 5", value: "108M", share: 108_034_583 / 1_498_914_428 },
+      ],
+    });
+  });
+
+  it("does not claim an empty global board is live", () => {
+    expect(modelUsagePreviewData({ totalTokens: 0, models: [] }).live).toBe(false);
   });
 });
 
