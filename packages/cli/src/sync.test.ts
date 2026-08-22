@@ -258,7 +258,7 @@ describe("paging", () => {
     ]);
     const stored = JSON.parse(readFileSync(path, "utf8")) as DeviceConfig;
     expect(stored.lastSyncedDay).toBe("2026-08-22");
-    expect(lines).toContain("3 rows, in 3 uploads.");
+    expect(lines).toContain("Uploading in 3 parts.");
     // One summary for the whole sync, not one per page.
     expect(lines.filter((line) => / receipts\. @/.test(line))).toEqual([
       "3 rows, $3.75, 0 receipts. @ada",

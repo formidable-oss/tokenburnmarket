@@ -89,7 +89,8 @@ function agoLine(then: number, now: number): string {
   return minutes === 1 ? "a minute ago" : `${minutes} minutes ago`;
 }
 
-const money = (usd: number) => `$${usd.toFixed(2)}`;
+const money = (usd: number) =>
+  `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** A dense, aligned table. Numbers are right aligned; nothing is truncated silently. */
 export function formatSummary(rows: readonly DayOutcome[], costs: Map<string, number>): string[] {
@@ -193,7 +194,11 @@ export async function sync(options: SyncOptions = {}): Promise<number> {
     sinceDays: options.sinceDays,
   });
 
-  log(start ? `Reading usage since ${start}.` : "Reading all usage on this machine.");
+  log(
+    start
+      ? `Reading usage since ${start}.`
+      : "Reading all usage on this machine. This takes a moment the first time.",
+  );
   const aggregates = await readUsage({ since: start, env });
   const receipts = readReceiptStreams(env, home, start);
   const days = buildSyncDays(aggregates, receipts, { now, start });
@@ -243,7 +248,7 @@ export async function sync(options: SyncOptions = {}): Promise<number> {
     return 0;
   }
 
-  if (payloads.length > 1) log(`${days.length} rows, in ${payloads.length} uploads.`);
+  if (payloads.length > 1) log(`Uploading in ${payloads.length} parts.`);
 
   // Each page is its own Sync as far as the server is concerned. The watermark
   // is saved after every one, so a page that fails leaves the earlier pages

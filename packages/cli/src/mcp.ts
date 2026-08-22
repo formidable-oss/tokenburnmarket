@@ -130,7 +130,7 @@ export function createMcpServer(dependencies: McpDependencies = {}): McpServer {
       sync({ configPath: currentConfigPath(), log, ...options }));
 
   const server = new McpServer(
-    { name: "tokenburnmarket", version: "0.2.0" },
+    { name: "tokenburnmarket", version: "0.2.1" },
     { capabilities: { tools: {} } },
   );
 

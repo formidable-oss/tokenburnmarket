@@ -42,7 +42,7 @@ export async function CommunityBoard({
         metric={query.metric}
         label={`${community.name} · ${season}`}
         caption={`${formatMetric(board.total, query.metric)} ${season}`}
-        empty="No burn here yet. Members show up the day after their first sync."
+        empty="No burn here yet. Members show up within a few minutes of their first sync."
         showRankChange={query.period !== "all"}
       />
     </div>

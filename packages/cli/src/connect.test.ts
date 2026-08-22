@@ -59,7 +59,7 @@ describe("connect", () => {
 
     const text = lines.join("\n");
     expect(text).toContain("connected as @ada");
-    expect(text).toContain(`See where you rank: ${SERVER}/@ada`);
+    expect(text).toContain(`Your profile: ${SERVER}/@ada`);
     expect(text).toContain("claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp");
     expect(text).toContain("tokenburnmarket daemon install");
     expect(text).not.toContain("hook");

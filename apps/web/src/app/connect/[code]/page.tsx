@@ -67,7 +67,8 @@ export default async function ConnectPage({ params, searchParams }: PageProps<"/
           <span className="type-data text-[0.78rem] text-subtle">{code}</span>
         </div>
         <p className="mt-4 text-[0.95rem] text-muted">
-          Back to your terminal. The command finishes on its own within a few seconds.
+          Back to your terminal. It is syncing this machine now, which takes a moment the first
+          time, then it prints the link to your profile and how to keep it synced.
         </p>
         <div className="signal-rail my-7" aria-hidden />
         <Button as={Link} href="/settings" variant="secondary">
