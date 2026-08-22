@@ -1,6 +1,6 @@
 {
   "name": "tokenburnmarket",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Connect your machine to tokenburnmarket: sync agent usage via ccusage, run the MCP server, place bets.",
   "license": "MIT",
   "type": "module",
@@ -19,7 +19,7 @@
     "url": "git+https://github.com/formidable-oss/tokenburnmarket.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://tokenburnmarket.com",
+  "homepage": "https://tokenburnmarket.vercel.app",
   "bugs": {
     "url": "https://github.com/formidable-oss/tokenburnmarket/issues"
   },
@@ -43,6 +43,7 @@
     "prepublishOnly": "pnpm run check && pnpm run test && pnpm run build"
   },
   "devDependencies": {
+    "@tokenburnmarket/core": "workspace:*",
     "@types/node": "^24",
     "tsup": "^8.5.1",
     "typescript": "^5",
@@ -50,7 +51,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@tokenburnmarket/core": "workspace:*",
     "zod": "^4.4.3"
   }
 }

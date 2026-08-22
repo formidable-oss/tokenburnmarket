@@ -86,13 +86,13 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
-      '@tokenburnmarket/core':
-        specifier: workspace:*
-        version: link:../core
       zod:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@tokenburnmarket/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^24
         version: 24.13.3
