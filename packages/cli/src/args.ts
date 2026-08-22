@@ -7,7 +7,7 @@
 
 export interface ParsedArgs {
   command: string;
-  /** The word after the command, where there is one: `daemon install`, `hook uninstall`. */
+  /** The word after the command, where there is one: `daemon install`, `mcp setup`. */
   subcommand: string;
   flags: Record<string, string>;
   switches: Set<string>;

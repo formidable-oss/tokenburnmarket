@@ -16,7 +16,9 @@ import {
   currentConfigPath,
   type DeviceConfig,
 } from "./config.js";
+import { describeError } from "./errors.js";
 import { mcpSetupLines } from "./setup.js";
+import { sync } from "./sync.js";
 
 /** How often the CLI asks whether the code was approved. */
 const POLL_INTERVAL_MS = 2000;
@@ -48,8 +50,8 @@ export function defaultDeviceName(): string {
   return name.length > 0 ? name.slice(0, 64) : "unnamed device";
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
+async function postJson<T>(fetchImpl: typeof fetch, url: string, body: unknown): Promise<T> {
+  const response = await fetchImpl(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -70,6 +72,10 @@ export interface ConnectOptions {
   /** Injected in tests; the command prints as it goes rather than at the end. */
   log?: (line: string) => void;
   now?: () => number;
+  fetch?: typeof fetch;
+  pollIntervalMs?: number;
+  /** Injected in tests. The first sync, run the moment the device is approved. */
+  runSync?: (config: DeviceConfig, log: (line: string) => void) => Promise<number>;
 }
 
 export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
@@ -77,6 +83,12 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
   const now = options.now ?? Date.now;
   const configPath = options.configPath ?? currentConfigPath();
   const deviceName = options.deviceName?.trim() || defaultDeviceName();
+  const fetchImpl = options.fetch ?? fetch;
+  const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
+  const runSync =
+    options.runSync ??
+    ((_config: DeviceConfig, syncLog: (line: string) => void) =>
+      sync({ configPath, brief: true, log: syncLog }));
 
   const existing = readConfig(configPath);
   if (existing) {
@@ -86,7 +98,7 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
   }
 
   const keys = await generateDeviceKeyPair();
-  const started = await postJson<StartResponse>(`${options.serverUrl}/api/connect/start`, {
+  const started = await postJson<StartResponse>(fetchImpl, `${options.serverUrl}/api/connect/start`, {
     publicKey: keys.publicKey,
     deviceName,
   });
@@ -104,8 +116,8 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
   const pollUrl = `${options.serverUrl}/api/connect/${started.code}`;
 
   while (now() < deadline) {
-    await sleep(POLL_INTERVAL_MS);
-    const response = await fetch(pollUrl, { headers: { accept: "application/json" } });
+    await sleep(pollIntervalMs);
+    const response = await fetchImpl(pollUrl, { headers: { accept: "application/json" } });
     if (!response.ok) continue; // A blip on one poll is not a failed connect.
 
     const result = (await response.json()) as PollResponse;
@@ -128,7 +140,24 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
 
     log("");
     log(`connected as @${result.handle}`);
-    log(`Device saved to ${configPath}`);
+    log("");
+
+    /*
+      The first sync, right here, because a connected machine with nothing
+      uploaded is not yet on any leaderboard, and the person came to see where
+      they rank. The sync prints its own first line; on a machine with years of
+      transcripts it takes half a minute, so say so before it goes quiet. If it
+      fails the device is still connected: say what broke and how to retry,
+      then carry on to the setup lines.
+    */
+    log("The first time takes a moment.");
+    try {
+      await runSync(config, log);
+    } catch (error) {
+      log(`The first sync failed: ${describeError(error)}`);
+      log("The device is connected. Run it again with: tokenburnmarket sync");
+    }
+    log(`See where you rank: ${options.serverUrl}/@${result.handle}`);
     log("");
     for (const line of mcpSetupLines()) log(line);
     return config;

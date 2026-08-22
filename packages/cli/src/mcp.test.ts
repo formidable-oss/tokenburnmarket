@@ -307,3 +307,60 @@ describe("api errors", () => {
     await client.close();
   });
 });
+
+describe("syncing itself at startup", () => {
+  interface SyncCall {
+    config: DeviceConfig;
+    printed: string[];
+    options: { skipIfSyncedWithinMs?: number } | undefined;
+  }
+
+  async function startWith(
+    loadConfig: () => DeviceConfig | null,
+    behave: (call: SyncCall) => Promise<number> = async () => 0,
+  ) {
+    const calls: SyncCall[] = [];
+    const server = createMcpServer({
+      loadConfig,
+      runSync: async (config, log, options) => {
+        const call: SyncCall = { config, printed: [], options };
+        calls.push(call);
+        const original = log;
+        original("a line the startup sync must swallow");
+        return behave(call);
+      },
+    });
+    const client = new Client({ name: "test", version: "0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    // The sync is fire and forget; give it the turn it needs to be recorded.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return { client, calls };
+  }
+
+  it("runs one throttled sync once the client has initialized", async () => {
+    const { client, calls } = await startWith(() => CONFIG);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.config).toBe(CONFIG);
+    expect(calls[0]!.options?.skipIfSyncedWithinMs).toBe(10 * 60_000);
+    await client.close();
+  });
+
+  it("does nothing on a machine that has never connected", async () => {
+    const { client, calls } = await startWith(() => null);
+    expect(calls).toHaveLength(0);
+    await client.close();
+  });
+
+  it("keeps serving tools when the startup sync throws", async () => {
+    const { client } = await startWith(
+      () => CONFIG,
+      async () => {
+        throw new Error("the network is a lie");
+      },
+    );
+    const { tools } = await client.listTools();
+    expect(tools.length).toBeGreaterThan(0);
+    await client.close();
+  });
+});
