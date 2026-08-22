@@ -7,6 +7,7 @@
   Usage, because the private key never leaves the machine.
 */
 import { verifySyncBody } from "@tokenburnmarket/core";
+import { revalidatePath } from "next/cache";
 import { requireDevice } from "@/lib/device-auth";
 import { applySync, isFreshSync } from "@/lib/sync";
 import { drizzleSyncStore } from "@/lib/sync-store";
@@ -53,6 +54,12 @@ export async function POST(request: Request) {
     verified.payload,
     now,
   );
+
+  // The profile is the first place a person looks after connecting, and its
+  // numbers are cached for five minutes. Purge that one path so the sync they
+  // just watched finish is what they see; boards stay on their timer, since
+  // purging every board on every sync would undo the cache at scale.
+  revalidatePath(`/@${auth.handle}`);
 
   return Response.json(result, { status: 200 });
 }

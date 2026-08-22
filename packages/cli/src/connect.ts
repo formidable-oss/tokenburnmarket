@@ -144,20 +144,21 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
 
     /*
       The first sync, right here, because a connected machine with nothing
-      uploaded is not yet on any leaderboard, and the person came to see where
-      they rank. The sync prints its own first line; on a machine with years of
-      transcripts it takes half a minute, so say so before it goes quiet. If it
-      fails the device is still connected: say what broke and how to retry,
-      then carry on to the setup lines.
+      uploaded is not on any board yet, and the person came to see themselves
+      on one. The sync prints its own progress. If it fails the device is still
+      connected: say what broke and how to retry, then carry on to the setup
+      lines. The profile is fresh the moment the sync lands; boards are cached
+      for five minutes, and promising a rank before it shows would read as a lie.
     */
-    log("The first time takes a moment.");
     try {
       await runSync(config, log);
     } catch (error) {
       log(`The first sync failed: ${describeError(error)}`);
       log("The device is connected. Run it again with: tokenburnmarket sync");
     }
-    log(`See where you rank: ${options.serverUrl}/@${result.handle}`);
+    log("");
+    log(`Your profile: ${options.serverUrl}/@${result.handle}`);
+    log("Boards catch up within five minutes.");
     log("");
     for (const line of mcpSetupLines()) log(line);
     return config;
