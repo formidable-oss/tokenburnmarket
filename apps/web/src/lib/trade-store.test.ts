@@ -121,7 +121,13 @@ describe.skipIf(!hasDatabase)("executeTrade against the dev database", async () 
 
     const tape = await db.select().from(trades).where(eq(trades.marketId, marketId));
     expect(tape).toHaveLength(2);
-  });
+    /*
+      A remote database, two trades that must take the same row lock in turn,
+      and the rest of the suite talking to it at the same time. Five seconds is
+      the default, not a budget this can hold: raised here rather than globally
+      so a genuine hang anywhere else still fails fast.
+    */
+  }, 30_000);
 
   it("refuses the trade that would take the balance negative", async () => {
     const [balanceRow] = await db

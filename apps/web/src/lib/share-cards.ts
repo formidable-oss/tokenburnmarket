@@ -6,6 +6,7 @@
   PNG. Only og-card.tsx knows how a ShareCard is drawn.
 */
 import { METRIC_LABELS, PERIOD_LABELS, type Metric, type Period } from "./leaderboard";
+import { SITE_HOST } from "./site-url";
 
 export interface ShareRow {
   label: string;
@@ -102,7 +103,7 @@ export function profileCard(input: ProfileCardInput): ShareCard {
       { label: "this month", value: formatUsd(input.monthCostUsd) },
       { label: "credits", value: formatCount(input.creditBalance) },
     ],
-    footer: `tokenburnmarket.com/@${input.handle}`,
+    footer: `${SITE_HOST}/@${input.handle}`,
     alt: `@${input.handle} burns ${formatUsd(input.weekCostUsd)} this week on tokenburnmarket.`,
   };
 }

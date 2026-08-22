@@ -9,6 +9,7 @@
 import { parseArgs } from "./args.js";
 import { connect } from "./connect.js";
 import { currentConfigPath, readConfig, resolveServerUrl } from "./config.js";
+import { describeError } from "./errors.js";
 import { daemon, DEFAULT_INTERVAL, installSnippet } from "./daemon.js";
 import { claudeSettingsPath, installHook, uninstallHook } from "./hook.js";
 import { runMcpServer } from "./mcp.js";
@@ -138,6 +139,6 @@ main()
     process.exitCode = code;
   })
   .catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(describeError(error));
     process.exitCode = 1;
   });

@@ -12,8 +12,18 @@ import { dirname, join } from "node:path";
 /** The npm package name, and the folder name under the platform config dir. */
 export const APP_NAME = "tokenburnmarket";
 
-/** Where a Collector talks to unless told otherwise. */
-export const DEFAULT_SERVER_URL = "https://tokenburnmarket.com";
+/**
+ * Where a Collector talks to unless told otherwise.
+ *
+ * The production deployment, addressed by its Vercel host: tokenburnmarket.com
+ * is not registered yet, and a default that cannot resolve turns every command
+ * into a DNS failure. Must stay equal to the web app's `NEXT_PUBLIC_APP_URL`,
+ * since that is the host the approval link points at and polling a different
+ * alias than the one the Builder opens is a coin flip nobody should take. Point
+ * both at the apex domain once it exists, and note that this ships baked into
+ * the published `dist`, so changing it needs a release.
+ */
+export const DEFAULT_SERVER_URL = "https://tokenburnmarket.vercel.app";
 
 export interface PlatformEnvironment {
   platform: NodeJS.Platform;

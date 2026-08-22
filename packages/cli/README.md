@@ -1,6 +1,6 @@
 # tokenburnmarket
 
-Connect your machine to [tokenburnmarket](https://tokenburnmarket.com), sync what
+Connect your machine to [tokenburnmarket](https://tokenburnmarket.vercel.app), sync what
 your coding agents burned, and trade the markets from inside the agent you are
 already talking to.
 
