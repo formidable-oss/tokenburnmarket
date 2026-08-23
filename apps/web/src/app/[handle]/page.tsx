@@ -7,7 +7,12 @@ import { builderByHandle, handleFromSegment } from "@/lib/builders";
 import { countryByCode } from "@/lib/countries";
 import { formatCredits } from "@/lib/credits";
 import { profileTitle } from "@/lib/share-cards";
-import { builderUsage, cachedBurnSeasons, PROFILE_WINDOW_DAYS } from "@/lib/usage-queries";
+import { parseUsageWindow } from "@/lib/usage";
+import {
+  builderUsage,
+  builderUsageHistory,
+  cachedBurnSeasons,
+} from "@/lib/usage-queries";
 
 /*
   Public Builder profile at /@handle. This segment sits at the root, so it only
@@ -41,15 +46,22 @@ export async function generateMetadata({ params }: PageProps<"/[handle]">): Prom
 
 const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
 
-export default async function BuilderProfile({ params }: PageProps<"/[handle]">) {
+export default async function BuilderProfile({
+  params,
+  searchParams,
+}: PageProps<"/[handle]">) {
   const builder = await load((await params).handle);
   if (!builder) notFound();
 
+  const windowDays = parseUsageWindow((await searchParams).days);
   const region = countryByCode(builder.country);
   const session = await auth();
   // Quarantined rows are the Builder's own business until an admin queue exists.
   const isOwner = session?.user?.id === builder.id;
-  const usage = await builderUsage(builder.id, { includeQuarantined: isOwner });
+  const [usage, history] = await Promise.all([
+    builderUsage(builder.id, { days: windowDays, includeQuarantined: isOwner }),
+    builderUsageHistory(builder.id),
+  ]);
 
   return (
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
@@ -91,10 +103,16 @@ export default async function BuilderProfile({ params }: PageProps<"/[handle]">)
 
       <div className="signal-rail my-10" aria-hidden />
 
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr] lg:gap-8">
-        <UsagePanel summary={usage} windowDays={PROFILE_WINDOW_DAYS} isOwner={isOwner} />
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)] lg:gap-8">
+        <UsagePanel
+          summary={usage}
+          history={history}
+          windowDays={windowDays}
+          isOwner={isOwner}
+          profilePath={`/@${builder.handle}`}
+        />
 
-        <div className="rounded-(--radius-panel) border border-border bg-surface p-6 sm:p-8">
+        <div className="min-w-0 rounded-(--radius-panel) border border-border bg-surface p-6 sm:p-8">
           <h2 className="type-label">positions</h2>
           <p className="mt-4 max-w-[42ch] text-[0.95rem] text-muted">
             Open bets and settled ones show up here after the first trade.

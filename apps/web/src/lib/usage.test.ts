@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { dayRange, summarizeUsage, type UsageRow } from "./usage";
+import {
+  dayRange,
+  parseUsageWindow,
+  summarizeUsage,
+  summarizeUsageHistory,
+  type UsageRow,
+} from "./usage";
 
 const row = (overrides: Partial<UsageRow> = {}): UsageRow => ({
   day: "2026-08-16",
@@ -22,6 +28,16 @@ describe("dayRange", () => {
       "2026-08-16",
       "2026-08-17",
     ]);
+  });
+});
+
+describe("parseUsageWindow", () => {
+  it("accepts 90 days and defaults every other query to 30", () => {
+    expect(parseUsageWindow("90")).toBe(90);
+    expect(parseUsageWindow("30")).toBe(30);
+    expect(parseUsageWindow("all")).toBe(30);
+    expect(parseUsageWindow(["90"])).toBe(30);
+    expect(parseUsageWindow(undefined)).toBe(30);
   });
 });
 
@@ -65,5 +81,27 @@ describe("summarizeUsage", () => {
     expect(summary.totalCostUsd).toBe(2.5);
     expect(summary.byProvider).toHaveLength(1);
     expect(summary.quarantined).toHaveLength(1);
+  });
+});
+
+describe("summarizeUsageHistory", () => {
+  it("builds all-time totals and monthly history from active days", () => {
+    expect(
+      summarizeUsageHistory([
+        { day: "2026-06-30", costUsd: 1.25, totalTokens: 100 },
+        { day: "2026-07-02", costUsd: 2, totalTokens: 200 },
+        { day: "2026-07-01", costUsd: 3.5, totalTokens: 300 },
+        { day: "2026-08-01", costUsd: 0, totalTokens: 0 },
+      ]),
+    ).toEqual({
+      months: [
+        { month: "2026-06", costUsd: 1.25, tokens: 100 },
+        { month: "2026-07", costUsd: 5.5, tokens: 500 },
+      ],
+      totalCostUsd: 6.75,
+      totalTokens: 600,
+      activeDays: 3,
+      firstDay: "2026-06-30",
+    });
   });
 });

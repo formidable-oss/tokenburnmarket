@@ -5,7 +5,7 @@ import { generateDeviceKeyPair } from "@tokenburnmarket/core/signing";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { UsageAggregate } from "./ccusage";
 import { writeConfig, type DeviceConfig } from "./config";
-import { sync } from "./sync";
+import { pageDays, sync } from "./sync";
 
 const NOW = new Date("2026-08-22T18:00:00.000Z");
 const TEN_MINUTES = 10 * 60_000;
@@ -281,5 +281,15 @@ describe("paging", () => {
 
     expect(server.pages).toHaveLength(1);
     expect(server.pages[0]!.days).toEqual(["2026-08-20", "2026-08-21", "2026-08-22"]);
+  });
+
+  it("keeps every request within the sync row limit", () => {
+    const rows = Array.from({ length: 401 }, (_, index) => ({
+      ...THREE_DAYS[0]!,
+      model: `model-${index}`,
+      receipts: [],
+    }));
+
+    expect(pageDays(rows, Number.POSITIVE_INFINITY).map((page) => page.length)).toEqual([400, 1]);
   });
 });

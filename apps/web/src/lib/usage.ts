@@ -46,6 +46,34 @@ export interface UsageSummary {
   quarantined: UsageRow[];
 }
 
+export interface UsageHistoryRow {
+  day: string;
+  costUsd: number;
+  totalTokens: number;
+}
+
+export interface UsageMonthPoint {
+  month: string;
+  costUsd: number;
+  tokens: number;
+}
+
+export interface UsageHistory {
+  months: UsageMonthPoint[];
+  totalCostUsd: number;
+  totalTokens: number;
+  activeDays: number;
+  firstDay: string | null;
+}
+
+export const USAGE_WINDOW_DAYS = [30, 90] as const;
+export type UsageWindowDays = (typeof USAGE_WINDOW_DAYS)[number];
+
+/** Profile query strings only accept the two windows the UI offers. */
+export function parseUsageWindow(value: string | string[] | undefined): UsageWindowDays {
+  return value === "90" ? 90 : 30;
+}
+
 export function tokensIn(row: UsageRow): number {
   return (
     row.inputTokens +
@@ -105,5 +133,29 @@ export function summarizeUsage(rows: readonly UsageRow[], days: readonly string[
     totalCostUsd: round(counted.reduce((sum, row) => sum + row.costUsd, 0)),
     totalTokens: counted.reduce((sum, row) => sum + tokensIn(row), 0),
     quarantined: rows.filter((row) => row.trustLevel === "quarantined"),
+  };
+}
+
+/** All counted Builder days, grouped into calendar months for the profile history. */
+export function summarizeUsageHistory(rows: readonly UsageHistoryRow[]): UsageHistory {
+  const active = rows
+    .filter((row) => row.costUsd > 0 || row.totalTokens > 0)
+    .sort((a, b) => a.day.localeCompare(b.day));
+  const months = new Map<string, UsageMonthPoint>();
+
+  for (const row of active) {
+    const month = row.day.slice(0, 7);
+    const current = months.get(month) ?? { month, costUsd: 0, tokens: 0 };
+    current.costUsd += row.costUsd;
+    current.tokens += row.totalTokens;
+    months.set(month, current);
+  }
+
+  return {
+    months: [...months.values()].map((month) => ({ ...month, costUsd: round(month.costUsd) })),
+    totalCostUsd: round(active.reduce((sum, row) => sum + row.costUsd, 0)),
+    totalTokens: active.reduce((sum, row) => sum + row.totalTokens, 0),
+    activeDays: active.length,
+    firstDay: active[0]?.day ?? null,
   };
 }

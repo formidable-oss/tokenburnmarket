@@ -19,7 +19,7 @@ export async function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border-faint bg-[color:var(--backdrop)] backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-6 px-4 sm:px-6 lg:px-12">
+      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-2 px-4 sm:gap-6 sm:px-6 lg:px-12">
         <Link href="/" className="rounded-sm" aria-label="tokenburnmarket home">
           <Logo />
         </Link>
@@ -61,13 +61,20 @@ export async function SiteHeader() {
                     className="rounded-full border border-border"
                     unoptimized
                   />
-                ) : null}
-                <span className="type-data text-[0.82rem]">{handle}</span>
+                ) : (
+                  <span
+                    aria-hidden
+                    className="type-data flex size-[22px] items-center justify-center rounded-full border border-border bg-surface-sunken text-[0.68rem]"
+                  >
+                    {handle.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span className="type-data hidden text-[0.82rem] min-[420px]:inline">{handle}</span>
               </Link>
             </>
           ) : (
-            <Button as={Link} href="/signin" variant="secondary" className="h-9 px-3 text-[0.82rem]">
-              Sign in with GitHub
+            <Button as={Link} href="/signin" variant="secondary" className="h-9 px-2 text-[0.78rem] sm:px-3 sm:text-[0.82rem]">
+              Sign in<span className="hidden min-[390px]:inline"> with GitHub</span>
             </Button>
           )}
         </div>

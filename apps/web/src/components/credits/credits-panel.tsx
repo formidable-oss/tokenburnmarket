@@ -45,7 +45,37 @@ export function CreditsPanel({
           No entries yet. The first mint lands a day after your first synced day closes.
         </p>
       ) : (
-        <table className="mt-6 w-full border-collapse text-[0.85rem]">
+        <>
+          <ol className="mt-6 divide-y divide-border-faint sm:hidden">
+            {entries.map((entry) => {
+              const day = creditEntryDay(entry.reason, entry.refId);
+              const marketId = creditEntryMarketId(entry.reason, entry.refId);
+              const reason = creditReasonLabel(entry.reason);
+              return (
+                <li key={entry.id} className="py-3 first:pt-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="type-data text-[0.72rem] text-muted tabular-nums">
+                      {stamp.format(entry.createdAt)}
+                    </span>
+                    <span className="type-data whitespace-nowrap tabular-nums">
+                      {formatDelta(entry.delta)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[0.85rem]">
+                    {marketId ? (
+                      <Link href={`/m/${marketId}`} className="hover:text-primary-text">
+                        {reason}
+                      </Link>
+                    ) : (
+                      reason
+                    )}
+                    {day ? <span className="ml-2 text-subtle tabular-nums">{day}</span> : null}
+                  </p>
+                </li>
+              );
+            })}
+          </ol>
+          <table className="mt-6 hidden w-full border-collapse text-[0.85rem] sm:table">
           <thead>
             <tr className="type-label text-subtle">
               <th className="py-1 text-left font-normal">when</th>
@@ -77,7 +107,8 @@ export function CreditsPanel({
               );
             })}
           </tbody>
-        </table>
+          </table>
+        </>
       )}
     </section>
   );

@@ -4,7 +4,7 @@
   ccusage supplies the numbers, the Receipt Streams supply the evidence, and
   this module decides which days to send at all.
 */
-import { MAX_RECEIPTS_PER_DAY, MAX_SYNC_DAYS } from "@tokenburnmarket/core";
+import { MAX_RECEIPTS_PER_DAY } from "@tokenburnmarket/core";
 import type { SyncDay } from "@tokenburnmarket/core";
 import type { UsageAggregate } from "./ccusage.js";
 import { receiptKey, type ReceiptIndex } from "./receipts.js";
@@ -85,8 +85,5 @@ export function buildSyncDays(
         : a.day.localeCompare(b.day),
     );
 
-  // On a first Sync a long-lived machine can hold years of transcripts. Keep the
-  // most recent days; the rest are older than any Leaderboard cares about.
-  const oldest = [...new Set(days.map((row) => row.day))].sort().slice(-MAX_SYNC_DAYS)[0];
-  return oldest === undefined ? days : days.filter((row) => row.day >= oldest);
+  return days;
 }

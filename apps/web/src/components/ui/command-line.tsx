@@ -28,14 +28,14 @@ export function CommandLine({
   }
 
   return (
-    <div className="flex h-11 items-stretch overflow-hidden rounded-(--radius-control) border border-border-strong bg-surface-sunken">
+    <div className="flex h-11 min-w-0 items-stretch overflow-hidden rounded-(--radius-control) border border-border-strong bg-surface-sunken">
       {prompt ? (
         <span aria-hidden className="type-data flex items-center pl-3.5 text-subtle select-none">
           {prompt}
         </span>
       ) : null}
       <code
-        className={`type-data flex flex-1 items-center overflow-x-auto px-2.5 text-[0.92rem] text-foreground ${prompt ? "" : "pl-3.5"}`}
+        className={`type-data flex min-w-0 flex-1 items-center overflow-x-auto px-2.5 text-[0.92rem] text-foreground ${prompt ? "" : "pl-3.5"}`}
       >
         {command}
       </code>

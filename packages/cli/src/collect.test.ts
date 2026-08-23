@@ -247,6 +247,17 @@ describe("buildSyncDays", () => {
     });
     expect(days.map((day) => day.day)).toEqual(["2026-08-16", "2026-08-16"]);
   });
+
+  it("keeps the full archive on a first sync", () => {
+    const archive = Array.from({ length: 450 }, (_, index) => ({
+      ...parseUnifiedDaily(UNIFIED)[0]!,
+      day: new Date(Date.UTC(2025, 0, 1 + index)).toISOString().slice(0, 10),
+    }));
+
+    expect(
+      buildSyncDays(archive, new Map(), { now: new Date("2026-08-17T12:00:00.000Z") }),
+    ).toHaveLength(450);
+  });
 });
 
 describe("shiftDay", () => {

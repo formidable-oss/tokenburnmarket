@@ -5,7 +5,12 @@
   message identifiers. No prompts, no file names, no project paths.
 */
 import { homedir } from "node:os";
-import { checkPlausibility, createSignedSync, SyncPayloadSchema } from "@tokenburnmarket/core";
+import {
+  checkPlausibility,
+  createSignedSync,
+  MAX_SYNC_DAYS,
+  SyncPayloadSchema,
+} from "@tokenburnmarket/core";
 import type { SyncDay, SyncPayload, TrustLevel } from "@tokenburnmarket/core";
 import { readUsageAggregates } from "./ccusage.js";
 import { buildSyncDays, windowStart } from "./collect.js";
@@ -60,17 +65,21 @@ export interface SyncOptions {
 export const MAX_PAYLOAD_BYTES = 3_500_000;
 
 /**
- * Days cut into pages that each serialize under the budget. A single day is
- * never split: the schema caps receipts per day well under the limit, so one
- * day always fits on its own.
+ * Rows cut into pages that stay under both the transport budget and the API's
+ * row limit. Rows remain in ascending day order, so advancing the watermark
+ * after one page never makes a later page stale.
  */
-export function pageDays(days: readonly SyncDay[], maxBytes: number): SyncDay[][] {
+export function pageDays(
+  days: readonly SyncDay[],
+  maxBytes: number,
+  maxRows = MAX_SYNC_DAYS,
+): SyncDay[][] {
   const pages: SyncDay[][] = [];
   let page: SyncDay[] = [];
   let bytes = 0;
   for (const day of days) {
     const size = JSON.stringify(day).length + 1;
-    if (page.length > 0 && bytes + size > maxBytes) {
+    if (page.length > 0 && (bytes + size > maxBytes || page.length >= maxRows)) {
       pages.push(page);
       page = [];
       bytes = 0;

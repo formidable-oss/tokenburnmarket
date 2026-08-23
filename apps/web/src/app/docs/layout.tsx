@@ -6,8 +6,8 @@ import { DocsNav } from "./nav";
 */
 export default function DocsLayout({ children }: LayoutProps<"/docs">) {
   return (
-    <div className="mx-auto grid max-w-[1200px] gap-10 px-4 pb-24 pt-12 sm:px-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-16 lg:px-12 lg:pt-16">
-      <aside className="lg:sticky lg:top-20 lg:self-start">
+    <div className="mx-auto grid min-w-0 max-w-[1200px] gap-10 px-4 pb-24 pt-12 sm:px-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-16 lg:px-12 lg:pt-16">
+      <aside className="min-w-0 lg:sticky lg:top-20 lg:self-start">
         <p className="type-label mb-4">docs</p>
         <DocsNav />
         <div className="signal-rail my-6" aria-hidden />
@@ -22,7 +22,7 @@ export default function DocsLayout({ children }: LayoutProps<"/docs">) {
           .
         </p>
       </aside>
-      <div className="max-w-[68ch]">{children}</div>
+      <div className="min-w-0 max-w-[68ch]">{children}</div>
     </div>
   );
 }

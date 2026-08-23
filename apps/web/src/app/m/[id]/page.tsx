@@ -127,8 +127,8 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
 
       <div className="signal-rail my-10" aria-hidden />
 
-      <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:gap-12">
-        <div>
+      <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:gap-12">
+        <div className="min-w-0">
           <ResolutionPanel
             status={market.status}
             winnerLabel={market.winningOutcomeId ? (labels.get(market.winningOutcomeId) ?? null) : null}
@@ -160,50 +160,89 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
                 Nobody has traded this yet. The first buy sets the price.
               </p>
             ) : (
-              <table className="mt-4 w-full border-collapse text-[0.85rem]">
-                <thead>
-                  <tr className="type-label text-subtle">
-                    <th className="py-1 text-left font-normal">when</th>
-                    <th className="py-1 text-left font-normal">who</th>
-                    <th className="py-1 text-left font-normal">outcome</th>
-                    <th className="py-1 text-right font-normal">shares</th>
-                    <th className="py-1 text-right font-normal">credits</th>
-                    <th className="py-1 text-right font-normal">price</th>
-                  </tr>
-                </thead>
-                <tbody className="type-data">
+              <>
+                <ol className="mt-4 divide-y divide-border-faint sm:hidden">
                   {tape.map((trade) => (
-                    <tr key={trade.id} className="border-t border-border-faint">
-                      <td className="py-1.5 pr-3 text-muted tabular-nums">
-                        {stamp.format(trade.createdAt)}
-                      </td>
-                      <td className="py-1.5 pr-3">
+                    <li key={trade.id} className="py-3 first:pt-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="type-data text-[0.72rem] text-muted tabular-nums">
+                          {stamp.format(trade.createdAt)}
+                        </span>
+                        <span className="type-data text-cyber tabular-nums">
+                          {formatPriceCents(trade.priceAfter)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-[0.85rem]">
                         <Link href={`/@${trade.handle}`} className="hover:text-primary-text">
                           {trade.handle}
                         </Link>
-                      </td>
-                      <td className="py-1.5 pr-3 text-muted">
-                        {trade.side === "buy" ? "bought " : "sold "}
-                        {labels.get(trade.outcomeId) ?? "unknown"}
-                      </td>
-                      <td className="py-1.5 pl-3 text-right tabular-nums">
-                        {formatCredits(trade.shares)}
-                      </td>
-                      <td className="py-1.5 pl-3 text-right tabular-nums">
-                        {formatDelta(trade.side === "buy" ? -trade.credits : trade.credits)}
-                      </td>
-                      <td className="py-1.5 pl-3 text-right tabular-nums text-cyber">
-                        {formatPriceCents(trade.priceAfter)}
-                      </td>
-                    </tr>
+                        <span className="text-muted">
+                          {trade.side === "buy" ? " bought " : " sold "}
+                          {labels.get(trade.outcomeId) ?? "unknown"}
+                        </span>
+                      </p>
+                      <dl className="mt-2 grid grid-cols-2 gap-4 text-[0.78rem]">
+                        <div>
+                          <dt className="type-label text-[0.58rem] text-subtle">shares</dt>
+                          <dd className="type-data mt-1 tabular-nums">
+                            {formatCredits(trade.shares)}
+                          </dd>
+                        </div>
+                        <div className="text-right">
+                          <dt className="type-label text-[0.58rem] text-subtle">credits</dt>
+                          <dd className="type-data mt-1 tabular-nums">
+                            {formatDelta(trade.side === "buy" ? -trade.credits : trade.credits)}
+                          </dd>
+                        </div>
+                      </dl>
+                    </li>
                   ))}
-                </tbody>
-              </table>
+                </ol>
+                <table className="mt-4 hidden w-full border-collapse text-[0.85rem] sm:table">
+                  <thead>
+                    <tr className="type-label text-subtle">
+                      <th className="py-1 text-left font-normal">when</th>
+                      <th className="py-1 text-left font-normal">who</th>
+                      <th className="py-1 text-left font-normal">outcome</th>
+                      <th className="py-1 text-right font-normal">shares</th>
+                      <th className="py-1 text-right font-normal">credits</th>
+                      <th className="py-1 text-right font-normal">price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="type-data">
+                    {tape.map((trade) => (
+                      <tr key={trade.id} className="border-t border-border-faint">
+                        <td className="py-1.5 pr-3 text-muted tabular-nums">
+                          {stamp.format(trade.createdAt)}
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <Link href={`/@${trade.handle}`} className="hover:text-primary-text">
+                            {trade.handle}
+                          </Link>
+                        </td>
+                        <td className="py-1.5 pr-3 text-muted">
+                          {trade.side === "buy" ? "bought " : "sold "}
+                          {labels.get(trade.outcomeId) ?? "unknown"}
+                        </td>
+                        <td className="py-1.5 pl-3 text-right tabular-nums">
+                          {formatCredits(trade.shares)}
+                        </td>
+                        <td className="py-1.5 pl-3 text-right tabular-nums">
+                          {formatDelta(trade.side === "buy" ? -trade.credits : trade.credits)}
+                        </td>
+                        <td className="py-1.5 pl-3 text-right tabular-nums text-cyber">
+                          {formatPriceCents(trade.priceAfter)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
           </section>
         </div>
 
-        <aside>
+        <aside className="min-w-0">
           <div className="rounded-(--radius-panel) border border-border bg-surface p-6">
             <h2 className="type-label">{tradable ? "trade" : "trading is closed"}</h2>
             {!tradable ? (
@@ -239,36 +278,38 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
           {holdings.length > 0 ? (
             <div className="mt-6 rounded-(--radius-panel) border border-border bg-surface p-6">
               <h2 className="type-label">your position</h2>
-              <table className="mt-4 w-full border-collapse text-[0.85rem]">
-                <thead>
-                  <tr className="type-label text-subtle">
-                    <th className="py-1 text-left font-normal">outcome</th>
-                    <th className="py-1 text-right font-normal">shares</th>
-                    <th className="py-1 text-right font-normal">cost</th>
-                    <th className="py-1 text-right font-normal">value</th>
-                  </tr>
-                </thead>
-                <tbody className="type-data">
-                  {holdings.map((row) => {
-                    // What the shares are worth if sold at the current price, before impact.
-                    const value = row.shares * (priced.get(row.outcomeId) ?? 0);
-                    return (
-                      <tr key={row.outcomeId} className="border-t border-border-faint">
-                        <td className="py-1.5 pr-3">{labels.get(row.outcomeId) ?? "unknown"}</td>
-                        <td className="py-1.5 pl-3 text-right tabular-nums">
-                          {formatCredits(row.shares)}
-                        </td>
-                        <td className="py-1.5 pl-3 text-right tabular-nums">
-                          {formatCredits(row.costBasis)}
-                        </td>
-                        <td className="py-1.5 pl-3 text-right tabular-nums text-cyber">
-                          {formatCredits(value)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[24rem] border-collapse text-[0.85rem]">
+                  <thead>
+                    <tr className="type-label text-subtle">
+                      <th className="py-1 text-left font-normal">outcome</th>
+                      <th className="py-1 text-right font-normal">shares</th>
+                      <th className="py-1 text-right font-normal">cost</th>
+                      <th className="py-1 text-right font-normal">value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="type-data">
+                    {holdings.map((row) => {
+                      // What the shares are worth if sold at the current price, before impact.
+                      const value = row.shares * (priced.get(row.outcomeId) ?? 0);
+                      return (
+                        <tr key={row.outcomeId} className="border-t border-border-faint">
+                          <td className="py-1.5 pr-3">{labels.get(row.outcomeId) ?? "unknown"}</td>
+                          <td className="py-1.5 pl-3 text-right tabular-nums">
+                            {formatCredits(row.shares)}
+                          </td>
+                          <td className="py-1.5 pl-3 text-right tabular-nums">
+                            {formatCredits(row.costBasis)}
+                          </td>
+                          <td className="py-1.5 pl-3 text-right tabular-nums text-cyber">
+                            {formatCredits(value)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
               <p className="mt-4 text-[0.85rem] text-subtle">
                 Value is the price right now, before your own sell moves it. A winning share pays 1
                 credit.

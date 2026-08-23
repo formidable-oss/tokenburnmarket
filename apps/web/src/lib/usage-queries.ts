@@ -11,10 +11,13 @@ import { unstable_cache } from "next/cache";
 import { db } from "@/db";
 import { builderDays, usageDays } from "@/db/schema";
 import { periodRange } from "./leaderboard";
-import { dayRange, summarizeUsage, type UsageSummary } from "./usage";
-
-/** How far back a profile looks. One month reads as a habit, not a lifetime. */
-export const PROFILE_WINDOW_DAYS = 30;
+import {
+  dayRange,
+  summarizeUsage,
+  summarizeUsageHistory,
+  type UsageHistory,
+  type UsageSummary,
+} from "./usage";
 
 export interface UsageQueryOptions {
   /** True only for the Builder themselves, and later for an admin. */
@@ -27,7 +30,7 @@ export async function builderUsage(
   builderId: string,
   options: UsageQueryOptions = {},
 ): Promise<UsageSummary> {
-  const days = dayRange(options.now ?? new Date(), options.days ?? PROFILE_WINDOW_DAYS);
+  const days = dayRange(options.now ?? new Date(), options.days ?? 30);
   const start = days[0]!;
 
   const rows = await db
@@ -55,6 +58,22 @@ export async function builderUsage(
     );
 
   return summarizeUsage(rows, days);
+}
+
+/** A Builder's complete accepted history, using the same daily rollup as leaderboards. */
+export async function builderUsageHistory(builderId: string): Promise<UsageHistory> {
+  const rows = await db
+    .select({
+      day: builderDays.day,
+      costUsd: builderDays.costUsd,
+      totalTokens: builderDays.totalTokens,
+    })
+    .from(builderDays)
+    .where(
+      and(eq(builderDays.builderId, builderId), sql`${builderDays.trustLevelMin} <> 'quarantined'`),
+    );
+
+  return summarizeUsageHistory(rows);
 }
 
 /** A Builder's burn over the two Seasons a share card and a title quote. */

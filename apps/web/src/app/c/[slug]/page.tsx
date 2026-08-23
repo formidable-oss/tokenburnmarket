@@ -120,7 +120,7 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
               return (
                 <li
                   key={member.id}
-                  className="flex items-center gap-3 border-t border-border-faint px-5 py-3 sm:px-6"
+                  className="flex min-w-0 flex-wrap items-center gap-3 border-t border-border-faint px-5 py-3 sm:px-6"
                 >
                   {member.avatarUrl ? (
                     <Image
@@ -136,7 +136,7 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
                   )}
                   <Link
                     href={`/@${member.handle}`}
-                    className="type-data text-[0.9rem] hover:text-primary-text"
+                    className="type-data min-w-0 break-words text-[0.9rem] hover:text-primary-text"
                   >
                     {member.handle}
                   </Link>
