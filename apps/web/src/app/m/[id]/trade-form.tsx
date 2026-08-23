@@ -13,6 +13,12 @@ import { Button } from "@/components/ui/button";
 import { formatCredits } from "@/lib/credits";
 import { formatPriceCents, normalizeShareAmount } from "@/lib/markets";
 import type { OutcomePrice } from "@/lib/market-queries";
+import {
+  allocationBudget,
+  BALANCE_ALLOCATION_PRESETS,
+  displayedTradeAmount,
+  sharesForBalanceAllocation,
+} from "@/lib/trade-allocation";
 import { placeTrade, type TradeState } from "./actions";
 
 const initialState: TradeState = { status: "idle" };
@@ -38,9 +44,28 @@ export function TradeForm({
   const [state, action, pending] = useActionState(placeTrade, initialState);
   const [outcomeId, setOutcomeId] = useState(outcomes[0]?.id ?? "");
   const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [amount, setAmount] = useState("10");
+  const [manualAmount, setManualAmount] = useState("10");
+  const [allocationPercent, setAllocationPercent] = useState<number | null>(null);
+  const [editingAfterFill, setEditingAfterFill] = useState(false);
 
   const holding = held[outcomeId] ?? 0;
+  const allocatedShares = useMemo(() => {
+    if (allocationPercent === null || side !== "buy") return null;
+    const outcomeIndex = outcomes.findIndex((outcome) => outcome.id === outcomeId);
+    return sharesForBalanceAllocation({
+      sharesOutstanding: outcomes.map((outcome) => outcome.sharesOutstanding),
+      b,
+      outcomeIndex,
+      balance,
+      percent: allocationPercent,
+    });
+  }, [allocationPercent, b, balance, outcomeId, outcomes, side]);
+  const amount = displayedTradeAmount({
+    manualAmount,
+    allocatedShares,
+    lastTradeFilled: state.status === "filled",
+    editingNextTrade: editingAfterFill,
+  });
 
   const preview = useMemo<LmsrQuote | null>(() => {
     const shares = normalizeShareAmount(amount);
@@ -63,9 +88,11 @@ export function TradeForm({
 
   const tooExpensive = side === "buy" && preview !== null && preview.credits > balance;
   const offered = state.status === "price_moved" ? state.offered : undefined;
+  const sliderPercent = allocationPercent ?? 10;
+  const sliderBudget = allocationBudget(balance, sliderPercent);
 
   return (
-    <form action={action}>
+    <form action={action} onSubmit={() => setEditingAfterFill(false)}>
       <input type="hidden" name="marketId" value={marketId} />
       <input type="hidden" name="outcomeId" value={outcomeId} />
       <input type="hidden" name="side" value={side} />
@@ -90,7 +117,10 @@ export function TradeForm({
                 name="outcomeChoice"
                 value={outcome.id}
                 checked={outcomeId === outcome.id}
-                onChange={() => setOutcomeId(outcome.id)}
+                onChange={() => {
+                  setOutcomeId(outcome.id);
+                  setEditingAfterFill(true);
+                }}
                 className="accent-[color:var(--primary)]"
               />
               <span className="truncate text-[0.92rem]">{outcome.label}</span>
@@ -108,7 +138,11 @@ export function TradeForm({
             key={option}
             type="button"
             aria-pressed={side === option}
-            onClick={() => setSide(option)}
+            onClick={() => {
+              setSide(option);
+              setAllocationPercent(null);
+              setEditingAfterFill(true);
+            }}
             className={`h-9 flex-1 rounded-(--radius-control) border text-sm ${
               side === option
                 ? "border-primary-border bg-primary-subtle text-foreground"
@@ -120,6 +154,80 @@ export function TradeForm({
         ))}
       </div>
 
+      {side === "buy" ? (
+        <fieldset className="mt-6 border-t border-border-faint pt-5">
+          <div className="flex min-h-6 items-baseline justify-between gap-4">
+            <legend className="type-label">invest from balance</legend>
+            <output
+              className="type-data text-right text-[0.8rem] text-cyber tabular-nums"
+              aria-live="polite"
+            >
+              {allocationPercent === null
+                ? "choose a percentage"
+                : `${allocationPercent}% · ${formatCredits(sliderBudget)} cr`}
+            </output>
+          </div>
+
+          <div
+            className="mt-3 grid grid-cols-4 gap-2"
+            role="group"
+            aria-label="Balance allocation presets"
+          >
+            {BALANCE_ALLOCATION_PRESETS.map((percent) => (
+              <button
+                key={percent}
+                type="button"
+                aria-pressed={allocationPercent === percent}
+                onClick={() => {
+                  setAllocationPercent(percent);
+                  setEditingAfterFill(true);
+                }}
+                className={`type-data h-10 rounded-(--radius-control) border text-[0.8rem] transition-[background-color,border-color,color,transform] duration-150 ease-(--ease-out-expo) active:translate-y-px ${
+                  allocationPercent === percent
+                    ? "border-primary-border bg-primary-subtle text-primary-text"
+                    : "border-border-faint text-muted hover:border-border-strong hover:text-foreground"
+                }`}
+              >
+                {percent === 100 ? "max" : `${percent}%`}
+              </button>
+            ))}
+          </div>
+
+          <label className="mt-4 block" htmlFor="balance-allocation">
+            <span className="sr-only">Percentage of Credit balance to invest</span>
+            <span className="relative flex h-10 items-center">
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-0 h-1 overflow-hidden rounded-full bg-surface-sunken"
+              >
+                <span
+                  className="block h-full bg-primary transition-[width] duration-150 ease-(--ease-out-expo)"
+                  style={{ width: `${sliderPercent}%` }}
+                />
+              </span>
+              <input
+                id="balance-allocation"
+                type="range"
+                min="1"
+                max="100"
+                step="1"
+                value={sliderPercent}
+                onChange={(event) => {
+                  setAllocationPercent(Number(event.target.value));
+                  setEditingAfterFill(true);
+                }}
+                aria-valuetext={`${sliderPercent}% of balance, ${formatCredits(sliderBudget)} credits`}
+                className="allocation-slider relative w-full"
+              />
+            </span>
+            <span className="type-data flex justify-between text-[0.68rem] text-subtle" aria-hidden="true">
+              <span>1%</span>
+              <span>100%</span>
+            </span>
+          </label>
+        </fieldset>
+      ) : null}
+
       <label className="mt-6 block" htmlFor="shares">
         <span className="type-label">shares</span>
         <input
@@ -128,7 +236,11 @@ export function TradeForm({
           inputMode="decimal"
           required
           value={amount}
-          onChange={(event) => setAmount(event.target.value)}
+          onChange={(event) => {
+            setManualAmount(event.target.value);
+            setAllocationPercent(null);
+            setEditingAfterFill(true);
+          }}
           className={`${field} type-data h-10 tabular-nums`}
         />
       </label>
@@ -172,7 +284,7 @@ export function TradeForm({
           {pending ? "Working" : side === "buy" ? "Buy shares" : "Sell shares"}
         </Button>
         <span aria-live="polite" className="type-data text-[0.8rem]">
-          {state.status === "filled" && state.filled ? (
+          {state.status === "filled" && state.filled && amount === "" ? (
             <span className="text-[color:var(--won)]">
               {state.filled.side === "buy" ? "Bought" : "Sold"}{" "}
               {formatCredits(state.filled.shares)} at{" "}
