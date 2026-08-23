@@ -1,10 +1,11 @@
 /*
-  The weekly market job. Vercel Cron calls GET on Monday at 00:05 UTC (see
-  vercel.json) with `Authorization: Bearer $CRON_SECRET`, five minutes into the
-  week it opens Markets for; POST is here so a human can trigger the same run.
+  The automatic market job. Vercel Cron calls GET daily at 00:05 UTC (see
+  vercel.json) with `Authorization: Bearer $CRON_SECRET`. It opens a current
+  global Model Race every day and keeps Community markets on their weekly key.
+  POST is here so a human can trigger the same run.
 
   Safe to call as often as anyone likes: every Market it opens is keyed by
-  template, scope and week, and the key is unique.
+  template, scope and period start, and the key is unique.
 */
 import { timingSafeEqual } from "node:crypto";
 import { runAutoMarkets } from "@/lib/auto-markets";

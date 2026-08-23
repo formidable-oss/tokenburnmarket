@@ -123,6 +123,7 @@ export {
   parseOutcomeRef,
   parseTemplateParams,
   periodClosesAt,
+  utcDayOf,
   utcWeekOf,
 } from "./market-templates";
 export type {

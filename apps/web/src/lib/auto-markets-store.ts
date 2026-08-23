@@ -1,10 +1,10 @@
 /*
-  The Drizzle half of the weekly auto-creation. Statements only, no decisions.
+  The Drizzle half of automatic market creation. Statements only, no decisions.
 
   The one worth reading twice is `create`: it writes the Market and its Outcomes
   in a single batch, which Neon runs as one transaction, so a Market never
   exists without a book, and the unique `auto_key` is what makes a second run of
-  the same week insert nothing.
+  the same period insert nothing.
 */
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";

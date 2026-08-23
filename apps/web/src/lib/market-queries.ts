@@ -465,6 +465,7 @@ export async function globalModelUsage(
       and(
         gte(usageDays.day, week.start!),
         lte(usageDays.day, week.end),
+        isNull(usageDays.duplicateOfDeviceId),
         sql`${usageDays.trustLevel} <> 'quarantined'`,
       ),
     )
@@ -484,8 +485,16 @@ export const cachedGlobalModelUsage = unstable_cache(
   { revalidate: 60, tags: ["leaderboard"] },
 );
 
+/** Seven calendar days keeps a daily race close to what people are using now. */
+export const MODEL_RANKING_WINDOW_DAYS = 7;
+
+export function modelRankingSince(now: Date): string {
+  const start = now.getTime() - (MODEL_RANKING_WINDOW_DAYS - 1) * 86_400_000;
+  return new Date(start).toISOString().slice(0, 10);
+}
+
 /*
-  The models a Model Race runs on: the most burnt over the ranking window, in
+  The models a Model Race runs on: the most burnt over the last seven UTC days, in
   scope. Quarantined Usage is left out here as it is everywhere else, so a fake
   day cannot put a model on the board. Empty until anyone has synced.
 */
@@ -505,7 +514,8 @@ export async function modelsInPlay(
     .innerJoin(builders, eq(builders.id, usageDays.builderId))
     .where(
       and(
-        gte(usageDays.day, rankingSince(now)),
+        gte(usageDays.day, modelRankingSince(now)),
+        isNull(usageDays.duplicateOfDeviceId),
         sql`${usageDays.trustLevel} <> 'quarantined'`,
         country ? eq(builders.country, country) : undefined,
       ),

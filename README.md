@@ -102,7 +102,7 @@ For preview deployments, add a second OAuth app whose callback is the preview UR
 
 ### Cron schedules
 
-`/api/cron/mint` runs daily at 01:00 UTC, `/api/cron/markets` Mondays at 00:05 UTC, `/api/cron/resolve` every ten minutes. Sub-daily crons need a Pro team; the project lives on one. Deployment Protection is switched off for this project because the app is public and the cron endpoints authenticate with `CRON_SECRET`.
+`/api/cron/mint` runs daily at 01:00 UTC. `/api/cron/markets` runs daily at 00:05 UTC, opening a global Model Race from the top models of the trailing seven UTC days while keeping Community markets weekly. `/api/cron/resolve` runs every ten minutes. Sub-daily crons need a Pro team; the project lives on one. Deployment Protection is switched off for this project because the app is public and the cron endpoints authenticate with `CRON_SECRET`.
 
 ## Status
 

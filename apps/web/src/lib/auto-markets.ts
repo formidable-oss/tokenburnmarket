@@ -1,16 +1,18 @@
 /*
-  The weekly Markets nobody has to remember to open: a Top Burner in every
-  Community and one global Model Race, for the week that just started.
+  The Markets nobody has to remember to open: a weekly Top Burner in every
+  Community and a daily global Model Race made from the models people are
+  burning now.
 
   Expressed against a small store interface, the same shape the mint uses, so
   the decisions are testable without a database. One rule holds it together:
   every Market the job opens carries an `auto_key` of template, scope and
-  Monday, and the column is unique, so a second run in the same week inserts
-  nothing rather than a second market to split the liquidity.
+  period start, and the column is unique, so a second run in the same period
+  inserts nothing rather than a second market to split the liquidity.
 */
 import {
   MODEL_RACE_MODELS,
   autoMarketKey,
+  utcDayOf,
   utcWeekOf,
   type MarketPeriod,
   type MemberSnapshot,
@@ -41,6 +43,7 @@ export interface AutoMarketStore {
 }
 
 export interface AutoMarketRun {
+  day: MarketPeriod;
   week: MarketPeriod;
   /** The `auto_key` of every Market this run opened. */
   created: string[];
@@ -50,13 +53,14 @@ export interface AutoMarketRun {
   declined: { key: string; reason: string }[];
 }
 
-/** Opens this week's Markets. Safe to call as often as anyone likes. */
+/** Opens the current weekly Community Markets and today's global Model Race. */
 export async function runAutoMarkets(
   store: AutoMarketStore,
   now: Date = new Date(),
 ): Promise<AutoMarketRun> {
+  const day = utcDayOf(now);
   const week = utcWeekOf(now);
-  const run: AutoMarketRun = { week, created: [], skipped: [], declined: [] };
+  const run: AutoMarketRun = { day, week, created: [], skipped: [], declined: [] };
 
   const record = async (key: string, plan: MarketPlan, createdBy: string) => {
     const created = await store.create({ ...plan, autoKey: key }, createdBy);
@@ -85,7 +89,7 @@ export async function runAutoMarkets(
     await record(key, plan.value, community.ownerId);
   }
 
-  const raceKey = autoMarketKey("model_race", "global", week);
+  const raceKey = autoMarketKey("model_race", "global", day);
   const admin = await store.adminBuilderId();
   if (!admin) {
     // A global Market speaks for the site, so it needs an admin to open it.
@@ -93,11 +97,17 @@ export async function runAutoMarkets(
     return run;
   }
 
+  const models = raceModels(await store.topModels(MODEL_RACE_MODELS));
+  if (models.length < 2) {
+    run.declined.push({ key: raceKey, reason: "not enough recent models" });
+    return run;
+  }
+
   const params: ModelRaceParams = {
     template: "model_race",
     scope: { kind: "global" },
-    period: week,
-    models: raceModels(await store.topModels(MODEL_RACE_MODELS)),
+    period: day,
+    models,
   };
   const plan = planTemplateMarket({ params, audience: await store.builderCount() }, now);
   if (!plan.ok) {

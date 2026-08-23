@@ -17,6 +17,7 @@ import {
   nextUtcWeek,
   parseTemplateParams,
   periodClosesAt,
+  utcDayOf,
   utcWeekOf,
   type HeadToHeadParams,
   type MarketPeriod,
@@ -221,6 +222,13 @@ describe("questions and rules text", () => {
 });
 
 describe("weeks", () => {
+  it("cuts a daily market on the current UTC date", () => {
+    expect(utcDayOf(new Date("2026-08-18T23:59:00.000Z"))).toEqual({
+      start: "2026-08-18",
+      end: "2026-08-18",
+    });
+  });
+
   it("runs Monday to Sunday UTC, whichever day it is asked on", () => {
     // 2026-08-17 is a Monday; 2026-08-23 the Sunday that closes the same week.
     expect(utcWeekOf(new Date("2026-08-17T00:00:00.000Z"))).toEqual(WEEK);

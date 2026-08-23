@@ -101,6 +101,9 @@ export async function createMarket(
     }
 
     const models = raceModels(await modelsInPlay(MODEL_RACE_MODELS, country?.code ?? null));
+    if (models.length < 2) {
+      return fail("At least two models need recent usage before opening a model race.");
+    }
     params = {
       template: "model_race",
       scope: country

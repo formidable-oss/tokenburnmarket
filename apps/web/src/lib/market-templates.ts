@@ -2,12 +2,11 @@
   Turning a template into the rows a Market is made of. The template rules live
   in core; what lives here is everything the web app adds on top: which weeks a
   form may pick, how liquidity is sized from the audience, and the shape the
-  creation action and the weekly cron both insert.
+  creation action and the automatic job both insert.
 
   No database here, so a plan can be asserted without one.
 */
 import {
-  KNOWN_MODELS,
   MODEL_RACE_MODELS,
   buildTemplateOutcomes,
   lmsrLiquidityForAudience,
@@ -42,13 +41,11 @@ export function periodForChoice(choice: PeriodChoice, now: Date): MarketPeriod {
 }
 
 /*
-  The models a Model Race runs on: what people are actually burning, or the
-  known list while nobody has synced enough to rank two of them. A race needs at
-  least two runners, so the fallback is not optional.
+  The models a Model Race runs on, in current usage order. Outcomes are facts
+  about this Market, so an unobserved model must never be invented as fallback.
 */
 export function raceModels(observed: readonly string[]): string[] {
-  const models = observed.slice(0, MODEL_RACE_MODELS);
-  return models.length >= 2 ? models : KNOWN_MODELS.slice(0, MODEL_RACE_MODELS);
+  return [...new Set(observed)].slice(0, MODEL_RACE_MODELS);
 }
 
 /** What the picker shows, in the order it shows it. */
@@ -99,7 +96,7 @@ export interface MarketPlan {
   closesAt: Date;
   resolvesAt: Date;
   outcomes: TemplateOutcome[];
-  /** Set only by the weekly cron, which is what makes a repeat run a no-op. */
+  /** Set only by the automatic job, which makes a repeat run a no-op. */
   autoKey: string | null;
 }
 

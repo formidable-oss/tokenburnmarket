@@ -373,6 +373,12 @@ function toDay(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/** The UTC calendar day containing `now`, as a one-day Market period. */
+export function utcDayOf(now: Date): MarketPeriod {
+  const day = now.toISOString().slice(0, 10);
+  return { start: day, end: day };
+}
+
 /**
  * The Monday-to-Sunday UTC week containing `now`. Weeks are the unit both the
  * auto-created Markets and the week Season are cut on, so they line up.
@@ -401,7 +407,7 @@ export function periodClosesAt(period: MarketPeriod): Date {
 
 /**
  * The key that makes auto-creation idempotent: one Market per template, scope
- * and week, whatever happens to the cron in between.
+ * and period start, whatever happens to the cron in between.
  */
 export function autoMarketKey(
   template: MarketTemplate,
