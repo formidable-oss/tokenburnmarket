@@ -47,10 +47,22 @@ describe("summarizeUsage", () => {
   it("fills days with no usage so the sparkline keeps its shape", () => {
     const summary = summarizeUsage([row()], days);
     expect(summary.days).toEqual([
-      { day: "2026-08-15", costUsd: 0 },
-      { day: "2026-08-16", costUsd: 2.5 },
-      { day: "2026-08-17", costUsd: 0 },
+      { day: "2026-08-15", costUsd: 0, tokens: 0 },
+      { day: "2026-08-16", costUsd: 2.5, tokens: 1040 },
+      { day: "2026-08-17", costUsd: 0, tokens: 0 },
     ]);
+  });
+
+  it("combines cost and tokens into each daily chart point", () => {
+    const summary = summarizeUsage(
+      [
+        row({ costUsd: 1.25 }),
+        row({ provider: "codex", model: "gpt-5.6-sol", costUsd: 3.5 }),
+      ],
+      days,
+    );
+
+    expect(summary.days[1]).toEqual({ day: "2026-08-16", costUsd: 4.75, tokens: 2080 });
   });
 
   it("totals by provider and by model, heaviest first", () => {

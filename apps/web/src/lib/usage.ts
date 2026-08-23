@@ -24,6 +24,7 @@ export interface UsageRow {
 export interface UsageDayPoint {
   day: string;
   costUsd: number;
+  tokens: number;
 }
 
 export interface UsageGroup {
@@ -120,14 +121,21 @@ function round(value: number): number {
 
 export function summarizeUsage(rows: readonly UsageRow[], days: readonly string[]): UsageSummary {
   const counted = rows.filter((row) => row.trustLevel !== "quarantined");
-  const byDay = new Map(days.map((day) => [day, 0]));
+  const byDay = new Map(days.map((day) => [day, { costUsd: 0, tokens: 0 }]));
   for (const row of counted) {
     const current = byDay.get(row.day);
-    if (current !== undefined) byDay.set(row.day, current + row.costUsd);
+    if (current !== undefined) {
+      current.costUsd += row.costUsd;
+      current.tokens += tokensIn(row);
+    }
   }
 
   return {
-    days: days.map((day) => ({ day, costUsd: round(byDay.get(day) ?? 0) })),
+    days: days.map((day) => ({
+      day,
+      costUsd: round(byDay.get(day)?.costUsd ?? 0),
+      tokens: byDay.get(day)?.tokens ?? 0,
+    })),
     byProvider: group(counted, false),
     byModel: group(counted, true),
     totalCostUsd: round(counted.reduce((sum, row) => sum + row.costUsd, 0)),
