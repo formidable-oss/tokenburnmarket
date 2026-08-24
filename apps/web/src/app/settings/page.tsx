@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 import { currentBuilder } from "@/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CommandLine } from "@/components/ui/command-line";
 import { CreditsPanel } from "@/components/credits/credits-panel";
+import { AgentSetup } from "@/components/setup/agent-setup";
 import { recentCreditEntries } from "@/lib/credit-queries";
 import { activeDevicesFor } from "@/lib/device-auth";
+import { agentSetupPrompt } from "@/lib/setup-prompt";
 import { revokeDevice, signOutAction } from "./actions";
 import { SettingsForm } from "./settings-form";
 
@@ -36,10 +37,16 @@ export default async function SettingsPage() {
   return (
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
       <p className="type-label">settings</p>
-      <h1 className="type-heading mt-3">{builder.handle}</h1>
+      <h1 className="type-heading mt-3">@{builder.handle}</h1>
       <p className="mt-3 max-w-[46ch] text-[0.95rem] text-muted">
-        Two things are yours to set. Your handle and avatar come from GitHub.
+        GitHub owns your handle and avatar. Set your country and X handle here.
       </p>
+
+      {devices.length === 0 ? (
+        <div className="mt-8">
+          <AgentSetup prompt={agentSetupPrompt(builder.handle)} />
+        </div>
+      ) : null}
 
       <div className="signal-rail my-10" aria-hidden />
 
@@ -79,14 +86,9 @@ export default async function SettingsPage() {
       </p>
 
       {devices.length === 0 ? (
-        <div className="mt-6 max-w-[34rem]">
-          <p className="text-[0.95rem] text-muted">
-            No devices yet. Run this on the machine you code from, then approve the code here.
-          </p>
-          <div className="mt-4">
-            <CommandLine command="npx tokenburnmarket connect" />
-          </div>
-        </div>
+        <p className="mt-6 text-[0.95rem] text-muted">
+          No device yet. Start with the prompt above.
+        </p>
       ) : (
         <ul className="mt-6 rounded-(--radius-panel) border border-border bg-surface">
           {devices.map((device, index) => (

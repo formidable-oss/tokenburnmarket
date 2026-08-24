@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CommandLine } from "@/components/ui/command-line";
 import { ModelUsagePreview } from "@/components/landing/model-usage-preview";
 import { RegionBoards, type RegionBoardPreview } from "@/components/landing/region-boards";
 import { StatsStrip } from "@/components/landing/stats-strip";
@@ -77,15 +76,12 @@ export default async function Home() {
           </p>
 
           <div className="rise mt-9 max-w-[30rem]" style={{ "--i": 3 } as React.CSSProperties}>
-            <CommandLine command="npx tokenburnmarket connect" />
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Button as={Link} href="/signin" variant="secondary">
-                Sign in with GitHub
-              </Button>
-              <span className="text-[0.82rem] text-subtle">
-                Reads what ccusage reads. Nothing but totals leaves your machine.
-              </span>
-            </div>
+            <Button as={Link} href="/signin">
+              Get the setup prompt
+            </Button>
+            <p className="mt-3 text-[0.82rem] text-subtle">
+              Your agent installs the collector. Usage stays synced after that.
+            </p>
           </div>
         </div>
 

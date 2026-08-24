@@ -20,7 +20,7 @@ test("landing renders with the stats strip", async ({ page }) => {
     await expect(stats.getByText(label, { exact: true })).toBeVisible();
   }
 
-  await expect(page.getByRole("code").first()).toHaveText("npx tokenburnmarket connect");
+  await expect(page.getByRole("link", { name: "Get the setup prompt" })).toBeVisible();
 });
 
 test("the world leaderboard renders", async ({ page }) => {
@@ -33,7 +33,7 @@ test("the world leaderboard renders", async ({ page }) => {
 
 const docsPages = [
   { path: "/docs", heading: "How this works." },
-  { path: "/docs/setup", heading: "One command binds your machine." },
+  { path: "/docs/setup", heading: "Paste this into your agent." },
   { path: "/docs/verification", heading: "Verified means signed and plausible." },
   { path: "/docs/markets", heading: "A question, a clock, and a price." },
   { path: "/docs/credits", heading: "Whales earn more, not proportionally more." },
@@ -61,4 +61,27 @@ test("the sign-in page renders without starting OAuth", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Claim your handle");
   // The form's own submit. The header offers sign-in as a link, not a button.
   await expect(page.getByRole("button", { name: /^Sign in/ })).toBeVisible();
+});
+
+test("the setup prompt copies and manual setup stays optional", async ({ context, page }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: "http://localhost:3000",
+  });
+  await page.goto("/docs/setup");
+
+  const setup = page.getByRole("region", { name: "Give this prompt to your agent." });
+  const copy = setup.getByRole("button");
+  await expect(copy).toHaveText("Copy prompt");
+  await copy.click();
+  await expect(copy).toHaveText("Copied");
+
+  const prompt = await page.evaluate(() => navigator.clipboard.readText());
+  expect(prompt).toContain("tokenburnmarket connect");
+  expect(prompt).toContain("daemon install --interval 15m");
+  expect(prompt).toContain("Finish only when");
+
+  const manual = page.locator("details#manual");
+  await expect(manual).not.toHaveAttribute("open");
+  await manual.locator("summary").click();
+  await expect(manual).toHaveAttribute("open", "");
 });

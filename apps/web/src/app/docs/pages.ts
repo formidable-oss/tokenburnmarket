@@ -7,7 +7,7 @@ export const DOCS_PAGES = [
   {
     href: "/docs/setup",
     label: "Setup",
-    blurb: "Connect a machine, keep it synced, point your agent at the market.",
+    blurb: "Give your agent one prompt. It installs the collector and keeps usage synced.",
   },
   {
     href: "/docs/verification",

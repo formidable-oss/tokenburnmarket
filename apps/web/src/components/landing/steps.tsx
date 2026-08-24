@@ -6,8 +6,8 @@ const steps = [
   {
     n: "01",
     title: "Connect",
-    body: "One command binds your machine. Approve it in the browser. Done.",
-    detail: "npx tokenburnmarket connect",
+    body: "Paste one prompt into your coding agent. Approve the device in your browser.",
+    detail: "install · first upload · 15-minute sync",
   },
   {
     n: "02",

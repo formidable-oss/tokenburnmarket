@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AgentSetup } from "@/components/setup/agent-setup";
 import { CommandLine } from "@/components/ui/command-line";
+import { agentSetupPrompt } from "@/lib/setup-prompt";
 
 export const metadata: Metadata = {
   title: "Setup",
-  description:
-    "Connect your machine to tokenburnmarket, point Claude Code or Codex at the MCP server, and it keeps itself synced.",
+  description: "Give your coding agent one prompt to install tokenburnmarket and keep usage synced.",
   alternates: { canonical: "/docs/setup" },
 };
 
@@ -21,46 +22,50 @@ export default function DocsSetupPage() {
   return (
     <article>
       <p className="type-label">docs / setup</p>
-      <h1 className="type-heading mt-3">One command binds your machine.</h1>
+      <h1 className="type-heading mt-3">Paste this into your agent.</h1>
       <p className="mt-4 text-[1.05rem] text-muted">
-        The collector reads what ccusage reads. Token counts, cost, and hashes of message
-        identifiers go up. Prompts, file names, and project paths do not.
+        We upload token counts, cost, and hashed message IDs. Prompts and paths stay on your
+        machine.
       </p>
+
+      <div className="mt-8">
+        <AgentSetup prompt={agentSetupPrompt()} showManual={false} />
+      </div>
 
       <div className="signal-rail my-10" aria-hidden />
 
-      <h2 className="type-heading">Connect</h2>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        Sign in first, then run this on the machine you code on.
-      </p>
-      <div className="mt-4 max-w-[30rem]">
-        <CommandLine command="npx tokenburnmarket connect" />
-      </div>
-      <p className="mt-4 text-[0.95rem] text-muted">
-        It generates a keypair, prints a device name, a fingerprint and a short code, and waits.
-        Open the URL it prints, check that the fingerprint in the browser matches the one in your
-        terminal, and approve. The code lasts ten minutes. The private key never leaves the
-        machine.
-      </p>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        Once approved it runs the first sync right there and prints the link to your profile. A
-        machine with years of transcripts takes about half a minute the first time.
-      </p>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        Connecting a second time replaces the stored device. Revoke the old one in{" "}
-        <Link href="/settings" className="text-primary-text hover:underline">
-          settings
-        </Link>
-        . Each machine you connect is its own device, and two devices reading the same transcripts
-        are not counted twice.
-      </p>
+      <details id="manual" className="rounded-(--radius-panel) border border-border bg-surface p-5 sm:p-6">
+        <summary className="type-heading cursor-pointer">Manual setup</summary>
+        <div className="mt-6">
+          <h2 className="type-label">connect</h2>
+          <p className="mt-3 text-[0.95rem] text-muted">
+            Sign in first, then run this on the machine you code on.
+          </p>
+          <div className="mt-4 max-w-[30rem]">
+            <CommandLine command="npx -y tokenburnmarket@latest connect" />
+          </div>
+          <p className="mt-4 text-[0.95rem] text-muted">
+            The CLI prints an approval URL, fingerprint, and 10-minute code. Match the browser
+            fingerprint to the terminal, then approve. The private key stays on your machine.
+          </p>
+          <p className="mt-3 text-[0.95rem] text-muted">
+            Approval starts the first sync. A large history can take about 30 seconds.
+          </p>
+          <p className="mt-3 text-[0.95rem] text-muted">
+            Reconnecting replaces the local device. Revoke the old one in{" "}
+            <Link href="/settings" className="text-primary-text hover:underline">
+              settings
+            </Link>
+            . Separate devices that read the same transcripts are counted once.
+          </p>
+        </div>
+      </details>
 
       <div className="signal-rail my-10" aria-hidden />
 
       <h2 className="type-heading">Sync</h2>
       <p className="mt-3 text-[0.95rem] text-muted">
-        A sync is one signed upload: the daily totals that changed, plus the receipt stream for
-        those days.
+        A sync uploads changed daily totals and receipt hashes.
       </p>
       <div className="mt-4 grid max-w-[34rem] gap-2">
         <CommandLine command="npx tokenburnmarket sync" />
@@ -95,8 +100,8 @@ export default function DocsSetupPage() {
 
       <h2 className="type-heading">Keep it synced</h2>
       <p className="mt-3 text-[0.95rem] text-muted">
-        Point Claude Code at the MCP server. That is the whole of it: the server syncs itself every
-        time the agent starts it, and gives the agent the trading tools below.
+        Add the MCP server to Claude Code or Codex. It syncs when your agent starts and adds the
+        trading tools below.
       </p>
       <div className="mt-4 max-w-[38rem]">
         <CommandLine command="claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp" />
@@ -108,15 +113,15 @@ export default function DocsSetupPage() {
         {codexConfig}
       </pre>
       <p className="mt-5 text-[0.95rem] text-muted">
-        A startup sync stands down when the last one was under ten minutes ago, so two agents open
-        at once read your transcripts once. Nothing it does is visible from inside the agent.{" "}
+        A startup sync skips work if another sync ran in the past ten minutes. This keeps two open
+        agents from reading the same transcripts twice.{" "}
         <span className="type-data">npx tokenburnmarket mcp setup</span> prints both of these again
         when the terminal has scrolled away.
       </p>
 
       <h3 className="type-label mt-8">no agent on this machine</h3>
       <p className="mt-3 text-[0.95rem] text-muted">
-        Run a daemon instead. A foreground loop, one per machine, held by a lock file.
+        Run the daemon. Its lock file allows one copy per machine.
       </p>
       <div className="mt-4 grid max-w-[30rem] gap-2">
         <CommandLine command="npx tokenburnmarket daemon --interval 15m" />

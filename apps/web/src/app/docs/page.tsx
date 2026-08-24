@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CommandLine } from "@/components/ui/command-line";
+import { Button } from "@/components/ui/button";
 import { DOCS_PAGES } from "./pages";
 
 export const metadata: Metadata = {
@@ -16,12 +16,13 @@ export default function DocsIndexPage() {
       <p className="type-label">docs</p>
       <h1 className="type-heading mt-3">How this works.</h1>
       <p className="mt-4 text-[1.05rem] text-muted">
-        Four pages. Setup is the only one you need before you can play. The other three explain
-        what the numbers mean and how they settle.
+        Start with setup. The other pages explain the numbers and how markets settle.
       </p>
 
-      <div className="mt-8 max-w-[30rem]">
-        <CommandLine command="npx tokenburnmarket connect" />
+      <div className="mt-8">
+        <Button as={Link} href="/docs/setup">
+          Open the setup prompt
+        </Button>
       </div>
 
       <div className="signal-rail my-10" aria-hidden />
@@ -42,8 +43,8 @@ export default function DocsIndexPage() {
       <h2 className="type-label">the short version</h2>
       <ol className="mt-4 space-y-3 text-[0.95rem] text-muted">
         <li>
-          <span className="text-foreground">1.</span> One command binds your machine. Only token
-          counts, cost, and hashes of message identifiers leave it.
+          <span className="text-foreground">1.</span> One prompt connects your machine and keeps it
+          synced. Only token counts, cost, and hashed message IDs leave it.
         </li>
         <li>
           <span className="text-foreground">2.</span> Each closed day mints credits from what your

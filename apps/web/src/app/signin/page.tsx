@@ -76,8 +76,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
 
         <div className="signal-rail my-7" aria-hidden />
         <p className="text-[0.85rem] text-subtle">
-          Next you run one command to bind your machine. Verified means signed and plausible. Not
-          proof.
+          Next, paste one prompt into your coding agent. It sets up usage sync.
         </p>
       </div>
     </section>
