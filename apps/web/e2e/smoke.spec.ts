@@ -64,10 +64,11 @@ test("the sign-in page renders without starting OAuth", async ({ page }) => {
 });
 
 test("the setup prompt copies and manual setup stays optional", async ({ context, page }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: "http://localhost:3000",
-  });
   await page.goto("/docs/setup");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
+  await page.reload();
 
   const setup = page.getByRole("region", { name: "Give this prompt to your agent." });
   const copy = setup.getByRole("button");
