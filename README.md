@@ -21,11 +21,12 @@ There are plenty of "who spent the most tokens" boards. Most rank raw spend, mos
 
 ## How it works
 
-1. `npx tokenburnmarket connect` binds your machine. Approve the short code in the browser.
+1. Install the CLI, then `tokenburnmarket connect` to bind your machine. Approve the short code in the browser.
 2. The collector runs ccusage, builds daily totals per provider and model, signs them, and syncs. Only totals and identifier hashes leave your machine, never transcripts.
-3. Each closed day mints credits from your estimated cost (LiteLLM prices).
-4. Bet on markets: who burns most this week, will someone cross a threshold, who wins head to head, which model wins the race.
-5. Markets close, resolve from usage, and pay one credit per winning share.
+3. `tokenburnmarket daemon install` starts a per-user service that uploads every 15 minutes; MCP also syncs when an agent session starts.
+4. Each closed day mints credits from your estimated cost (LiteLLM prices).
+5. Bet on markets: who burns most this week, will someone cross a threshold, who wins head to head, which model wins the race.
+6. Markets close, resolve from usage, and pay one credit per winning share.
 
 Works with every agent ccusage can read: Claude Code, Codex, Cursor, Copilot, Gemini CLI, OpenCode, Amp, and more. Agents where we can read per-message identifiers (Claude Code, Codex) get **verified** usage; the rest are **reported** and mint at a discount.
 

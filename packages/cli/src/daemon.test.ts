@@ -7,6 +7,7 @@ import {
   MIN_INTERVAL_MS,
   acquireLock,
   daemon,
+  installDaemon,
   installSnippet,
   lockPathFor,
   parseInterval,
@@ -194,6 +195,105 @@ describe("installSnippet", () => {
   it("carries the interval into the unit", () => {
     expect(installSnippet({ ...context, platform: "linux", interval: "1h" }).join("\n")).toContain(
       "--interval 1h",
+    );
+  });
+});
+
+describe("installDaemon", () => {
+  const context = {
+    execPath: "/usr/local/bin/node",
+    scriptPath: "/usr/local/lib/node_modules/tokenburnmarket/dist/index.js",
+    interval: "15m",
+  };
+
+  it("writes and loads the launchd job on macOS", () => {
+    const home = workDir();
+    const calls: string[] = [];
+    const lines: string[] = [];
+
+    const code = installDaemon(
+      { ...context, platform: "darwin", home },
+      {
+        log: (line) => lines.push(line),
+        run: (command, args) => {
+          calls.push([command, ...args].join(" "));
+          return { status: 0, stderr: "" };
+        },
+      },
+    );
+
+    const path = join(home, "Library/LaunchAgents/com.tokenburnmarket.daemon.plist");
+    expect(code).toBe(0);
+    const plist = readFileSync(path, "utf8");
+    expect(plist).toContain("com.tokenburnmarket.daemon");
+    expect(plist).toContain("<key>PATH</key>");
+    expect(plist).toContain("/usr/local/bin");
+    expect(calls).toContain(`launchctl load -w ${path}`);
+    expect(lines.join("\n")).toContain("Installed and started");
+  });
+
+  it("writes and enables the systemd user service on Linux", () => {
+    const home = workDir();
+    const calls: string[] = [];
+
+    const code = installDaemon(
+      { ...context, platform: "linux", home },
+      {
+        log: () => {},
+        run: (command, args) => {
+          calls.push([command, ...args].join(" "));
+          return { status: 0, stderr: "" };
+        },
+      },
+    );
+
+    const path = join(home, ".config/systemd/user/tokenburnmarket.service");
+    expect(code).toBe(0);
+    expect(readFileSync(path, "utf8")).toContain("ExecStart=/usr/local/bin/node");
+    expect(calls).toEqual([
+      "systemctl --user daemon-reload",
+      "systemctl --user enable --now tokenburnmarket",
+    ]);
+  });
+
+  it("fails loudly when the service manager refuses the install", () => {
+    const lines: string[] = [];
+    const code = installDaemon(
+      { ...context, platform: "darwin", home: workDir() },
+      {
+        log: (line) => lines.push(line),
+        run: () => ({ status: 1, stderr: "service manager refused" }),
+      },
+    );
+
+    expect(code).toBe(1);
+    expect(lines.join("\n")).toContain("service manager refused");
+    expect(lines.join("\n")).not.toContain("Installed and started");
+  });
+
+  it("refuses to persist a temporary npx cache path", () => {
+    const home = workDir();
+    let called = false;
+    const code = installDaemon(
+      {
+        ...context,
+        platform: "darwin",
+        home,
+        scriptPath: join(home, ".npm/_npx/temporary/node_modules/tokenburnmarket/dist/index.js"),
+      },
+      {
+        log: () => {},
+        run: () => {
+          called = true;
+          return { status: 0, stderr: "" };
+        },
+      },
+    );
+
+    expect(code).toBe(1);
+    expect(called).toBe(false);
+    expect(existsSync(join(home, "Library/LaunchAgents/com.tokenburnmarket.daemon.plist"))).toBe(
+      false,
     );
   });
 });

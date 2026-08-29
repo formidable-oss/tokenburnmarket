@@ -10,8 +10,12 @@ identifiers. No prompts, no file names, no project paths.
 ## Connect
 
 ```
-npx tokenburnmarket connect
+npm install --global tokenburnmarket@latest
+tokenburnmarket connect
 ```
+
+Verify `command -v tokenburnmarket` resolves before connecting. If it does not,
+use a user-owned npm prefix whose bin directory is on your `PATH`.
 
 It prints a short code and a URL. Approve it in the browser and this machine is
 bound to your account, then it runs the first sync and prints where to see
@@ -38,20 +42,21 @@ On a machine that never opens an agent, run a daemon instead. It is a
 foreground loop, one per machine, held by a lock file.
 
 ```
-npx tokenburnmarket daemon --interval 15m
-npx tokenburnmarket daemon install
+tokenburnmarket daemon install --interval 15m
+tokenburnmarket daemon install --dry-run
 ```
 
-`daemon install` prints the launchd job or the systemd user unit for this
-machine, pointing at this node and this script. It prints; it never writes.
+`daemon install` creates and starts the per-user LaunchAgent, systemd service,
+or Windows scheduled task. The dry run previews the service definition and
+changes nothing. It refuses to persist an executable from a temporary npx cache.
 
 ## Sync by hand
 
 ```
-npx tokenburnmarket sync            # the days since the last sync
-npx tokenburnmarket sync --since 7  # the last seven days
-npx tokenburnmarket sync --dry-run  # what would go, without sending it
-npx tokenburnmarket status          # what is stored on this machine
+tokenburnmarket sync            # the days since the last sync
+tokenburnmarket sync --since 7  # the last seven days
+tokenburnmarket sync --dry-run  # what would go, without sending it
+tokenburnmarket status          # what is stored on this machine
 ```
 
 `sync` is safe to run whenever. A sync you run yourself is never skipped.

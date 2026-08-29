@@ -41,12 +41,17 @@ export default function DocsSetupPage() {
           <p className="mt-3 text-[0.95rem] text-muted">
             Sign in first, then run this on the machine you code on.
           </p>
-          <div className="mt-4 max-w-[30rem]">
-            <CommandLine command="npx -y tokenburnmarket@latest connect" />
+          <div className="mt-4 grid max-w-[38rem] gap-2">
+            <CommandLine command="npm install --global tokenburnmarket@latest" />
+            <CommandLine command="tokenburnmarket connect" />
           </div>
           <p className="mt-4 text-[0.95rem] text-muted">
             The CLI prints an approval URL, fingerprint, and 10-minute code. Match the browser
             fingerprint to the terminal, then approve. The private key stays on your machine.
+          </p>
+          <p className="mt-3 text-[0.95rem] text-muted">
+            Verify <span className="type-data">command -v tokenburnmarket</span> first. If it does
+            not resolve, use a user-owned npm prefix whose bin directory is already on your PATH.
           </p>
           <p className="mt-3 text-[0.95rem] text-muted">
             Approval starts the first sync. A large history can take about 30 seconds.
@@ -68,10 +73,10 @@ export default function DocsSetupPage() {
         A sync uploads changed daily totals and receipt hashes.
       </p>
       <div className="mt-4 grid max-w-[34rem] gap-2">
-        <CommandLine command="npx tokenburnmarket sync" />
-        <CommandLine command="npx tokenburnmarket sync --since 7" />
-        <CommandLine command="npx tokenburnmarket sync --dry-run" />
-        <CommandLine command="npx tokenburnmarket status" />
+        <CommandLine command="tokenburnmarket sync" />
+        <CommandLine command="tokenburnmarket sync --since 7" />
+        <CommandLine command="tokenburnmarket sync --dry-run" />
+        <CommandLine command="tokenburnmarket status" />
       </div>
       <dl className="mt-6 grid gap-3 text-[0.95rem] text-muted">
         <div className="flex gap-4">
@@ -124,13 +129,13 @@ export default function DocsSetupPage() {
         Run the daemon. Its lock file allows one copy per machine.
       </p>
       <div className="mt-4 grid max-w-[30rem] gap-2">
-        <CommandLine command="npx tokenburnmarket daemon --interval 15m" />
-        <CommandLine command="npx tokenburnmarket daemon install" />
+        <CommandLine command="tokenburnmarket daemon install --interval 15m" />
+        <CommandLine command="tokenburnmarket daemon install --dry-run" />
       </div>
       <p className="mt-4 text-[0.95rem] text-muted">
-        <span className="type-data">daemon install</span> prints the launchd job or the systemd
-        user unit for this machine, pointing at this node and this script. It prints; it never
-        writes.
+        <span className="type-data">daemon install</span> creates and starts the per-user
+        LaunchAgent, systemd service, or Windows scheduled task. The dry run previews the service
+        definition and changes nothing.
       </p>
 
       <div className="signal-rail my-10" aria-hidden />

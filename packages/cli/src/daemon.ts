@@ -4,11 +4,12 @@
   Foreground on purpose. A background daemon that forks itself has to own its
   own logs, its own restarts and its own uninstall story; a foreground loop that
   a service manager supervises has none of those problems, and `daemon install`
-  prints the unit that does the supervising.
+  installs and starts the unit that does the supervising.
 
   One machine runs one daemon. The lock file is how that is enforced, and it is
   a plain file rather than a socket so a crash leaves something readable behind.
 */
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { currentConfigDir } from "./config.js";
@@ -178,6 +179,29 @@ export interface InstallContext {
   home: string;
 }
 
+interface CommandResult {
+  status: number | null;
+  stderr: string;
+}
+
+export interface InstallDaemonOptions {
+  log?: (line: string) => void;
+  run?: (command: string, args: readonly string[]) => CommandResult;
+}
+
+function servicePath(context: InstallContext): string {
+  return [
+    dirname(context.execPath),
+    join(context.home, ".local/bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ]
+    .filter((path, index, all) => all.indexOf(path) === index)
+    .join(":");
+}
+
 /** The launchd job macOS wants, keyed by the reverse-DNS label launchd expects. */
 function launchdPlist(context: InstallContext): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -193,6 +217,10 @@ function launchdPlist(context: InstallContext): string {
     <string>--interval</string>
     <string>${context.interval}</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>${servicePath(context)}</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>${context.home}/Library/Logs/tokenburnmarket.log</string>
@@ -208,6 +236,7 @@ After=network-online.target
 
 [Service]
 Type=simple
+Environment="PATH=${servicePath(context)}"
 ExecStart=${context.execPath} ${context.scriptPath} daemon --interval ${context.interval}
 Restart=always
 RestartSec=30
@@ -216,10 +245,115 @@ RestartSec=30
 WantedBy=default.target`;
 }
 
+function runCommand(command: string, args: readonly string[]): CommandResult {
+  const result = spawnSync(command, args, { encoding: "utf8" });
+  return {
+    status: result.status,
+    stderr: result.stderr?.trim() || result.error?.message || "",
+  };
+}
+
+function commandFailed(
+  result: CommandResult,
+  action: string,
+  log: (line: string) => void,
+): boolean {
+  if (result.status === 0) return false;
+  log(`${action} failed${result.stderr ? `: ${result.stderr}` : "."}`);
+  return true;
+}
+
+/** Install and start the current CLI as a per-user background service. */
+export function installDaemon(
+  context: InstallContext,
+  options: InstallDaemonOptions = {},
+): number {
+  const log = options.log ?? ((line: string) => console.log(line));
+  const run = options.run ?? runCommand;
+  const interval = parseInterval(context.interval);
+  if (!interval.ok) {
+    log(interval.error);
+    return 1;
+  }
+  if (/[\\/]_npx[\\/]/.test(context.scriptPath)) {
+    log("Refusing to install a service from a temporary npx cache.");
+    log("Install the CLI first: npm install --global tokenburnmarket@latest");
+    return 1;
+  }
+
+  if (context.platform === "darwin") {
+    const path = join(context.home, "Library/LaunchAgents/com.tokenburnmarket.daemon.plist");
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    if (existsSync(path)) run("launchctl", ["unload", "-w", path]);
+    writeFileSync(path, `${launchdPlist(context)}\n`, { mode: 0o600 });
+    if (commandFailed(run("launchctl", ["load", "-w", path]), "Starting the LaunchAgent", log)) {
+      return 1;
+    }
+    log(`Installed and started ${path}`);
+    log(
+      `Usage will sync every ${context.interval}. Logs: ${context.home}/Library/Logs/tokenburnmarket.log`,
+    );
+    return 0;
+  }
+
+  if (context.platform === "win32") {
+    const taskCommand = `"${context.execPath}" "${context.scriptPath}" daemon --interval ${context.interval}`;
+    if (
+      commandFailed(
+        run("schtasks", [
+          "/Create",
+          "/F",
+          "/SC",
+          "ONLOGON",
+          "/RL",
+          "LIMITED",
+          "/TN",
+          "tokenburnmarket",
+          "/TR",
+          taskCommand,
+        ]),
+        "Installing the scheduled task",
+        log,
+      )
+    ) {
+      return 1;
+    }
+    if (
+      commandFailed(
+        run("schtasks", ["/Run", "/TN", "tokenburnmarket"]),
+        "Starting the scheduled task",
+        log,
+      )
+    ) {
+      return 1;
+    }
+    log("Installed and started the tokenburnmarket scheduled task.");
+    log(`Usage will sync every ${context.interval}.`);
+    return 0;
+  }
+
+  const path = join(context.home, ".config/systemd/user/tokenburnmarket.service");
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(path, `${systemdUnit(context)}\n`, { mode: 0o600 });
+  if (commandFailed(run("systemctl", ["--user", "daemon-reload"]), "Reloading systemd", log)) {
+    return 1;
+  }
+  if (
+    commandFailed(
+      run("systemctl", ["--user", "enable", "--now", "tokenburnmarket"]),
+      "Starting the systemd service",
+      log,
+    )
+  ) {
+    return 1;
+  }
+  log(`Installed and started ${path}`);
+  log(`Usage will sync every ${context.interval}.`);
+  return 0;
+}
+
 /**
- * What `daemon install` prints. It prints; it never writes. A service that
- * starts on login is the sort of thing someone should read before it exists,
- * and the two commands underneath are the whole install.
+ * Preview what `daemon install` will write and run without changing the machine.
  */
 export function installSnippet(context: InstallContext): string[] {
   if (context.platform === "darwin") {

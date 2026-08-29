@@ -10,7 +10,7 @@ import { parseArgs } from "./args.js";
 import { connect } from "./connect.js";
 import { currentConfigPath, readConfig, resolveServerUrl } from "./config.js";
 import { describeError } from "./errors.js";
-import { daemon, DEFAULT_INTERVAL, installSnippet } from "./daemon.js";
+import { daemon, DEFAULT_INTERVAL, installDaemon, installSnippet } from "./daemon.js";
 import { runMcpServer } from "./mcp.js";
 import { mcpSetupLines } from "./setup.js";
 import { sync } from "./sync.js";
@@ -21,7 +21,8 @@ const USAGE = `tokenburnmarket
   sync [--since N] [--dry-run] [--quiet] upload usage for the days that changed
   status                                 show what is stored on this machine
   daemon [--interval 15m]                sync on a timer, in the foreground
-  daemon install [--interval 15m]        print the launchd or systemd unit to install
+  daemon install [--interval 15m]        install and start a per-user sync service
+  daemon install --dry-run               print the service definition, change nothing
   mcp                                    run the MCP server on stdio; syncs at startup
   mcp setup                              print the lines that point an agent here
 
@@ -92,16 +93,18 @@ async function main(): Promise<number> {
       return 0;
     case "daemon": {
       if (subcommand === "install") {
-        for (const line of installSnippet({
+        const context = {
           platform: process.platform,
           execPath: process.execPath,
           scriptPath: process.argv[1] ?? "tokenburnmarket",
           interval: flags.interval ?? DEFAULT_INTERVAL,
           home: process.env.HOME ?? process.env.USERPROFILE ?? "~",
-        })) {
-          console.log(line);
+        };
+        if (switches.has("dry-run")) {
+          for (const line of installSnippet(context)) console.log(line);
+          return 0;
         }
-        return 0;
+        return installDaemon(context);
       }
       if (subcommand) {
         console.error(`Unknown daemon command: ${subcommand}`);

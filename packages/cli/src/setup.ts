@@ -10,6 +10,8 @@
 /** Ready to paste: Claude Code, then the Codex config file, then the no-agent fallback. */
 export function mcpSetupLines(): string[] {
   return [
+    "The first upload is complete. Automatic sync is not active until you add MCP or the daemon:",
+    "",
     "Keep it synced. Add the MCP server and it syncs itself every session:",
     "  claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp",
     "",
