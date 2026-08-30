@@ -7,8 +7,7 @@ import GitHub from "next-auth/providers/github";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { builders } from "@/db/schema";
-import { grantSignupCredits } from "@/lib/mint";
-import { drizzleMintStore } from "@/lib/mint-store";
+import { upsertAuthenticatedBuilder } from "@/lib/auth-builder";
 
 /*
   Auth.js v5. GitHub is the only real sign-in; the session is a JWT, so there is
@@ -29,27 +28,6 @@ export const devSignInHandle =
 
 /** GitHub serves a public avatar for any login, which keeps dev profiles realistic. */
 const avatarForHandle = (handle: string) => `https://github.com/${handle}.png`;
-
-type Identity = { githubId: string; handle: string; avatarUrl: string | null };
-
-/*
-  First sign-in creates the Builder, later sign-ins reuse it. github_id is the
-  conflict target rather than handle, so a GitHub rename updates the handle in
-  place instead of forking a second Builder.
-
-  The signup grant is asked for on every sign-in rather than only on insert: the
-  ledger ref makes the second ask a no-op, and a Builder created before the
-  ledger existed still gets their Credits the next time they show up.
-*/
-async function upsertBuilder({ githubId, handle, avatarUrl }: Identity) {
-  const [builder] = await db
-    .insert(builders)
-    .values({ githubId, handle, avatarUrl })
-    .onConflictDoUpdate({ target: builders.githubId, set: { handle, avatarUrl } })
-    .returning({ id: builders.id, handle: builders.handle, avatarUrl: builders.avatarUrl });
-  if (builder) await grantSignupCredits(drizzleMintStore, builder.id);
-  return builder;
-}
 
 const providers: NextAuthConfig["providers"] = [];
 
@@ -88,10 +66,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
   pages: { signIn: "/signin" },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       // `user` is only present on the sign-in request; that is where the Builder is upserted.
       if (user?.id && user.name) {
-        const builder = await upsertBuilder({
+        const builder = await upsertAuthenticatedBuilder({
+          provider: account?.provider ?? "",
           githubId: user.id,
           handle: user.name,
           avatarUrl: user.image ?? null,
