@@ -7,7 +7,7 @@ import GitHub from "next-auth/providers/github";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { builders } from "@/db/schema";
-import { upsertAuthenticatedBuilder } from "@/lib/auth-builder";
+import { authBuilderIdentity, upsertAuthenticatedBuilder } from "@/lib/auth-builder";
 
 /*
   Auth.js v5. GitHub is the only real sign-in; the session is a JWT, so there is
@@ -69,12 +69,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, account }) {
       // `user` is only present on the sign-in request; that is where the Builder is upserted.
       if (user?.id && user.name) {
-        const builder = await upsertAuthenticatedBuilder({
-          provider: account?.provider ?? "",
-          githubId: user.id,
-          handle: user.name,
-          avatarUrl: user.image ?? null,
-        });
+        const builder = await upsertAuthenticatedBuilder(
+          authBuilderIdentity(account, { id: user.id, name: user.name, image: user.image }),
+        );
         token.builderId = builder.id;
         token.handle = builder.handle;
         token.picture = builder.avatarUrl;

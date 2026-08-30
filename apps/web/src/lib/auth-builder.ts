@@ -23,6 +23,22 @@ export interface AuthBuilderStore {
   upsertByGithubId(identity: AuthBuilderIdentity): Promise<AuthBuilder>;
 }
 
+type AuthAccount = { provider: string; providerAccountId: string } | null | undefined;
+type AuthUser = { id: string; name: string; image?: string | null };
+
+/** Auth.js generates `user.id` for OAuth, while the provider subject lives on the Account. */
+export function authBuilderIdentity(account: AuthAccount, user: AuthUser): AuthBuilderIdentity {
+  return {
+    provider: account?.provider ?? "",
+    githubId:
+      account?.provider === "github" && account.providerAccountId
+        ? account.providerAccountId
+        : user.id,
+    handle: user.name,
+    avatarUrl: user.image ?? null,
+  };
+}
+
 const isVerifiedGitHubIdentity = (identity: AuthBuilderIdentity) =>
   identity.provider === "github" && /^\d+$/.test(identity.githubId);
 

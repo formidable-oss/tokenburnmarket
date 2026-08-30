@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  authBuilderIdentity,
   persistAuthenticatedBuilder,
   type AuthBuilder,
   type AuthBuilderIdentity,
@@ -63,5 +64,25 @@ describe("persistAuthenticatedBuilder", () => {
     expect(authStore.hasGithubId).not.toHaveBeenCalled();
     expect(authStore.claimLegacyHandle).not.toHaveBeenCalled();
     expect(authStore.upsertByGithubId).toHaveBeenCalledWith(devIdentity);
+  });
+});
+
+describe("authBuilderIdentity", () => {
+  it("uses GitHub's stable provider account id instead of Auth.js's ephemeral user id", () => {
+    expect(
+      authBuilderIdentity(
+        { provider: "github", providerAccountId: "12345678" },
+        { id: "5fd85a02-d8c9-4715-88b9-48804779d001", name: "ada", image: null },
+      ),
+    ).toMatchObject({ provider: "github", githubId: "12345678", handle: "ada" });
+  });
+
+  it("keeps the development provider's user id", () => {
+    expect(
+      authBuilderIdentity(
+        { provider: "dev", providerAccountId: "dev:ada" },
+        { id: "dev:ada", name: "ada", image: null },
+      ),
+    ).toMatchObject({ provider: "dev", githubId: "dev:ada", handle: "ada" });
   });
 });
