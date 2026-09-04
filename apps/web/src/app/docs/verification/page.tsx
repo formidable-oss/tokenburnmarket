@@ -21,7 +21,7 @@ const checks = [
   ["Cache ratio", "Cache reads may exceed cache writes by at most four hundred times within a day."],
   ["Daily cost", "A ceiling per provider, sized against the largest known plan tier. 3000 USD by default."],
   ["Backfill window", "A device may amend the two days before its own watermark. Older days do not move."],
-  ["Receipt coherence", "Each receipt stands for one assistant message, so tokens per receipt has to be believable."],
+  ["Receipt coherence", "Each receipt stands for a message or billed turn, so tokens per receipt has to be believable."],
 ] as const;
 
 export default function DocsVerificationPage() {
