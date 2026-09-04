@@ -4,6 +4,7 @@
 */
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { checkPlausibility } from "@tokenburnmarket/core";
 import { ccusageCommand, parseCodexReasoning, parseUnifiedDaily, readUsageAggregates } from "./ccusage.js";
 import { buildSyncDays, shiftDay, windowStart } from "./collect.js";
 import { readReceiptStreams } from "./receipts.js";
@@ -238,6 +239,52 @@ describe("buildSyncDays", () => {
   it("sorts hashes so the same machine signs the same bytes twice", () => {
     const [first] = buildSyncDays(parseUnifiedDaily(UNIFIED), receipts, { now });
     expect(first?.receipts).toEqual([...first!.receipts].sort());
+  });
+
+  it("attaches Grok receipts to ccusage rows so matching usage can be verified", () => {
+    const aggregates = parseUnifiedDaily({
+      daily: [{
+        period: "2026-08-16",
+        agents: [{
+          agent: "grok",
+          modelBreakdowns: [{
+            modelName: "grok-4.6-build",
+            inputTokens: 1200,
+            cacheReadTokens: 100,
+            cacheCreationTokens: 0,
+            outputTokens: 90,
+            cost: 0.02,
+          }],
+        }],
+      }],
+    });
+    const streams = readReceiptStreams({ GROK_HOME: fixture("grok") }, "/nonexistent-home");
+    const days = buildSyncDays(aggregates, streams, { now });
+
+    // Orphan receipts from other fixture days must not invent usage rows.
+    expect(days).toHaveLength(1);
+    const row = days[0]!;
+    expect(row).toMatchObject({
+      day: "2026-08-16",
+      provider: "grok",
+      model: "grok-4.6-build",
+      inputTokens: 1200,
+      cachedInputTokens: 100,
+      outputTokens: 90,
+      costUsd: 0.02,
+    });
+    expect(row.receipts).toEqual([
+      "1697a818b43fa1316cc3ae485ca0648e0765b391a678b63664e6b6adf3f64173",
+      "566f42a2cabfb85eacad7731cc3fda788214d6ca96885a580f0516ad2d7ad146",
+    ]);
+    expect(checkPlausibility({ ...row, receiptCount: row.receipts.length }, { now })).toEqual({
+      trustLevel: "verified",
+      reasons: [],
+    });
+
+    const [withoutStream] = buildSyncDays(aggregates, new Map(), { now });
+    expect(checkPlausibility({ ...withoutStream!, receiptCount: 0 }, { now }).trustLevel).toBe("reported");
+    expect(buildSyncDays(aggregates, streams, { now, start: "2026-08-17" })).toEqual([]);
   });
 
   it("drops days outside the window and days that have not happened", () => {

@@ -28,7 +28,7 @@ There are plenty of "who spent the most tokens" boards. Most rank raw spend, mos
 5. Bet on markets: who burns most this week, will someone cross a threshold, who wins head to head, which model wins the race.
 6. Markets close, resolve from usage, and pay one credit per winning share.
 
-Works with every agent ccusage can read: Claude Code, Codex, Cursor, Copilot, Gemini CLI, OpenCode, Amp, and more. Agents where we can read per-message identifiers (Claude Code, Codex) get **verified** usage; the rest are **reported** and mint at a discount.
+Works with every agent ccusage can read: Claude Code, Codex, Grok, Cursor, Copilot, Gemini CLI, OpenCode, Amp, and more. Claude Code, Codex, and Grok usage can be **verified** when matching receipt streams are available and pass the checks. Usage without a receipt stream is **reported** and mints at a discount.
 
 ## Repository
 
