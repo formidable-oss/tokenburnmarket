@@ -8,12 +8,16 @@
   event is one billed turn, identified by its session, its position in that
   session and its timestamp.
 
+  Grok writes an ACP update stream per session as `sessions/<cwd>/<id>/updates.jsonl`;
+  a `turn_completed` update is one billed turn and carries both its `prompt_id`
+  and the model it billed to.
+
   Two machines reading the same transcripts produce the same hashes, which is
   the whole point: the server can then tell one day of work from two.
 */
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 /** Streams keyed by (day, provider, model). Values are unique hashes. */
 export type ReceiptIndex = Map<string, Set<string>>;
@@ -39,6 +43,28 @@ function utcDay(value: unknown): string | null {
   const ms = Date.parse(value);
   if (Number.isNaN(ms)) return null;
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * UTC calendar day of an epoch-second timestamp, or null when it is not one.
+ *
+ * Grok's stream stamps events with whole seconds rather than the ISO strings
+ * Claude Code and Codex write, so `utcDay` cannot read it.
+ *
+ * A year outside 0000-9999 stringifies in extended ISO form (`+033658-09-27`),
+ * whose first ten characters are not a day. Checking the shape rather than a
+ * numeric range rejects that without dating the code, and it catches a
+ * millisecond stamp too: those land far enough in the future to fail here
+ * instead of being filed on a day no Usage row will ever match.
+ */
+function utcDayFromSeconds(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isInteger(value)) return null;
+  const day = new Date(value * 1000);
+  if (Number.isNaN(day.getTime())) return null;
+  const key = day.toISOString().slice(0, 10);
+  return DAY_KEY.test(key) ? key : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -101,6 +127,12 @@ export function claudeRoots(env: NodeJS.ProcessEnv, home: string): string[] {
 export function codexRoots(env: NodeJS.ProcessEnv, home: string): string[] {
   const configured = env.CODEX_HOME?.trim();
   return configured ? [configured] : [join(home, ".codex")];
+}
+
+/** Config root for Grok. GROK_HOME wins, as the Grok CLI itself defines it. */
+export function grokRoots(env: NodeJS.ProcessEnv, home: string): string[] {
+  const configured = env.GROK_HOME?.trim();
+  return configured ? [configured] : [join(home, ".grok")];
 }
 
 /**
@@ -198,17 +230,112 @@ export function readCodexStreams(roots: readonly string[], sinceDay?: string): R
   return index;
 }
 
-/** Both adapters, merged. Any other agent ccusage reports arrives without a stream, so Reported. */
+/**
+ * Whether a `modelUsage` record explicitly billed zero.
+ *
+ * A key that billed nothing has no Usage row to sit beside, and a Receipt with
+ * no tokens behind it is what the server's coherence check counts as one too
+ * many. This is the ONLY shape dropped: every `*Tokens` field present and each
+ * exactly the number zero. Anything else keeps its Receipt -- a non-record, a
+ * record with no token fields, or any non-zero or non-numeric field -- because
+ * dropping a real Receipt is the worse error: it makes a day look thinner than
+ * it was. No real turn hits this branch (every observed `modelUsage` key
+ * carried real tokens); it guards a turn that genuinely billed zero.
+ *
+ * The `*Tokens` suffix is the observed contract: every billing counter Grok
+ * writes ends in it (inputTokens, outputTokens, totalTokens, cachedReadTokens,
+ * cacheCreationTokens, reasoningTokens), and the fields that do not
+ * (modelCalls, apiDurationMs, costUsdTicks) are not token counts.
+ */
+function billedZero(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const tokenFields = Object.entries(value).filter(([field]) => field.endsWith("Tokens"));
+  return tokenFields.length > 0 && tokenFields.every(([, count]) => count === 0);
+}
+
+/**
+ * Grok: sha256(`sessionId:prompt_id`) per `turn_completed` update.
+ *
+ * One `turn_completed` is one billed turn. It carries `prompt_id`, a UUID the
+ * CLI assigns to the prompt, so the hash is stable across machines without
+ * depending on the event's position or its wall clock. A turn that billed
+ * nothing carries no `usage.modelUsage` and is skipped: with no model there is
+ * no row to attach it to.
+ *
+ * The model comes from the `modelUsage` keys rather than `_meta.modelId`,
+ * because those keys are the same strings ccusage reports (`grok-4.6-build`),
+ * and a Receipt only counts if it lands on the key its Usage row was filed
+ * under. A turn that split across models files one Receipt per model, matching
+ * the one row per model that ccusage emits for it.
+ */
+export function readGrokStreams(roots: readonly string[], sinceDay?: string): ReceiptIndex {
+  const index: ReceiptIndex = new Map();
+
+  for (const root of roots) {
+    // A Grok session directory also holds chat_history.jsonl and events.jsonl;
+    // only the ACP update stream carries turn boundaries.
+    const files = transcriptFiles(join(root, "sessions"), sinceDay).filter(
+      (path) => basename(path) === "updates.jsonl",
+    );
+
+    for (const file of files) {
+      for (const line of readLines(file)) {
+        if (line.length === 0 || !line.includes("turn_completed")) continue;
+
+        let entry: unknown;
+        try {
+          entry = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (!isRecord(entry) || !isRecord(entry.params)) continue;
+
+        const params = entry.params;
+        const update = params.update;
+        if (!isRecord(update) || update.sessionUpdate !== "turn_completed") continue;
+
+        const sessionId = params.sessionId;
+        const promptId = update.prompt_id;
+        if (typeof sessionId !== "string" || typeof promptId !== "string") continue;
+        if (!sessionId || !promptId) continue;
+
+        const usage = isRecord(update.usage) ? update.usage : undefined;
+        const modelUsage = usage && isRecord(usage.modelUsage) ? usage.modelUsage : undefined;
+        if (!modelUsage) continue;
+
+        const day = utcDayFromSeconds(entry.timestamp);
+        if (!day) continue;
+        if (sinceDay && day < sinceDay) continue;
+
+        const hash = sha256(`${sessionId}:${promptId}`);
+        for (const [model, billed] of Object.entries(modelUsage)) {
+          if (!model || billedZero(billed)) continue;
+          add(index, day, "grok", model, hash);
+        }
+      }
+    }
+  }
+
+  return index;
+}
+
+/** Every adapter, merged. Any other agent ccusage reports arrives without a stream, so Reported. */
 export function readReceiptStreams(
   env: NodeJS.ProcessEnv,
   home: string,
   sinceDay?: string,
 ): ReceiptIndex {
   const index = readClaudeStreams(claudeRoots(env, home), sinceDay);
-  for (const [key, hashes] of readCodexStreams(codexRoots(env, home), sinceDay)) {
-    const existing = index.get(key);
-    if (existing) for (const hash of hashes) existing.add(hash);
-    else index.set(key, hashes);
+  const rest = [
+    readCodexStreams(codexRoots(env, home), sinceDay),
+    readGrokStreams(grokRoots(env, home), sinceDay),
+  ];
+  for (const stream of rest) {
+    for (const [key, hashes] of stream) {
+      const existing = index.get(key);
+      if (existing) for (const hash of hashes) existing.add(hash);
+      else index.set(key, hashes);
+    }
   }
   return index;
 }
