@@ -73,9 +73,9 @@ export default function DocsVerificationPage() {
 
       <h2 className="type-heading">Receipt streams</h2>
       <p className="mt-3 text-[0.95rem] text-muted">
-        A receipt stream is the ordered list of hashes of the per-message identifiers behind a
-        day&apos;s usage. Claude Code and Codex both give the collector an identifier per assistant
-        message. We hash it and send the hashes, in order. No content, no prompts, no file names.
+        A receipt stream is a sorted list of unique hashes identifying the messages or billed
+        turns behind a day&apos;s usage. The collector reads these identifiers from Claude Code,
+        Codex, and Grok, hashes them, and sends the hashes. No content, no prompts, no file names.
       </p>
       <p className="mt-3 text-[0.95rem] text-muted">Two things fall out of that:</p>
       <ul className="mt-3 space-y-2 text-[0.95rem] text-muted">

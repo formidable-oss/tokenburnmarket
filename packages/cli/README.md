@@ -87,6 +87,11 @@ Credits are play money. A winning share pays 1 credit.
 | --- | --- |
 | `TBM_SERVER` | the server to talk to, same as `--server` |
 | `TBM_CCUSAGE` | a local ccusage command to run instead of `npx -y ccusage@latest` |
+| `GROK_HOME` | Grok config directory containing `sessions/`; defaults to `~/.grok` |
+
+Receipt streams are supported for Claude Code, Codex, and Grok. Grok receipts
+come from completed turns in `sessions/**/updates.jsonl`. Usage with a matching
+stream can be verified when it passes the server's checks.
 
 Config lives in the platform config directory: `~/Library/Application Support/tokenburnmarket`
 on macOS, `%APPDATA%\tokenburnmarket` on Windows, `$XDG_CONFIG_HOME/tokenburnmarket`
