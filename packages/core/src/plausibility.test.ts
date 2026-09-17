@@ -97,9 +97,57 @@ describe("checkPlausibility", () => {
     ).toContain("stale_backfill");
   });
 
-  it("quarantines a Receipt Stream that cannot account for the tokens", () => {
-    expect(codes(ordinaryDay({ receiptCount: 1 }))).toContain("receipt_stream_incoherent");
-    expect(codes(ordinaryDay({ receiptCount: 5_000_000 }))).toContain("receipt_stream_incoherent");
+  it("quarantines a Receipt Stream claiming more tokens than its messages can carry", () => {
+    const row = ordinaryDay({ receiptCount: 1 });
+    expect(codes(row)).toContain("receipt_stream_incoherent");
+    expect(checkPlausibility(row, { now: NOW }).trustLevel).toBe("quarantined");
+  });
+
+  it("reports, and does not quarantine, a Receipt Stream thinner than its tokens", () => {
+    const result = checkPlausibility(ordinaryDay({ receiptCount: 5_000_000 }), { now: NOW });
+    expect(result.trustLevel).toBe("reported");
+    expect(result.reasons.map((r) => r.code)).toEqual(["receipt_stream_thin"]);
+  });
+
+  it("still quarantines a thin stream when another check fails, and keeps both reasons", () => {
+    const result = checkPlausibility(
+      ordinaryDay({ receiptCount: 5_000_000, costUsd: 9_000 }),
+      { now: NOW },
+    );
+    expect(result.trustLevel).toBe("quarantined");
+    expect(result.reasons.map((r) => r.code)).toEqual(
+      expect.arrayContaining(["daily_cost_ceiling", "receipt_stream_thin"]),
+    );
+  });
+
+  // The shape that prompted this split: a collector under-reported one model's
+  // output tokens while the receipt walk still found every message.
+  it("reports the collector-skew shape from issue #36 rather than voiding the day", () => {
+    const result = checkPlausibility(
+      ordinaryDay({ outputTokens: 4, reasoningTokens: 0, receiptCount: 682, costUsd: 0.83 }),
+      { now: NOW },
+    );
+    expect(result.trustLevel).toBe("reported");
+    expect(result.reasons.map((r) => r.code)).toEqual(["receipt_stream_thin"]);
+  });
+
+  it("accepts the exact minimum and includes reasoning tokens in receipt evidence", () => {
+    const result = checkPlausibility(
+      ordinaryDay({ outputTokens: 4, reasoningTokens: 678, receiptCount: 682 }),
+      { now: NOW },
+    );
+    expect(result).toEqual({ trustLevel: "verified", reasons: [] });
+  });
+
+  it("uses the configured minimum for thin streams", () => {
+    const result = checkPlausibility(
+      ordinaryDay({ outputTokens: 1000, receiptCount: 1000 }),
+      { now: NOW, limits: { minOutputTokensPerReceipt: 2 } },
+    );
+    expect(result.trustLevel).toBe("reported");
+    expect(result.reasons).toEqual([
+      expect.objectContaining({ code: "receipt_stream_thin", observed: 1, limit: 2 }),
+    ]);
   });
 
   it("takes ceilings from the caller", () => {
