@@ -92,6 +92,19 @@ export {
 } from "./sync";
 export type { SignedSync, SyncDay, SyncPayload, SyncVerification } from "./sync";
 
+// Sync Slots (ADR 0005): when automatic Syncs may land
+export {
+  SYNC_JITTER_MS,
+  SYNC_SLOT_HOURS,
+  SYNC_SLOT_TIMES,
+  SYNC_TRIGGER_HEADER,
+  SYNC_WINDOW_MS,
+  inSyncWindow,
+  nextSyncSlot,
+  syncSlotStart,
+} from "./sync-slots";
+export type { SyncTrigger } from "./sync-slots";
+
 // Market templates (CONTEXT.md): params, Outcomes and the rules sentence
 export {
   ANOTHER_MODEL_LABEL,

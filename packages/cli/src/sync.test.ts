@@ -5,10 +5,9 @@ import { generateDeviceKeyPair } from "@tokenburnmarket/core/signing";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { UsageAggregate } from "./ccusage";
 import { writeConfig, type DeviceConfig } from "./config";
-import { pageDays, sync } from "./sync";
+import { msUntilScheduledSync, pageDays, sync } from "./sync";
 
 const NOW = new Date("2026-08-22T18:00:00.000Z");
-const TEN_MINUTES = 10 * 60_000;
 
 // Nothing here may spawn the real meter. A command that cannot exist makes
 // any un-injected read fail loudly instead of quietly running ccusage.
@@ -73,21 +72,29 @@ function acceptingServer(): { fetch: typeof fetch; calls: number } {
   };
 }
 
-describe("sync throttle", () => {
-  it("skips entirely when told to and it synced within the window", async () => {
-    const { path } = freshConfig({
-      lastSyncedAt: new Date(NOW.getTime() - 2 * 60_000).toISOString(),
-    });
-    let reads = 0;
-    const server = acceptingServer();
-    const lines: string[] = [];
+describe("scheduled syncs", () => {
+  /** Four minutes into the 18:00 slot. */
+  const IN_SLOT = new Date("2026-08-22T18:04:00.000Z");
 
+  function headerServer(): { fetch: typeof fetch; triggers: (string | null)[] } {
+    const triggers: (string | null)[] = [];
+    const accepting = acceptingServer();
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      triggers.push(new Headers(init?.headers).get("x-sync-trigger"));
+      return accepting.fetch(input, init);
+    }) as typeof fetch;
+    return { fetch: fetchImpl, triggers };
+  }
+
+  async function scheduled(path: string, now: Date, server: { fetch: typeof fetch }) {
+    let reads = 0;
+    const lines: string[] = [];
     const code = await sync({
       configPath: path,
-      now: () => NOW,
+      now: () => now,
       env: ENV,
       home: tmpdir(),
-      skipIfSyncedWithinMs: TEN_MINUTES,
+      scheduled: true,
       readUsage: async () => {
         reads += 1;
         return ONE_DAY;
@@ -95,41 +102,50 @@ describe("sync throttle", () => {
       fetch: server.fetch,
       log: (line) => lines.push(line),
     });
+    return { code, reads, lines };
+  }
+
+  it("skips when this slot already has a sync", async () => {
+    const { path } = freshConfig({
+      lastSyncedAt: new Date(IN_SLOT.getTime() - 2 * 60_000).toISOString(),
+    });
+    const server = headerServer();
+    const { code, reads, lines } = await scheduled(path, IN_SLOT, server);
 
     expect(code).toBe(0);
     expect(reads).toBe(0);
-    expect(server.calls).toBe(0);
+    expect(server.triggers).toEqual([]);
     expect(lines.join("\n")).toMatch(/2 minutes ago/);
   });
 
-  it("syncs when the last one is older than the window", async () => {
+  it("syncs once a slot opens, and says it was scheduled", async () => {
     const { path } = freshConfig({
-      lastSyncedAt: new Date(NOW.getTime() - 11 * 60_000).toISOString(),
+      lastSyncedAt: new Date(IN_SLOT.getTime() - 10 * 60_000).toISOString(),
     });
-    const server = acceptingServer();
-
-    const code = await sync({
-      configPath: path,
-      now: () => NOW,
-      env: ENV,
-      home: tmpdir(),
-      skipIfSyncedWithinMs: TEN_MINUTES,
-      readUsage: async () => ONE_DAY,
-      fetch: server.fetch,
-      log: () => {},
-    });
+    const server = headerServer();
+    const { code } = await scheduled(path, IN_SLOT, server);
 
     expect(code).toBe(0);
-    expect(server.calls).toBe(1);
+    expect(server.triggers).toEqual(["scheduled"]);
   });
 
-  it("never throttles a sync someone ran by hand", async () => {
+  it("waits outside a slot window without reading anything", async () => {
+    const { path } = freshConfig();
+    const server = headerServer();
+    const { reads, lines } = await scheduled(path, new Date("2026-08-22T18:30:00.000Z"), server);
+
+    expect(reads).toBe(0);
+    expect(server.triggers).toEqual([]);
+    expect(lines.join("\n")).toContain("00:00 UTC");
+  });
+
+  it("never holds back a sync someone ran by hand", async () => {
     const { path } = freshConfig({ lastSyncedAt: NOW.toISOString() });
-    const server = acceptingServer();
+    const server = headerServer();
 
     await sync({
       configPath: path,
-      now: () => NOW,
+      now: () => new Date("2026-08-22T18:30:00.000Z"),
       env: ENV,
       home: tmpdir(),
       readUsage: async () => ONE_DAY,
@@ -137,7 +153,14 @@ describe("sync throttle", () => {
       log: () => {},
     });
 
-    expect(server.calls).toBe(1);
+    expect(server.triggers).toEqual(["manual"]);
+  });
+
+  it("aims for the next slot start plus a spread inside its window", () => {
+    expect(msUntilScheduledSync(new Date("2026-08-22T17:00:00.000Z"), () => 0)).toBe(3_600_000);
+    expect(msUntilScheduledSync(new Date("2026-08-22T17:00:00.000Z"), () => 0.999)).toBeLessThan(
+      3_600_000 + 5 * 60_000,
+    );
   });
 });
 

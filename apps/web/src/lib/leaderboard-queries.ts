@@ -7,8 +7,9 @@
   ledger for the credits-won metric.
 
   Boards are public, so nothing here depends on the viewer and the result is
-  safe to cache. `cachedBoard` holds one for five minutes.
+  safe to cache. `cachedBoard` holds one for a Sync Slot (ADR 0005).
 */
+import { SYNC_SLOT_HOURS } from "@tokenburnmarket/core";
 import { and, eq, gte, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "@/db";
@@ -203,13 +204,14 @@ export async function board(request: BoardRequest, now = new Date()): Promise<Bo
 }
 
 /*
-  Five minutes of staleness on a board nobody is refreshing by hand, and the
-  same entry serves every anonymous reader. The Season is resolved inside, so
-  the clock is not part of the key; a board can be up to five minutes late
-  across a Season boundary, which no one will notice on a Monday morning.
+  A board only changes when Syncs land, and automatic Syncs land in Sync Slots,
+  so an entry lives for one slot and the sync route marks it stale when new
+  Usage arrives. Every cache miss wakes the database, which is what this is
+  saving. The Season is resolved inside, so the clock is not part of the key; a
+  board can be one slot late across a Season boundary, the same lag as its data.
 */
 export const cachedBoard = unstable_cache(
   (request: BoardRequest) => board(request),
   ["leaderboard-board"],
-  { revalidate: 300, tags: ["leaderboard"] },
+  { revalidate: SYNC_SLOT_HOURS * 3600, tags: ["leaderboard"] },
 );

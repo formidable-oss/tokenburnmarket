@@ -135,6 +135,19 @@ export function isTradable(
   return status === "open" && closesAt.getTime() > now.getTime();
 }
 
+/**
+ * The status a reader sees. The resolution job flips a Market to closed once a
+ * day (ADR 0005), so between its close time and that run the stored status is
+ * still open; the clock is what actually stops trading, and the label follows it.
+ */
+export function displayStatus(
+  status: MarketStatus,
+  closesAt: Date,
+  now: Date = new Date(),
+): MarketStatus {
+  return status === "open" && closesAt.getTime() <= now.getTime() ? "closed" : status;
+}
+
 /*
   Time left, at the coarsest useful precision: days while there are days, hours
   while there are hours, then minutes. Past the close it says so rather than

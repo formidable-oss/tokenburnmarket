@@ -6,6 +6,7 @@
   whose day was held back deserves to see it and why. Everyone else sees the
   profile without them.
 */
+import { SYNC_SLOT_HOURS } from "@tokenburnmarket/core";
 import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "@/db";
@@ -122,5 +123,5 @@ export const cachedBurnSeasons = unstable_cache(
     };
   },
   ["builder-burn-seasons"],
-  { revalidate: 300, tags: ["leaderboard"] },
+  { revalidate: SYNC_SLOT_HOURS * 3600, tags: ["leaderboard"] },
 );

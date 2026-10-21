@@ -6,7 +6,7 @@
   Prices are never stored. They are `lmsrPrices` over the shares outstanding, so
   a list and a Market page always agree, and there is no cache to go stale.
 */
-import { lmsrPrices, type MemberSnapshot } from "@tokenburnmarket/core";
+import { SYNC_SLOT_HOURS, lmsrPrices, type MemberSnapshot } from "@tokenburnmarket/core";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "@/db";
@@ -141,7 +141,7 @@ export async function openMarketsFor(
     .select(marketColumns)
     .from(markets)
     .leftJoin(communities, eq(communities.id, markets.communityId))
-    .where(and(eq(markets.status, "open"), or(...visible)))
+    .where(and(eq(markets.status, "open"), gt(markets.closesAt, sql`now()`), or(...visible)))
     .orderBy(asc(markets.closesAt));
 
   return summarize(rows);
@@ -153,7 +153,7 @@ export async function openMarketsForCommunity(communityId: string): Promise<Mark
     .select(marketColumns)
     .from(markets)
     .leftJoin(communities, eq(communities.id, markets.communityId))
-    .where(and(eq(markets.communityId, communityId), eq(markets.status, "open")))
+    .where(and(eq(markets.communityId, communityId), eq(markets.status, "open"), gt(markets.closesAt, sql`now()`)))
     .orderBy(asc(markets.closesAt));
 
   return summarize(rows);
@@ -391,9 +391,8 @@ export interface SiteStats {
 }
 
 /*
-  Cached for five minutes, like the boards: a stat that is five minutes old is
-  still true enough to put under a hero, and the landing page is the one page
-  every stranger loads.
+  Cached for a Sync Slot, like the boards: the landing page is the one page
+  every stranger loads, and it should not be the one that wakes the database.
 */
 export const cachedSiteStats = unstable_cache(
   async (): Promise<SiteStats> => {
@@ -433,7 +432,7 @@ export const cachedSiteStats = unstable_cache(
     };
   },
   ["site-stats"],
-  { revalidate: 300, tags: ["leaderboard"] },
+  { revalidate: SYNC_SLOT_HOURS * 3600, tags: ["leaderboard"] },
 );
 
 export interface GlobalModelUsage {
@@ -482,7 +481,7 @@ export async function globalModelUsage(
 export const cachedGlobalModelUsage = unstable_cache(
   async () => globalModelUsage(),
   ["global-model-usage"],
-  { revalidate: 60, tags: ["leaderboard"] },
+  { revalidate: SYNC_SLOT_HOURS * 3600, tags: ["leaderboard"] },
 );
 
 /** Seven calendar days keeps a daily race close to what people are using now. */

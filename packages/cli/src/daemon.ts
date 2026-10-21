@@ -1,5 +1,9 @@
 /*
-  `tokenburnmarket daemon`: sync on a timer, in the foreground.
+  `tokenburnmarket daemon`: sync on the Sync Slots, in the foreground.
+
+  Slots rather than a timer of its own (ADR 0005): every Collector syncs in the
+  same few windows a day, so the database wakes for all of them at once. Units
+  installed by older versions pass `--interval`; it is accepted and ignored.
 
   Foreground on purpose. A background daemon that forks itself has to own its
   own logs, its own restarts and its own uninstall story; a foreground loop that
@@ -13,35 +17,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { currentConfigDir } from "./config.js";
-import { sync } from "./sync.js";
-
-/** How often a daemon syncs when nothing says otherwise. */
-export const DEFAULT_INTERVAL = "15m";
-
-/** Below this the daemon would spend more time syncing than working. */
-export const MIN_INTERVAL_MS = 60_000;
-const MAX_INTERVAL_MS = 24 * 3_600_000;
-
-const UNITS: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000 };
-
-export type ParsedInterval = { ok: true; ms: number } | { ok: false; error: string };
-
-/**
- * `--interval` as milliseconds. Takes `30s`, `15m`, `2h`, and a bare number as
- * minutes, because that is what people type when they forget the suffix.
- */
-export function parseInterval(input: string | undefined): ParsedInterval {
-  const raw = (input ?? DEFAULT_INTERVAL).trim().toLowerCase();
-  const match = /^(\d+(?:\.\d+)?)(s|m|h)?$/.exec(raw);
-  if (!match) return { ok: false, error: "Interval looks like 30s, 15m or 2h." };
-
-  const ms = Number(match[1]) * UNITS[match[2] ?? "m"]!;
-  if (!Number.isFinite(ms) || ms < MIN_INTERVAL_MS) {
-    return { ok: false, error: "Sync at most once a minute." };
-  }
-  if (ms > MAX_INTERVAL_MS) return { ok: false, error: "Sync at least once a day." };
-  return { ok: true, ms };
-}
+import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
+import { msUntilScheduledSync, sync } from "./sync.js";
 
 export function lockPathFor(configDir: string): string {
   return join(configDir, "daemon.lock");
@@ -109,13 +86,14 @@ function isAlive(pid: number): boolean {
 }
 
 export interface DaemonOptions {
-  interval?: string;
   configDir?: string;
   log?: (line: string) => void;
   /** Injected in tests: how many passes to run before returning. Undefined means forever. */
   maxRuns?: number;
   runSync?: () => Promise<number>;
   wait?: (ms: number) => Promise<void>;
+  /** Injected in tests: how long until the next slot. */
+  untilNextSlot?: () => number;
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -126,19 +104,14 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 export async function daemon(options: DaemonOptions = {}): Promise<number> {
   const log = options.log ?? ((line: string) => console.log(line));
-  const interval = parseInterval(options.interval);
-  if (!interval.ok) {
-    log(interval.error);
-    return 1;
-  }
-
   const lock = acquireLock(lockPathFor(options.configDir ?? currentConfigDir()));
   if (!lock.ok) {
     log(`A daemon is already running on this machine, as process ${lock.heldBy}.`);
     return 1;
   }
 
-  const runSync = options.runSync ?? (() => sync({ log }));
+  const runSync = options.runSync ?? (() => sync({ log, scheduled: true }));
+  const untilNextSlot = options.untilNextSlot ?? (() => msUntilScheduledSync(new Date()));
   const wait = options.wait ?? sleep;
   const stop = () => {
     lock.release();
@@ -150,7 +123,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<number> {
     process.once("SIGTERM", stop);
   }
 
-  log(`Syncing every ${options.interval ?? DEFAULT_INTERVAL}. Stop with ctrl-c.`);
+  log(`Syncing at ${SYNC_SLOT_TIMES}. Stop with ctrl-c.`);
 
   try {
     for (let run = 0; options.maxRuns === undefined || run < options.maxRuns; run += 1) {
@@ -161,7 +134,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<number> {
       } catch (error) {
         log(`[${at}] sync failed: ${error instanceof Error ? error.message : String(error)}`);
       }
-      await wait(interval.ms);
+      await wait(untilNextSlot());
     }
   } finally {
     lock.release();
@@ -175,7 +148,6 @@ export interface InstallContext {
   execPath: string;
   /** The resolved path of the CLI entry point. */
   scriptPath: string;
-  interval: string;
   home: string;
 }
 
@@ -214,8 +186,6 @@ function launchdPlist(context: InstallContext): string {
     <string>${context.execPath}</string>
     <string>${context.scriptPath}</string>
     <string>daemon</string>
-    <string>--interval</string>
-    <string>${context.interval}</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -237,7 +207,7 @@ After=network-online.target
 [Service]
 Type=simple
 Environment="PATH=${servicePath(context)}"
-ExecStart=${context.execPath} ${context.scriptPath} daemon --interval ${context.interval}
+ExecStart=${context.execPath} ${context.scriptPath} daemon
 Restart=always
 RestartSec=30
 
@@ -270,11 +240,6 @@ export function installDaemon(
 ): number {
   const log = options.log ?? ((line: string) => console.log(line));
   const run = options.run ?? runCommand;
-  const interval = parseInterval(context.interval);
-  if (!interval.ok) {
-    log(interval.error);
-    return 1;
-  }
   if (/[\\/]_npx[\\/]/.test(context.scriptPath)) {
     log("Refusing to install a service from a temporary npx cache.");
     log("Install the CLI first: npm install --global tokenburnmarket@latest");
@@ -291,13 +256,13 @@ export function installDaemon(
     }
     log(`Installed and started ${path}`);
     log(
-      `Usage will sync every ${context.interval}. Logs: ${context.home}/Library/Logs/tokenburnmarket.log`,
+      `Usage will sync at ${SYNC_SLOT_TIMES}. Logs: ${context.home}/Library/Logs/tokenburnmarket.log`,
     );
     return 0;
   }
 
   if (context.platform === "win32") {
-    const taskCommand = `"${context.execPath}" "${context.scriptPath}" daemon --interval ${context.interval}`;
+    const taskCommand = `"${context.execPath}" "${context.scriptPath}" daemon`;
     if (
       commandFailed(
         run("schtasks", [
@@ -328,7 +293,7 @@ export function installDaemon(
       return 1;
     }
     log("Installed and started the tokenburnmarket scheduled task.");
-    log(`Usage will sync every ${context.interval}.`);
+    log(`Usage will sync at ${SYNC_SLOT_TIMES}.`);
     return 0;
   }
 
@@ -348,7 +313,7 @@ export function installDaemon(
     return 1;
   }
   log(`Installed and started ${path}`);
-  log(`Usage will sync every ${context.interval}.`);
+  log(`Usage will sync at ${SYNC_SLOT_TIMES}.`);
   return 0;
 }
 
@@ -375,7 +340,7 @@ export function installSnippet(context: InstallContext): string[] {
     return [
       "Windows has no unit file to print. Use Task Scheduler with:",
       "",
-      `  ${context.execPath} ${context.scriptPath} daemon --interval ${context.interval}`,
+      `  ${context.execPath} ${context.scriptPath} daemon`,
       "",
       "Set it to run at logon and restart on failure.",
     ];

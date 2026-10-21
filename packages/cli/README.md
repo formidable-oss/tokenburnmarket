@@ -27,9 +27,12 @@ yourself. The private key it generates never leaves the machine.
 claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp
 ```
 
-That is the whole of it for Claude Code. The MCP server syncs itself every time
-the agent starts it, skipping if the last one was under ten minutes ago, and
-gives the agent the trading tools below. Codex gets the same from
+That is the whole of it for Claude Code. While the agent runs, the MCP server
+syncs itself on the shared sync slots, 00:00, 06:00, 12:00 and 18:00 UTC, and
+gives the agent the trading tools below. Every machine syncs in the same few
+minutes so the database behind the site only wakes four times a day, which is
+what keeps it cheap to run. Boards therefore move every six
+hours; run `sync` or ask the agent to call `sync_usage` to count today now. Codex gets the same from
 `~/.codex/config.toml`:
 
 ```toml
@@ -42,12 +45,12 @@ On a machine that never opens an agent, run a daemon instead. It is a
 foreground loop, one per machine, held by a lock file.
 
 ```
-tokenburnmarket daemon install --interval 15m
+tokenburnmarket daemon install
 tokenburnmarket daemon install --dry-run
 ```
 
-`daemon install` creates and starts the per-user LaunchAgent, systemd service,
-or Windows scheduled task. The dry run previews the service definition and
+The daemon syncs on the same slots. `daemon install` creates and starts the
+per-user LaunchAgent, systemd service, or Windows scheduled task. The dry run previews the service definition and
 changes nothing. It refuses to persist an executable from a temporary npx cache.
 
 ## Sync by hand
@@ -59,7 +62,9 @@ tokenburnmarket sync --dry-run  # what would go, without sending it
 tokenburnmarket status          # what is stored on this machine
 ```
 
-`sync` is safe to run whenever. A sync you run yourself is never skipped.
+`sync` is safe to run whenever. A sync you run yourself is never skipped and is
+not held to a slot. Versions before 0.3.0 only get through inside a slot, so
+update if a hand-run sync answers 429.
 
 ## MCP tools
 

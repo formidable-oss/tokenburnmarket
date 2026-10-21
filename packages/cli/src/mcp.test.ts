@@ -312,7 +312,7 @@ describe("syncing itself at startup", () => {
   interface SyncCall {
     config: DeviceConfig;
     printed: string[];
-    options: { skipIfSyncedWithinMs?: number } | undefined;
+    options: { scheduled?: boolean } | undefined;
   }
 
   async function startWith(
@@ -338,11 +338,11 @@ describe("syncing itself at startup", () => {
     return { client, calls };
   }
 
-  it("runs one throttled sync once the client has initialized", async () => {
+  it("runs one scheduled sync once the client has initialized", async () => {
     const { client, calls } = await startWith(() => CONFIG);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.config).toBe(CONFIG);
-    expect(calls[0]!.options?.skipIfSyncedWithinMs).toBe(10 * 60_000);
+    expect(calls[0]!.options?.scheduled).toBe(true);
     await client.close();
   });
 

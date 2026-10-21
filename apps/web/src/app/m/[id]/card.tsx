@@ -1,6 +1,6 @@
 import { CARD_SIZE, renderCard } from "@/app/og-card";
 import { marketById, type MarketDetail } from "@/lib/market-queries";
-import { formatClosesIn, isTradable, scopeLabel, statusLabel } from "@/lib/markets";
+import { displayStatus, formatClosesIn, isTradable, scopeLabel, statusLabel } from "@/lib/markets";
 import { marketCard, siteCard } from "@/lib/share-cards";
 
 /*
@@ -32,7 +32,7 @@ export default async function MarketShareCard({ params }: { params: Promise<{ id
       scopeLine: scopeLine(market),
       closesLine: isTradable(market.status, market.closesAt)
         ? formatClosesIn(market.closesAt)
-        : statusLabel(market.status),
+        : statusLabel(displayStatus(market.status, market.closesAt)),
       outcomes: market.outcomes,
     }),
   );

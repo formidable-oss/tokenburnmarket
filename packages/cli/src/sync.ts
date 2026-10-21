@@ -8,10 +8,15 @@ import { homedir } from "node:os";
 import {
   checkPlausibility,
   createSignedSync,
+  inSyncWindow,
   MAX_SYNC_DAYS,
+  nextSyncSlot,
+  SYNC_JITTER_MS,
+  SYNC_TRIGGER_HEADER,
+  syncSlotStart,
   SyncPayloadSchema,
 } from "@tokenburnmarket/core";
-import type { SyncDay, SyncPayload, TrustLevel } from "@tokenburnmarket/core";
+import type { SyncDay, SyncPayload, SyncTrigger, TrustLevel } from "@tokenburnmarket/core";
 import { readUsageAggregates } from "./ccusage.js";
 import { buildSyncDays, windowStart } from "./collect.js";
 import { currentConfigPath, readConfig, writeConfig } from "./config.js";
@@ -39,11 +44,12 @@ export interface SyncOptions {
   sinceDays?: number;
   dryRun?: boolean;
   /**
-   * Do nothing if an upload succeeded this recently. For syncs nobody asked
-   * for, such as the one the MCP server runs at startup: two agents opening at
-   * once should not read the same transcripts twice.
+   * A sync nobody asked for, from the MCP server or the daemon. It only runs
+   * inside a Sync Slot window and once per slot (ADR 0005): the server refuses
+   * automatic syncs outside the windows, and several agents waking at the same
+   * slot should not read the same transcripts twice.
    */
-  skipIfSyncedWithinMs?: number;
+  scheduled?: boolean;
   /** The total line only, no per-day table. For when the sync is a step in something else. */
   brief?: boolean;
   /** Page boundary in JSON bytes. Tests lower it; nothing else should. */
@@ -158,6 +164,7 @@ async function upload(
   deviceToken: string,
   payload: SyncPayload,
   privateKey: string,
+  trigger: SyncTrigger,
   fetchImpl: typeof fetch,
   signal?: AbortSignal,
 ): Promise<SyncResponse> {
@@ -168,6 +175,7 @@ async function upload(
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${deviceToken}`,
+      [SYNC_TRIGGER_HEADER]: trigger,
     },
     body: JSON.stringify(signed),
   });
@@ -176,6 +184,14 @@ async function upload(
     throw new Error(`Sync was refused with ${response.status}. ${detail.slice(0, 200)}`.trim());
   }
   return (await response.json()) as SyncResponse;
+}
+
+/**
+ * How long a Collector waits for its next automatic sync: to the next slot
+ * boundary, plus a random spread inside the window so a slot is not one spike.
+ */
+export function msUntilScheduledSync(now: Date, random: () => number = Math.random): number {
+  return nextSyncSlot(now).getTime() - now.getTime() + Math.floor(random() * SYNC_JITTER_MS);
 }
 
 export async function sync(options: SyncOptions = {}): Promise<number> {
@@ -208,9 +224,13 @@ async function syncLocked(options: SyncOptions): Promise<number> {
     return 1;
   }
 
-  if (options.skipIfSyncedWithinMs !== undefined && config.lastSyncedAt && !options.dryRun) {
-    const last = Date.parse(config.lastSyncedAt);
-    if (Number.isFinite(last) && now.getTime() - last < options.skipIfSyncedWithinMs) {
+  if (options.scheduled && !options.dryRun) {
+    if (!inSyncWindow(now)) {
+      log(`Outside a sync slot. The next one is ${nextSyncSlot(now).toISOString().slice(11, 16)} UTC.`);
+      return 0;
+    }
+    const last = config.lastSyncedAt ? Date.parse(config.lastSyncedAt) : Number.NaN;
+    if (Number.isFinite(last) && last >= syncSlotStart(now).getTime()) {
       log(`Synced ${agoLine(last, now.getTime())}. Nothing to do yet.`);
       return 0;
     }
@@ -291,6 +311,7 @@ async function syncLocked(options: SyncOptions): Promise<number> {
       config.deviceToken,
       payload,
       config.privateKey,
+      options.scheduled ? "scheduled" : "manual",
       fetchImpl,
       options.signal,
     );

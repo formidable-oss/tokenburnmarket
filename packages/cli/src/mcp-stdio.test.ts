@@ -73,7 +73,9 @@ it("exits on stdin EOF without the client sending a signal", async () => {
   try { expect(await exited).toBe(0); } finally { clearTimeout(timer); child.kill(); }
 });
 
-it.each(["EOF", "SIGTERM"])("stops an active startup collector on %s", async (mode) => {
+// The collector is started by sync_usage rather than the startup sync, which
+// only runs inside a Sync Slot window and so depends on the time of day.
+it.each(["EOF", "SIGTERM"])("stops an active collector on %s", async (mode) => {
   const isolatedHome = await mkdtemp(join(tmpdir(), "tbm-active-"));
   const pidFile = join(isolatedHome, "worker.pid");
   const script = join(isolatedHome, "collector.cjs");
@@ -89,6 +91,7 @@ it.each(["EOF", "SIGTERM"])("stops an active startup collector on %s", async (mo
   try {
     child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test", version: "1" } } }) + "\n");
     child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "sync_usage", arguments: {} } }) + "\n");
     for (let n = 0; n < 100; n++) {
       try { worker = Number(await readFile(pidFile, "utf8")); break; } catch { await new Promise(r => setTimeout(r, 20)); }
     }

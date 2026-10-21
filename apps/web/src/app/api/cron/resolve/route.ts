@@ -1,11 +1,13 @@
 /*
-  The resolution job. Vercel Cron calls GET every ten minutes (see vercel.json)
+  The resolution job. Vercel Cron calls GET daily at 00:10 UTC (see vercel.json)
   with `Authorization: Bearer $CRON_SECRET`; POST is here so a human can trigger
   the same run by hand.
 
-  Ten minutes is the resolution of "closed" a trader sees: a Market stops taking
-  trades on its close time whatever the cron does (the trade path checks the
-  clock), and this job is what makes the page say so.
+  Daily, inside the midnight Sync Slot, because every run wakes the database
+  and that is what the bill counts (ADR 0005). A Market stops taking trades on
+  its close time whatever the cron does (the trade path checks the clock, and
+  pages label it closed from the clock too); this job flips the stored status
+  and pays out, so a Market settles within a day of its resolve time.
 
   Safe to call as often as anyone likes: every payout and every refund is keyed
   by a ledger ref, so a second call in the same minute moves no Credits.

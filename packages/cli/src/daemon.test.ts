@@ -3,14 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_INTERVAL,
-  MIN_INTERVAL_MS,
   acquireLock,
   daemon,
   installDaemon,
   installSnippet,
   lockPathFor,
-  parseInterval,
 } from "./daemon";
 
 const temporary: string[] = [];
@@ -23,34 +20,6 @@ function workDir(): string {
 
 afterEach(() => {
   for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
-describe("parseInterval", () => {
-  it("takes seconds, minutes and hours", () => {
-    expect(parseInterval("90s")).toEqual({ ok: true, ms: 90_000 });
-    expect(parseInterval("15m")).toEqual({ ok: true, ms: 900_000 });
-    expect(parseInterval("2h")).toEqual({ ok: true, ms: 7_200_000 });
-  });
-
-  it("reads a bare number as minutes", () => {
-    expect(parseInterval("5")).toEqual({ ok: true, ms: 300_000 });
-  });
-
-  it("defaults to fifteen minutes", () => {
-    expect(parseInterval(undefined)).toEqual(parseInterval(DEFAULT_INTERVAL));
-    expect(parseInterval(undefined)).toEqual({ ok: true, ms: 900_000 });
-  });
-
-  it("refuses anything faster than once a minute", () => {
-    expect(parseInterval("30s").ok).toBe(false);
-    expect(parseInterval(`${MIN_INTERVAL_MS / 1000}s`).ok).toBe(true);
-  });
-
-  it("refuses nonsense and anything slower than a day", () => {
-    expect(parseInterval("soon").ok).toBe(false);
-    expect(parseInterval("-5m").ok).toBe(false);
-    expect(parseInterval("48h").ok).toBe(false);
-  });
 });
 
 describe("acquireLock", () => {
@@ -94,16 +63,16 @@ describe("acquireLock", () => {
 });
 
 describe("daemon", () => {
-  it("syncs once per interval and releases the lock at the end", async () => {
+  it("syncs once per slot and releases the lock at the end", async () => {
     const dir = workDir();
     const waits: number[] = [];
     let runs = 0;
 
     const code = await daemon({
-      interval: "1m",
       configDir: dir,
       log: () => {},
       maxRuns: 3,
+      untilNextSlot: () => 60_000,
       runSync: async () => {
         runs += 1;
         return 0;
@@ -125,7 +94,6 @@ describe("daemon", () => {
     let runs = 0;
 
     await daemon({
-      interval: "1m",
       configDir: dir,
       log: (line) => lines.push(line),
       maxRuns: 2,
@@ -140,15 +108,6 @@ describe("daemon", () => {
     expect(lines.join("\n")).toContain("no network");
   });
 
-  it("refuses a bad interval before taking the lock", async () => {
-    const dir = workDir();
-    const lines: string[] = [];
-    const code = await daemon({ interval: "soon", configDir: dir, log: (l) => lines.push(l) });
-    expect(code).toBe(1);
-    expect(existsSync(lockPathFor(dir))).toBe(false);
-    expect(lines.join("\n")).toContain("30s");
-  });
-
   it("refuses to start beside a running daemon", async () => {
     const dir = workDir();
     // pid 1 is always running, and belongs to someone else, which is the case
@@ -156,7 +115,6 @@ describe("daemon", () => {
     acquireLock(lockPathFor(dir), 1);
     const lines: string[] = [];
     const code = await daemon({
-      interval: "1m",
       configDir: dir,
       log: (line) => lines.push(line),
       maxRuns: 1,
@@ -172,7 +130,6 @@ describe("installSnippet", () => {
   const context = {
     execPath: "/usr/local/bin/node",
     scriptPath: "/usr/local/lib/node_modules/tokenburnmarket/dist/index.js",
-    interval: "15m",
     home: "/home/dev",
   };
 
@@ -192,10 +149,8 @@ describe("installSnippet", () => {
     expect(printed).toContain("systemctl --user enable --now tokenburnmarket");
   });
 
-  it("carries the interval into the unit", () => {
-    expect(installSnippet({ ...context, platform: "linux", interval: "1h" }).join("\n")).toContain(
-      "--interval 1h",
-    );
+  it("leaves the schedule to the daemon rather than the unit", () => {
+    expect(installSnippet({ ...context, platform: "linux" }).join("\n")).not.toContain("--interval");
   });
 });
 
@@ -203,7 +158,6 @@ describe("installDaemon", () => {
   const context = {
     execPath: "/usr/local/bin/node",
     scriptPath: "/usr/local/lib/node_modules/tokenburnmarket/dist/index.js",
-    interval: "15m",
   };
 
   it("writes and loads the launchd job on macOS", () => {
