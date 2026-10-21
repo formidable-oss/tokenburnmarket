@@ -10,7 +10,7 @@ import { parseArgs } from "./args.js";
 import { connect } from "./connect.js";
 import { currentConfigPath, readConfig, resolveServerUrl } from "./config.js";
 import { describeError } from "./errors.js";
-import { daemon, DEFAULT_INTERVAL, installDaemon, installSnippet } from "./daemon.js";
+import { daemon, installDaemon, installSnippet } from "./daemon.js";
 import { runMcpServer } from "./mcp.js";
 import { mcpSetupLines } from "./setup.js";
 import { sync } from "./sync.js";
@@ -20,10 +20,10 @@ const USAGE = `tokenburnmarket
   connect [--server URL] [--name NAME]   bind this machine to your account and sync
   sync [--since N] [--dry-run] [--quiet] upload usage for the days that changed
   status                                 show what is stored on this machine
-  daemon [--interval 15m]                sync on a timer, in the foreground
-  daemon install [--interval 15m]        install and start a per-user sync service
+  daemon                                 sync on the shared sync slots, in the foreground
+  daemon install                         install and start a per-user sync service
   daemon install --dry-run               print the service definition, change nothing
-  mcp                                    run the MCP server on stdio; syncs at startup
+  mcp                                    run the MCP server on stdio; syncs on the slots
   mcp setup                              print the lines that point an agent here
 
   --server URL     the server to talk to, also settable as TBM_SERVER
@@ -31,7 +31,6 @@ const USAGE = `tokenburnmarket
   --since N        collect the last N days instead of the days since the last sync
   --dry-run        show what would be uploaded, upload nothing
   --quiet          print nothing unless something went wrong
-  --interval SPEC  how often the daemon syncs: 30s, 15m, 2h. Defaults to ${DEFAULT_INTERVAL}
 
 The MCP server exposes sync_usage, my_stats, my_communities, list_markets and
 place_bet. place_bet quotes the trade and spends nothing unless it is called
@@ -97,7 +96,6 @@ async function main(): Promise<number> {
           platform: process.platform,
           execPath: process.execPath,
           scriptPath: process.argv[1] ?? "tokenburnmarket",
-          interval: flags.interval ?? DEFAULT_INTERVAL,
           home: process.env.HOME ?? process.env.USERPROFILE ?? "~",
         };
         if (switches.has("dry-run")) {
@@ -110,7 +108,7 @@ async function main(): Promise<number> {
         console.error(`Unknown daemon command: ${subcommand}`);
         return 1;
       }
-      return daemon({ interval: flags.interval });
+      return daemon();
     }
     case "mcp": {
       if (subcommand === "setup") {

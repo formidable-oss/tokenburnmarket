@@ -6,7 +6,7 @@
   Collector re-sends today and yesterday on every run, so a Sync interrupted
   halfway is repaired by the next one instead of needing a rollback.
 */
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { builderDays, devices, receipts, usageDays } from "@/db/schema";
 import type {
@@ -15,6 +15,7 @@ import type {
   RollupSourceRow,
   SyncStore,
   UsageRowWrite,
+  UsageTwin,
 } from "./sync";
 
 /*
@@ -54,6 +55,27 @@ export const drizzleSyncStore: SyncStore = {
     for (const batch of chunks(rows, RECEIPT_CHUNK)) {
       await db.insert(receipts).values([...batch]).onConflictDoNothing();
     }
+  },
+
+  async usageTwins(builderId, deviceId, days): Promise<UsageTwin[]> {
+    if (days.length === 0) return [];
+    return db
+      .select({
+        deviceId: usageDays.deviceId,
+        day: usageDays.day,
+        provider: usageDays.provider,
+        model: usageDays.model,
+        receiptCount: usageDays.receiptCount,
+        outputTokens: usageDays.outputTokens,
+      })
+      .from(usageDays)
+      .where(
+        and(
+          eq(usageDays.builderId, builderId),
+          ne(usageDays.deviceId, deviceId),
+          inArray(usageDays.day, [...days]),
+        ),
+      );
   },
 
   async putUsageRows(rows: readonly UsageRowWrite[]) {
@@ -122,3 +144,9 @@ export const drizzleSyncStore: SyncStore = {
       .where(eq(devices.id, deviceId));
   },
 };
+
+/** Drop Receipt Streams older than `cutoffDay`. Run daily from the mint job. */
+export async function pruneReceipts(cutoffDay: string): Promise<number> {
+  const result = await db.delete(receipts).where(lt(receipts.day, cutoffDay));
+  return result.rowCount ?? 0;
+}

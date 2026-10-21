@@ -17,7 +17,8 @@ Glossary only. No implementation details.
 - **Market** — a question about future Usage with a fixed resolution time and 2+ outcomes, priced by a house-backed automated market maker (always liquid; a winning share pays 1 Credit), paid in Credits, resolved automatically from Usage.
 - **Position** — a Builder's holding of outcome shares in a Market.
 - **Sync** — one signed upload from a Device: changed daily Usage rows plus the Receipt Stream for those days.
-- **Receipt Stream** — the ordered hashes of per-message identifiers behind a day's Usage (no content). Lets the server dedupe two Devices reading the same transcripts and judge whether a day's Usage is coherent.
+- **Receipt Stream** — the ordered hashes of per-message identifiers behind a day's Usage (no content). Lets the server dedupe two Devices reading the same transcripts and judge whether a day's Usage is coherent. Stored for seven days; older days are deduped from Usage totals instead.
+- **Sync Slot** — one of the four shared windows a day (00:00, 06:00, 12:00, 18:00 UTC, fifteen minutes each) in which automatic Syncs land. A Sync a person asks for is never held to one.
 - **Trust Level** — how much a Usage row is believed: *Verified* (signed Device + Receipt Stream + passed checks), *Reported* (signed Device, no usable Receipt Stream — identifiers are unavailable or receipts outnumber the tokens they support; mints Credits at a discount and is badged on Leaderboards), *Quarantined* (failed checks; excluded from Leaderboards, Credits, and Market resolution pending review).
 - **Outcome** — one answer to a Market's question. Exactly one Outcome wins at resolution (or the Market is Voided).
 - **Voided** — a Market cancelled before or at resolution (e.g. oracle data unusable); all Positions refunded at cost.

@@ -8,6 +8,7 @@ import type { SyncDay, SyncPayload } from "@tokenburnmarket/core";
 import {
   applySync,
   nextWatermark,
+  receiptCutoffDay,
   type BuilderDayWrite,
   type ReceiptWrite,
   type RollupSourceRow,
@@ -47,6 +48,7 @@ function payload(deviceId: string, days: SyncDay[]): SyncPayload {
 }
 
 interface Memory extends SyncStore {
+  receipts: Map<string, ReceiptWrite>;
   usage: Map<string, UsageRowWrite>;
   builderDays: Map<string, BuilderDayWrite>;
   watermarks: Map<string, string | null>;
@@ -59,6 +61,7 @@ function memoryStore(): Memory {
   const watermarks = new Map<string, string | null>();
 
   return {
+    receipts,
     usage,
     builderDays,
     watermarks,
@@ -72,6 +75,11 @@ function memoryStore(): Memory {
     },
     async putReceipts(rows) {
       for (const row of rows) receipts.set(`${row.deviceId}|${row.hash}`, row);
+    },
+    async usageTwins(builderId, deviceId, days) {
+      return [...usage.values()].filter(
+        (row) => row.builderId === builderId && row.deviceId !== deviceId && days.includes(row.day),
+      );
     },
     async putUsageRows(rows) {
       for (const row of rows) {
@@ -152,6 +160,49 @@ describe("applySync", () => {
     );
 
     expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(10);
+  });
+
+  it("keeps receipts only for days inside retention", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(
+      store,
+      device(DEVICE_A),
+      payload(DEVICE_A, [day(), day({ day: old, receipts: stream(10, "c") })]),
+      NOW,
+    );
+
+    expect([...store.receipts.values()].map((row) => row.day)).toEqual(Array(10).fill(DAY));
+    expect(receiptCutoffDay(NOW)).toBe("2026-08-11");
+  });
+
+  it("dedupes a first sync's old days against another device's usage", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    const second = await applySync(
+      store,
+      device(DEVICE_B),
+      payload(DEVICE_B, [day({ day: old, receipts: stream(10, "z") })]),
+      NOW,
+    );
+
+    expect(second.days[0]?.reasons.map((reason) => reason.code)).toContain("duplicate_of_device");
+    expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(5);
+  });
+
+  it("counts old days from another device that did different amounts of work", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    await applySync(
+      store,
+      device(DEVICE_B),
+      payload(DEVICE_B, [day({ day: old, outputTokens: 2000, receipts: stream(20, "b") })]),
+      NOW,
+    );
+
+    expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(10);
   });
 
   it("is idempotent when the same device re-sends a day", async () => {

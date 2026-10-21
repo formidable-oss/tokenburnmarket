@@ -17,6 +17,7 @@ import {
   type MarketDetail,
 } from "@/lib/market-queries";
 import {
+  displayStatus,
   formatClosesIn,
   formatPriceCents,
   formatResolvesAt,
@@ -108,8 +109,8 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
               )}
             </>
           ) : null}
-          {market.status === "open" ? null : (
-            <Badge tone="neutral">{statusLabel(market.status)}</Badge>
+          {tradable ? null : (
+            <Badge tone="neutral">{statusLabel(displayStatus(market.status, market.closesAt))}</Badge>
           )}
         </p>
         <h1 className="type-heading mt-3 max-w-[26ch]">{market.question}</h1>

@@ -23,7 +23,7 @@ There are plenty of "who spent the most tokens" boards. Most rank raw spend, mos
 
 1. Install the CLI, then `tokenburnmarket connect` to bind your machine. Approve the short code in the browser.
 2. The collector runs ccusage, builds daily totals per provider and model, signs them, and syncs. Only totals and identifier hashes leave your machine, never transcripts.
-3. `tokenburnmarket daemon install` starts a per-user service that uploads every 15 minutes; MCP also syncs when an agent session starts.
+3. `tokenburnmarket daemon install` starts a per-user service that uploads on the shared sync slots (00:00, 06:00, 12:00, 18:00 UTC); the MCP server does the same while an agent runs.
 4. Each closed day mints credits from your estimated cost (LiteLLM prices).
 5. Bet on markets: who burns most this week, will someone cross a threshold, who wins head to head, which model wins the race.
 6. Markets close, resolve from usage, and pay one credit per winning share.
@@ -103,7 +103,7 @@ For preview deployments, add a second OAuth app whose callback is the preview UR
 
 ### Cron schedules
 
-`/api/cron/mint` runs daily at 01:00 UTC. `/api/cron/markets` runs daily at 00:05 UTC, opening a global Model Race from the top models of the trailing seven UTC days while keeping Community markets weekly. `/api/cron/resolve` runs every ten minutes. Sub-daily crons need a Pro team; the project lives on one. Deployment Protection is switched off for this project because the app is public and the cron endpoints authenticate with `CRON_SECRET`.
+All three crons run inside the midnight sync slot so they share one database wake-up (ADR 0005). `/api/cron/markets` runs at 00:05 UTC, opening a global Model Race from the top models of the trailing seven UTC days while keeping Community markets weekly. `/api/cron/resolve` runs at 00:10 UTC. `/api/cron/mint` runs at 00:20 UTC and also prunes Receipt Streams older than seven days. Deployment Protection is switched off for this project because the app is public and the cron endpoints authenticate with `CRON_SECRET`.
 
 ## Status
 

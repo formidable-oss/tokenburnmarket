@@ -10,6 +10,12 @@
   another Device of the same Builder already reported, B's row is kept but
   marked as a duplicate and left out of the Builder-day rollup. So two machines
   reading the same transcripts produce two Usage rows and one counted day.
+
+  Receipts are only kept for `RECEIPT_RETENTION_DAYS` (ADR 0005); they are most
+  of the database by size. Older days can only arrive in a Device's first Sync,
+  and there the same question is asked of the Usage rows instead: another
+  Device's row for the same day and model with the same receipt count and
+  output, give or take the same tolerance, is the same work seen twice.
 */
 import {
   checkPlausibility,
@@ -26,6 +32,19 @@ import type { UsageReason } from "@/db/schema";
  * which is possible when a Builder moves a project between machines mid-day.
  */
 export const DUPLICATE_OVERLAP_RATIO = 0.9;
+
+/**
+ * How many UTC days of Receipt Streams are kept, today included. Covers the
+ * days a Collector re-sends on every run and the backfill window behind them,
+ * which is everything a Device that has synced before can upload.
+ */
+export const RECEIPT_RETENTION_DAYS = 7;
+
+/** The oldest UTC day whose receipts are still stored at `now`. */
+export function receiptCutoffDay(now: Date): string {
+  const cutoff = now.getTime() - (RECEIPT_RETENTION_DAYS - 1) * 86_400_000;
+  return new Date(cutoff).toISOString().slice(0, 10);
+}
 
 /** How far apart a Sync's `sentAt` and the server clock may be. */
 export const SYNC_CLOCK_SKEW_MS = 10 * 60 * 1000;
@@ -68,6 +87,16 @@ export interface ReceiptWrite {
   hash: string;
 }
 
+/** Another Device's Usage row, as the dedupe for days past receipt retention reads it. */
+export interface UsageTwin {
+  deviceId: string;
+  day: string;
+  provider: string;
+  model: string;
+  receiptCount: number;
+  outputTokens: number;
+}
+
 /** The columns the rollup reads back out of `usage_days`. */
 export interface RollupSourceRow {
   day: string;
@@ -101,6 +130,8 @@ export interface SyncStore {
     hashes: readonly string[],
   ): Promise<Map<string, string>>;
   putReceipts(rows: readonly ReceiptWrite[]): Promise<void>;
+  /** This Builder's Usage rows on `days` from Devices other than `deviceId`. */
+  usageTwins(builderId: string, deviceId: string, days: readonly string[]): Promise<UsageTwin[]>;
   putUsageRows(rows: readonly UsageRowWrite[]): Promise<void>;
   usageRowsForDays(builderId: string, days: readonly string[]): Promise<RollupSourceRow[]>;
   putBuilderDays(rows: readonly BuilderDayWrite[]): Promise<void>;
@@ -130,7 +161,13 @@ interface Verdict {
 
 function judgeDay(
   row: SyncDay,
-  options: { now: Date; watermarkDay: string | null; foreign: Map<string, string> },
+  options: {
+    now: Date;
+    watermarkDay: string | null;
+    cutoffDay: string;
+    foreign: Map<string, string>;
+    twins: readonly UsageTwin[];
+  },
 ): Verdict {
   const check = checkPlausibility(usageDayInputFromSyncDay(row), {
     now: options.now,
@@ -138,7 +175,10 @@ function judgeDay(
   });
   const reasons: UsageReason[] = check.reasons.map((reason) => ({ ...reason }));
 
-  const duplicateOfDeviceId = duplicateOwner(row.receipts, options.foreign);
+  const duplicateOfDeviceId =
+    row.day >= options.cutoffDay
+      ? duplicateOwner(row.receipts, options.foreign)
+      : twinOwner(row, options.twins);
   if (duplicateOfDeviceId === null) {
     return { trustLevel: check.trustLevel, reasons, duplicateOfDeviceId: null };
   }
@@ -176,6 +216,31 @@ function duplicateOwner(
     }
   }
   return winner;
+}
+
+/** Whether two counts are within the share of each other that dedupe tolerates. */
+function near(a: number, b: number): boolean {
+  return Math.min(a, b) >= DUPLICATE_OVERLAP_RATIO * Math.max(a, b);
+}
+
+/**
+ * The Device that already reported this row's work, judged from Usage alone,
+ * for days whose receipts are no longer kept. A row without a Receipt Stream is
+ * never matched: two Devices reporting similar output with nothing behind it
+ * is not evidence of anything.
+ */
+function twinOwner(row: SyncDay, twins: readonly UsageTwin[]): string | null {
+  if (row.receipts.length === 0) return null;
+  const twin = twins.find(
+    (other) =>
+      other.day === row.day &&
+      other.provider === row.provider &&
+      other.model === row.model &&
+      other.receiptCount > 0 &&
+      near(other.receiptCount, row.receipts.length) &&
+      near(other.outputTokens, row.outputTokens),
+  );
+  return twin?.deviceId ?? null;
 }
 
 /**
@@ -241,16 +306,31 @@ export async function applySync(
   payload: SyncPayload,
   now: Date,
 ): Promise<SyncResult> {
-  const hashes = [...new Set(payload.days.flatMap((day) => day.receipts))];
+  const cutoffDay = receiptCutoffDay(now);
+  const recent = payload.days.filter((day) => day.day >= cutoffDay);
+  const hashes = [...new Set(recent.flatMap((day) => day.receipts))];
   const foreign =
     hashes.length > 0
       ? await store.foreignReceipts(device.builderId, device.id, hashes)
       : new Map<string, string>();
+  const pastDays = [
+    ...new Set(
+      payload.days.filter((day) => day.day < cutoffDay && day.receipts.length > 0).map((day) => day.day),
+    ),
+  ];
+  const twins =
+    pastDays.length > 0 ? await store.usageTwins(device.builderId, device.id, pastDays) : [];
 
   const outcomes: SyncDayOutcome[] = [];
   const usageRows: UsageRowWrite[] = [];
   for (const row of payload.days) {
-    const verdict = judgeDay(row, { now, watermarkDay: device.watermarkDay, foreign });
+    const verdict = judgeDay(row, {
+      now,
+      watermarkDay: device.watermarkDay,
+      cutoffDay,
+      foreign,
+      twins,
+    });
     outcomes.push({
       day: row.day,
       provider: row.provider,
@@ -280,7 +360,7 @@ export async function applySync(
 
   const receiptRows: ReceiptWrite[] = [];
   const seen = new Set<string>();
-  for (const row of payload.days) {
+  for (const row of recent) {
     for (const hash of row.receipts) {
       if (seen.has(hash)) continue;
       seen.add(hash);

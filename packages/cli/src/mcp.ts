@@ -15,19 +15,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { ApiClient, type MarketRow, type TradeAnswer } from "./api.js";
 import { currentConfigPath, readConfig, type DeviceConfig } from "./config.js";
-import { sync, type SyncOptions } from "./sync.js";
+import { msUntilScheduledSync, sync, type SyncOptions } from "./sync.js";
 
 const NOT_CONNECTED = "This machine is not connected. Run `tokenburnmarket connect` in a terminal.";
 
-/**
- * How recent a sync has to be for the startup one to stand down. Agents get
- * opened many times a day; transcripts written in the last ten minutes can
- * wait for the next one.
- */
-export const AUTO_SYNC_INTERVAL_MS = 10 * 60_000;
-
 /** What an automatic sync is allowed to set. Everything else stays the command's. */
-type AutoSyncOptions = Pick<SyncOptions, "skipIfSyncedWithinMs">;
+type AutoSyncOptions = Pick<SyncOptions, "scheduled">;
 
 /*
   The two tools that take arguments, as whole objects rather than raw shapes.
@@ -136,25 +129,31 @@ export function createMcpServer(dependencies: McpDependencies = {}): McpServer {
       sync({ configPath: currentConfigPath(), log, ...options, signal: dependencies.signal }));
 
   const server = new McpServer(
-    { name: "tokenburnmarket", version: "0.2.5" },
+    { name: "tokenburnmarket", version: "0.3.0" },
     { capabilities: { tools: {} } },
   );
 
   /*
-    Sync as soon as the agent has said hello. This process is already running
-    for the whole session, so the upload costs the person nothing they can see,
-    and it is the reason nobody has to remember to sync. Nothing may be printed:
-    stdout is the transport, and one stray line would corrupt it. Failures are
-    swallowed for the same reason the tools answer on an unconnected machine; a
-    sync that could not happen is not a reason to take the server down.
+    Sync on the Sync Slots for as long as the session lasts (ADR 0005): once
+    the agent has said hello, in case a slot is open right now, and then at
+    each slot start. This process is already running for the whole session, so
+    the upload costs the person nothing they can see, and it is the reason
+    nobody has to remember to sync. Nothing may be printed: stdout is the
+    transport, and one stray line would corrupt it. Failures are swallowed for
+    the same reason the tools answer on an unconnected machine; a sync that
+    could not happen is not a reason to take the server down.
   */
-  server.server.oninitialized = () => {
+  let timer: NodeJS.Timeout | undefined;
+  const autoSync = () => {
     const config = loadConfig();
     if (!config) return;
-    void runSync(config, () => {}, { skipIfSyncedWithinMs: AUTO_SYNC_INTERVAL_MS }).catch(
-      () => {},
-    );
+    void runSync(config, () => {}, { scheduled: true }).catch(() => {});
+    timer = setTimeout(autoSync, msUntilScheduledSync(new Date()));
+    // A pending slot must never be what keeps a finished session alive.
+    timer.unref();
   };
+  server.server.oninitialized = autoSync;
+  dependencies.signal?.addEventListener("abort", () => clearTimeout(timer), { once: true });
 
   /** Wraps a tool so a missing config and a refused request read the same way. */
   const withClient =
