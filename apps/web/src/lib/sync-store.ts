@@ -13,6 +13,7 @@ import type {
   BuilderDayWrite,
   ReceiptWrite,
   RollupSourceRow,
+  StoredUsage,
   SyncStore,
   UsageRowWrite,
   UsageTwin,
@@ -76,6 +77,20 @@ export const drizzleSyncStore: SyncStore = {
           inArray(usageDays.day, [...days]),
         ),
       );
+  },
+
+  async storedUsage(deviceId, days): Promise<StoredUsage[]> {
+    if (days.length === 0) return [];
+    return db
+      .select({
+        day: usageDays.day,
+        provider: usageDays.provider,
+        model: usageDays.model,
+        trustLevel: usageDays.trustLevel,
+        quarantineReasons: usageDays.quarantineReasons,
+      })
+      .from(usageDays)
+      .where(and(eq(usageDays.deviceId, deviceId), inArray(usageDays.day, [...days])));
   },
 
   async putUsageRows(rows: readonly UsageRowWrite[]) {

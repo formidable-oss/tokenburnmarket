@@ -214,7 +214,17 @@ describe("windowStart", () => {
   });
 
   it("honours an explicit --since", () => {
-    expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-08-17" })).toBe("2026-08-10");
+    expect(windowStart({ now, sinceDays: 7 })).toBe("2026-08-10");
+    expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-08-12" })).toBe("2026-08-10");
+  });
+
+  it("does not let --since reach behind the backfill window of a synced device", () => {
+    expect(windowStart({ now, sinceDays: 120, watermarkDay: "2026-08-17" })).toBe("2026-08-15");
+    expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-08-17" })).toBe("2026-08-15");
+  });
+
+  it("never lets --since start later than yesterday, however new the watermark is", () => {
+    expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-09-30" })).toBe("2026-08-16");
   });
 });
 

@@ -4,9 +4,9 @@
 
   Claude Code writes one JSONL per session under `projects/`; every assistant
   message carries `message.id` and `requestId`, and the pair identifies one call
-  to the API. Codex writes rollout files under `sessions/`; each `token_count`
-  event is one billed turn, identified by its session, its position in that
-  session and its timestamp.
+  to the API. Codex writes rollout files under `sessions/` and `archived_sessions/`,
+  compressing older ones to `.jsonl.zst`; each `token_count` event is one billed
+  turn, identified by its session, its position in that session and its timestamp.
 
   Grok writes an ACP update stream per session as `sessions/<cwd>/<id>/updates.jsonl`;
   a `turn_completed` update is one billed turn and carries both its `prompt_id`
@@ -18,6 +18,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
+import * as zlib from "node:zlib";
 
 /** Streams keyed by (day, provider, model). Values are unique hashes. */
 export type ReceiptIndex = Map<string, Set<string>>;
@@ -72,7 +73,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Every `.jsonl` under `dir`, skipping files untouched since `sinceDay`.
+ * Every `.jsonl` under `dir`, compressed or not, skipping files untouched since
+ * `sinceDay`.
  *
  * The mtime filter is what makes a Sync cheap: a year of transcripts is
  * gigabytes, and a file last written before the window cannot hold a day inside
@@ -89,7 +91,9 @@ function transcriptFiles(dir: string, sinceDay?: string): string[] {
   const floor = sinceDay ? Date.parse(`${sinceDay}T00:00:00.000Z`) - 86_400_000 : undefined;
   const files: string[] = [];
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    if (!entry.isFile() || !(entry.name.endsWith(".jsonl") || entry.name.endsWith(".jsonl.zst"))) {
+      continue;
+    }
     const path = join(entry.parentPath, entry.name);
     if (floor !== undefined) {
       try {
@@ -103,9 +107,20 @@ function transcriptFiles(dir: string, sinceDay?: string): string[] {
   return files.sort();
 }
 
+/*
+  Codex compresses rollouts older than about a week to `.jsonl.zst`. Node can
+  read them from 22.15 on, so the CLI requires 22.15. npm only warns about the
+  engine, so on an older Node they read as empty, and those days stay Reported
+  instead of failing the Sync.
+*/
+const zstdDecompressSync = (zlib as { zstdDecompressSync?: (buffer: Buffer) => Buffer })
+  .zstdDecompressSync;
+
 function readLines(path: string): string[] {
   try {
-    return readFileSync(path, "utf8").split("\n");
+    if (!path.endsWith(".zst")) return readFileSync(path, "utf8").split("\n");
+    if (!zstdDecompressSync) return [];
+    return zstdDecompressSync(readFileSync(path)).toString("utf8").split("\n");
   } catch {
     return [];
   }
@@ -186,7 +201,13 @@ export function readCodexStreams(roots: readonly string[], sinceDay?: string): R
   const index: ReceiptIndex = new Map();
 
   for (const root of roots) {
-    for (const file of transcriptFiles(join(root, "sessions"), sinceDay)) {
+    // Archived rollouts keep their session ids, so a session found in both
+    // folders hashes the same and the set collapses it.
+    const files = [
+      ...transcriptFiles(join(root, "sessions"), sinceDay),
+      ...transcriptFiles(join(root, "archived_sessions"), sinceDay),
+    ];
+    for (const file of files) {
       let sessionId = "";
       let model = "";
       let ordinal = 0;

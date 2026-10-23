@@ -30,6 +30,10 @@ export function shiftDay(day: string, days: number): string {
  * Today and yesterday always go up: today is still being written, and yesterday
  * may have gained messages after the last run. Beyond that the watermark rules,
  * minus the backfill window.
+ *
+ * `--since` can widen the window up to the backfill window and no further once
+ * the device has synced. The server keeps what it already has for older days
+ * and quarantines any it never saw, so sending them can only cost a review.
  */
 export function windowStart(options: {
   now: Date;
@@ -37,13 +41,15 @@ export function windowStart(options: {
   sinceDays?: number;
 }): string | undefined {
   const yesterday = shiftDay(utcDay(options.now), -1);
+  const floor = options.watermarkDay ? shiftDay(options.watermarkDay, -BACKFILL_DAYS) : undefined;
   if (options.sinceDays !== undefined) {
     const asked = shiftDay(utcDay(options.now), -Math.max(0, options.sinceDays));
-    return asked < yesterday ? asked : yesterday;
+    const start = asked < yesterday ? asked : yesterday;
+    const clamped = floor !== undefined && start < floor ? floor : start;
+    return clamped < yesterday ? clamped : yesterday;
   }
-  if (!options.watermarkDay) return undefined;
-  const fromWatermark = shiftDay(options.watermarkDay, -BACKFILL_DAYS);
-  return fromWatermark < yesterday ? fromWatermark : yesterday;
+  if (floor === undefined) return undefined;
+  return floor < yesterday ? floor : yesterday;
 }
 
 /**
