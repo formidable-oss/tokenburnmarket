@@ -76,7 +76,8 @@ export default function DocsVerificationPage() {
       <p className="mt-3 text-[0.95rem] text-muted">
         A receipt stream is a sorted list of unique hashes identifying the messages or billed
         turns behind a day&apos;s usage. The collector reads these identifiers from Claude Code,
-        Codex, and Grok, hashes them, and sends the hashes. No content, no prompts, no file names.
+        Codex, Grok, Pi, and OpenCode. It also creates receipts from Cursor account usage.
+        It sends only hashes, without content, prompts, or file names.
       </p>
       <p className="mt-3 text-[0.95rem] text-muted">Two things fall out of that:</p>
       <ul className="mt-3 space-y-2 text-[0.95rem] text-muted">

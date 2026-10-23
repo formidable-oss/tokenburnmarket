@@ -16,6 +16,8 @@ export default defineConfig({
   format: ["esm"],
   target: "node20",
   platform: "node",
+  // SQLite is a prefix-only built-in. Removing node: makes its import fail at runtime.
+  removeNodeProtocol: false,
   outDir: "dist",
   clean: true,
   bundle: true,

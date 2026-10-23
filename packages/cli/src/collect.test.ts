@@ -35,7 +35,7 @@ const UNIFIED = {
           modelBreakdowns: [
             {
               modelName: "gpt-5.6-sol",
-              inputTokens: 4600,
+              inputTokens: 1400,
               cacheReadTokens: 3200,
               cacheCreationTokens: 0,
               outputTokens: 400,
@@ -97,6 +97,26 @@ const CODEX = {
 };
 
 describe("parseUnifiedDaily", () => {
+  it("retains extra output when the agent total identifies a single model", () => {
+    const [row] = parseUnifiedDaily({ daily: [{ period: "2026-08-16", agents: [{
+      agent: "gemini", totalTokens: 16276, modelBreakdowns: [{ modelName: "gemini-3-flash-preview",
+        inputTokens: 3808, cacheReadTokens: 11526, outputTokens: 23, cacheCreationTokens: 0, cost: 0.0053063 }],
+    }] }] });
+    expect(row).toMatchObject({ inputTokens: 3808, cachedInputTokens: 11526, outputTokens: 23, reasoningTokens: 919 });
+  });
+
+  it("reports unattributed output instead of allocating it across models", () => {
+    const warnings: string[] = [];
+    const rows = parseUnifiedDaily({ daily: [{ period: "2026-08-16", agents: [{
+      agent: "gemini", totalTokens: 60, modelBreakdowns: [
+        { modelName: "gemini-a", inputTokens: 10, outputTokens: 5, cost: 0.01 },
+        { modelName: "gemini-b", inputTokens: 20, outputTokens: 5, cost: 0.01 },
+      ],
+    }] }] }, (message) => warnings.push(message));
+    expect(rows.map((row) => row.reasoningTokens)).toEqual([0, 0]);
+    expect(warnings.join(" ")).toContain("omitted 20 tokens");
+  });
+
   it("flattens agents and models into one row each", () => {
     expect(parseUnifiedDaily(UNIFIED)).toEqual([
       {
@@ -114,7 +134,7 @@ describe("parseUnifiedDaily", () => {
         day: "2026-08-16",
         provider: "codex",
         model: "gpt-5.6-sol",
-        inputTokens: 4600,
+        inputTokens: 1400,
         cachedInputTokens: 3200,
         cacheWriteTokens: 0,
         outputTokens: 400,
@@ -173,6 +193,23 @@ describe("parseCodexReasoning", () => {
 });
 
 describe("readUsageAggregates", () => {
+  it("rejects an unsupported report instead of treating it as empty history", async () => {
+    await expect(readUsageAggregates({ exec: async () => JSON.stringify({ rows: [] }) }))
+      .rejects.toThrow("Unsupported ccusage daily report");
+  });
+
+  it("warns about missing model prices without discarding tokens", async () => {
+    const warnings: string[] = [];
+    const rows = await readUsageAggregates({
+      warn: (message) => warnings.push(message),
+      exec: async () => JSON.stringify({ daily: [{ date: "2026-08-16", agents: [{
+        agent: "new-agent", modelBreakdowns: [{ modelName: "new-model", inputTokens: 20, cost: 0, missingPricing: true }],
+      }] }] }),
+    });
+    expect(rows[0]).toMatchObject({ inputTokens: 20, costUsd: 0 });
+    expect(warnings.join(" ")).toContain("No usable price");
+  });
+
   it("fills codex reasoning tokens from the codex report", async () => {
     const calls: string[][] = [];
     const rows = await readUsageAggregates({
@@ -185,13 +222,45 @@ describe("readUsageAggregates", () => {
 
     expect(calls[0]).toEqual(["daily", "--by-agent", "--json", "--timezone", "UTC", "--since", "20260816"]);
     expect(rows.find((row) => row.provider === "codex")?.reasoningTokens).toBe(200);
+    const codex = rows.find((row) => row.provider === "codex")!;
+    expect(codex.outputTokens).toBe(200);
+    expect(codex.inputTokens + codex.cachedInputTokens + codex.outputTokens + codex.reasoningTokens)
+      .toBe(5000);
     expect(rows.find((row) => row.provider === "claude")?.reasoningTokens).toBe(0);
+  });
+
+  it("keeps the unified total when the reasoning report fails", async () => {
+    const warnings: string[] = [];
+    const rows = await readUsageAggregates({
+      warn: (message) => warnings.push(message),
+      exec: async (args) => {
+        if (args[0] === "codex") throw new Error("collector failed");
+        return JSON.stringify(UNIFIED);
+      },
+    });
+    expect(rows.find((row) => row.provider === "codex")).toMatchObject({
+      outputTokens: 400,
+      reasoningTokens: 0,
+    });
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("does not inflate totals when the two scans see different live usage", async () => {
+    const rows = await readUsageAggregates({
+      exec: async (args) => JSON.stringify(args[0] === "codex" ? {
+        daily: [{ date: "2026-08-16", models: { "gpt-5.6-sol": { reasoningOutputTokens: 600 } } }],
+      } : UNIFIED),
+    });
+    expect(rows.find((row) => row.provider === "codex")).toMatchObject({
+      outputTokens: 0,
+      reasoningTokens: 400,
+    });
   });
 });
 
 describe("ccusageCommand", () => {
-  it("downloads ccusage unless TBM_CCUSAGE points at an install", () => {
-    expect(ccusageCommand({})).toEqual(["npx", "-y", "ccusage@latest"]);
+  it("uses the tested ccusage version unless TBM_CCUSAGE points at an install", () => {
+    expect(ccusageCommand({})).toEqual(["npx", "-y", "ccusage@20.0.41"]);
     expect(ccusageCommand({ TBM_CCUSAGE: "bun x ccusage" })).toEqual(["bun", "x", "ccusage"]);
   });
 });
@@ -221,6 +290,11 @@ describe("windowStart", () => {
   it("does not let --since reach behind the backfill window of a synced device", () => {
     expect(windowStart({ now, sinceDays: 120, watermarkDay: "2026-08-17" })).toBe("2026-08-15");
     expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-08-17" })).toBe("2026-08-15");
+  });
+
+  it("allows an explicit history review to reach older days", () => {
+    expect(windowStart({ now, sinceDays: 30, watermarkDay: "2026-08-17", reviewHistory: true }))
+      .toBe("2026-07-18");
   });
 
   it("never lets --since start later than yesterday, however new the watermark is", () => {

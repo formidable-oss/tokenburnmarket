@@ -5,6 +5,9 @@
 */
 import * as zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   claudeRoots,
@@ -13,12 +16,23 @@ import {
   readClaudeStreams,
   readCodexStreams,
   readGrokStreams,
+  readPiStreams,
   readReceiptStreams,
   receiptKey,
 } from "./receipts.js";
 
 const fixture = (name: string) =>
   fileURLToPath(new URL(`../test/fixtures/${name}`, import.meta.url));
+
+function withTranscript(path: string, entries: unknown[], check: (root: string) => void): void {
+  const root = mkdtempSync(join(tmpdir(), "tbm-receipts-"));
+  try {
+    const parts = path.split("/");
+    mkdirSync(join(root, ...parts.slice(0, -1)), { recursive: true });
+    writeFileSync(join(root, path), entries.map((entry) => JSON.stringify(entry)).join("\n"));
+    check(root);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}
 
 const CLAUDE = {
   msg1: "22511b756fcc4c4c9e8a940dad27db8bd505a03e4aa58754469e92beb599e787",
@@ -78,6 +92,36 @@ describe("readClaudeStreams", () => {
 });
 
 describe("readCodexStreams", () => {
+  it.each([true, false])("matches compactions in either order and uses the request model, marker first: %s", (markerFirst) => {
+    const request = { type: "token_usage_record", timestamp: "2026-08-16T12:00:00Z", payload: {
+      response_id: "matched", model: "gpt-other", usage: { input_tokens: 300, output_tokens: 20 },
+    } };
+    const marker = { type: "compacted", payload: { compaction_response_id: "matched" } };
+    withTranscript("sessions/compaction.jsonl", [
+      { type: "session_meta", payload: { id: "session" } },
+      { type: "turn_context", payload: { model: "gpt-main" } },
+      { ...request, payload: { ...request.payload, response_id: "unmatched" } },
+      ...(markerFirst ? [marker, request] : [request, marker]),
+    ], (root) => {
+      const streams = readCodexStreams([root]);
+      expect([...streams.keys()]).toEqual([receiptKey("2026-08-16", "codex", "gpt-other")]);
+      expect([...streams.values()][0]?.size).toBe(1);
+    });
+  });
+
+  it("includes compaction usage once when its marker repeats the response ID", () => {
+    withTranscript("sessions/compaction.jsonl", [
+      { type: "session_meta", payload: { id: "session" } },
+      { type: "turn_context", payload: { model: "gpt-5" } },
+      { type: "token_usage_record", timestamp: "2026-08-16T12:00:00Z", payload: {
+        response_id: "response", usage: { input_tokens: 300, output_tokens: 20 },
+      } },
+      { type: "compacted", timestamp: "2026-08-16T12:00:01Z", payload: { compaction_response_id: "response" } },
+    ], (root) => {
+      expect(readCodexStreams([root]).get(receiptKey("2026-08-16", "codex", "gpt-5"))?.size).toBe(1);
+    });
+  });
+
   const streams = readCodexStreams([fixture("codex")]);
 
   it("hashes session, ordinal and timestamp per token_count event", () => {
@@ -109,6 +153,16 @@ describe("readCodexStreams", () => {
 });
 
 describe("readGrokStreams", () => {
+  it("uses the agent timestamp when it crosses a UTC day boundary", () => {
+    withTranscript("sessions/project/session/updates.jsonl", [{ timestamp: Date.parse("2026-08-16T23:59:59Z") / 1000,
+      params: { sessionId: "session", _meta: { agentTimestampMs: Date.parse("2026-08-17T00:00:00.123Z") },
+        update: { sessionUpdate: "turn_completed", prompt_id: "turn", usage: { modelUsage: { grok: { outputTokens: 10 } } } },
+      },
+    }], (root) => {
+      expect([...readGrokStreams([root]).keys()]).toEqual([receiptKey("2026-08-17", "grok", "grok")]);
+    });
+  });
+
   const streams = readGrokStreams([fixture("grok")]);
 
   it("hashes session and prompt_id per completed turn", () => {
@@ -201,6 +255,23 @@ describe("readGrokStreams", () => {
   });
 });
 
+describe("readPiStreams", () => {
+  it("matches ccusage model names and collapses copied Pi entries", () => {
+    const entry = { type: "message", id: "abc12345", timestamp: "2026-08-16T12:00:00Z", message: {
+      role: "assistant", model: "grok-4.7", usage: { input: 100, output: 30, cacheRead: 10 },
+    } };
+    withTranscript("sessions/pi.jsonl", [entry, entry, { ...entry, id: "zero", message: {
+      ...entry.message, usage: { input: 0, output: 0 },
+    } }], (root) => {
+      const streams = readPiStreams([join(root, "sessions")]);
+      expect([...streams.keys()]).toEqual([receiptKey("2026-08-16", "pi", "[pi] grok-4.7")]);
+      expect([...streams.values()][0]?.size).toBe(1);
+      expect(readPiStreams([join(root, "sessions")], "2026-08-17").size).toBe(0);
+      expect(readReceiptStreams({ PI_CODING_AGENT_DIR: root }, "/nonexistent")).toEqual(streams);
+    });
+  });
+});
+
 describe("readReceiptStreams", () => {
   it("merges both adapters and honours CLAUDE_CONFIG_DIR and CODEX_HOME", () => {
     const merged = readReceiptStreams(
@@ -233,6 +304,16 @@ describe("readReceiptStreams", () => {
 });
 
 describe("roots", () => {
+  it("expands and deduplicates ccusage's multiple Codex roots", () => {
+    expect(codexRoots({ CODEX_HOME: "~/one, ~/two, ~/one" }, "/home/dev"))
+      .toEqual(["/home/dev/one", "/home/dev/two"]);
+  });
+
+  it("collects receipts from every configured Codex home", () => {
+    const streams = readReceiptStreams({ CODEX_HOME: `${fixture("codex")},${fixture("codex-compressed")}` }, "/nonexistent");
+    expect(streams.has(receiptKey("2026-08-16", "codex", "gpt-5.6-sol"))).toBe(true);
+    expect(streams.has(receiptKey("2026-08-14", "codex", "gpt-6-astra"))).toBe(true);
+  });
   it("splits a multi directory CLAUDE_CONFIG_DIR", () => {
     expect(claudeRoots({ CLAUDE_CONFIG_DIR: "/a, /b " }, "/home")).toEqual(["/a", "/b"]);
   });
