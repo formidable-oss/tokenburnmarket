@@ -1,7 +1,7 @@
 {
   "name": "tokenburnmarket-monorepo",
   "private": true,
-  "packageManager": "pnpm@10.33.2",
+  "packageManager": "pnpm@12.15.0",
   "scripts": {
     "dev": "pnpm --filter @tokenburnmarket/web dev",
     "build": "pnpm -r build",
