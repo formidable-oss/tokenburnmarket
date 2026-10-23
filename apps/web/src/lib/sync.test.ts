@@ -81,6 +81,9 @@ function memoryStore(): Memory {
         (row) => row.builderId === builderId && row.deviceId !== deviceId && days.includes(row.day),
       );
     },
+    async storedUsage(deviceId, days) {
+      return [...usage.values()].filter((row) => row.deviceId === deviceId && days.includes(row.day));
+    },
     async putUsageRows(rows) {
       for (const row of rows) {
         usage.set(`${row.deviceId}|${row.day}|${row.provider}|${row.model}`, row);
@@ -266,6 +269,62 @@ describe("applySync", () => {
     ]);
     expect(result.nextWatermark).toBeNull();
     expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.trustLevelMin).toBe("quarantined");
+  });
+
+  it("keeps accepted days as they were when the device re-sends them past the backfill window", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    const days = [
+      day({ day: old }),
+      day({ day: old, provider: "codex", model: "gpt-6-luna", receipts: [] }),
+      day(),
+    ];
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, days), NOW);
+    const before = store.usage.get(`${DEVICE_A}|${old}|claude|claude-opus-5`);
+
+    // `sync --since 120` after the first sync: same transcripts, watermark now at DAY.
+    const again = await applySync(store, device(DEVICE_A, DAY), payload(DEVICE_A, days), NOW);
+
+    expect(again.days.map((row) => row.trustLevel)).toEqual(["verified", "reported", "verified"]);
+    expect(again.days[1]?.reasons.map((reason) => reason.code)).toEqual(["no_receipt_stream"]);
+    expect(store.usage.get(`${DEVICE_A}|${old}|claude|claude-opus-5`)).toBe(before);
+    expect(store.builderDays.get(`${BUILDER}|${old}`)).toMatchObject({
+      costUsd: 10,
+      trustLevelMin: "reported",
+    });
+    expect(again.nextWatermark).toBe(DAY);
+  });
+
+  it("does not let a re-sent day past the backfill window change what was counted", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    const again = await applySync(
+      store,
+      device(DEVICE_A, DAY),
+      payload(DEVICE_A, [day({ day: old, costUsd: 500, outputTokens: 90_000 })]),
+      NOW,
+    );
+
+    expect(again.days[0]?.trustLevel).toBe("verified");
+    expect(store.usage.get(`${DEVICE_A}|${old}|claude|claude-opus-5`)?.costUsd).toBe(5);
+    expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(5);
+  });
+
+  it("still quarantines a day past the backfill window that the device never sent", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day()]), NOW);
+    const late = await applySync(
+      store,
+      device(DEVICE_A, DAY),
+      payload(DEVICE_A, [day({ day: old }), day()]),
+      NOW,
+    );
+
+    expect(late.days.map((row) => row.trustLevel)).toEqual(["quarantined", "verified"]);
+    expect(late.days[0]?.reasons.map((reason) => reason.code)).toEqual(["stale_backfill"]);
+    expect(store.builderDays.get(`${BUILDER}|${old}`)?.trustLevelMin).toBe("quarantined");
   });
 
   it("reports a day with no Receipt Stream", async () => {

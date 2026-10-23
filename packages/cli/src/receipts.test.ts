@@ -3,6 +3,7 @@
   out in full: they are the cross-device dedupe contract, so a change to how a
   receipt is derived has to be a deliberate edit here, not a silent drift.
 */
+import * as zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
@@ -30,6 +31,8 @@ const CODEX = {
   first: "3ba8360b63d6e55d62177be018e30fa1d09b93964a829a0cc5341c586c138236",
   second: "fbd4cdb36b4d9a85701a32f6f35debd90169907c5422bb8dd80cc6484b6ba54f",
   third: "291ad027b3ea85d65cb0681f10c7897b26f40c27a172bdc2c7119634aae3155c",
+  compressed: "284e19ee91c344fb36c216e508a7496f9c820c8828643671cc065a13a1fb7a40",
+  archived: "1779057e00ec7d2724dc7988c79ffd72e7c272c79524dcacb5019ad456c933f5",
 };
 
 const GROK = {
@@ -88,6 +91,21 @@ describe("readCodexStreams", () => {
       CODEX.third,
     ]);
   });
+
+  // Codex compresses rollouts older than about a week and moves archived ones
+  // out of `sessions/`. ccusage reads both, so the receipts must too.
+  it.skipIf(typeof (zlib as { zstdDecompressSync?: unknown }).zstdDecompressSync !== "function")(
+    "reads compressed and archived rollouts",
+    () => {
+      const compressed = readCodexStreams([fixture("codex-compressed")]);
+      expect([...(compressed.get(receiptKey("2026-08-15", "codex", "gpt-6-astra")) ?? [])]).toEqual([
+        CODEX.compressed,
+      ]);
+      expect([...(compressed.get(receiptKey("2026-08-14", "codex", "gpt-6-astra")) ?? [])]).toEqual([
+        CODEX.archived,
+      ]);
+    },
+  );
 });
 
 describe("readGrokStreams", () => {
