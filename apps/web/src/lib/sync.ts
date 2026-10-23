@@ -304,7 +304,7 @@ export function nextWatermark(current: string | null, outcomes: readonly SyncDay
 }
 
 function usageKey(row: { day: string; provider: string; model: string }): string {
-  return `${row.day}|${row.provider}|${row.model}`;
+  return JSON.stringify([row.day, row.provider, row.model]);
 }
 
 /**

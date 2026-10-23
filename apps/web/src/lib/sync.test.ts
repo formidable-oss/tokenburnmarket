@@ -311,6 +311,25 @@ describe("applySync", () => {
     expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(5);
   });
 
+  it("does not mistake a new row past the backfill window for a stored one with a similar name", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(
+      store,
+      device(DEVICE_A),
+      payload(DEVICE_A, [day({ day: old, provider: "claude|opus", model: "5" })]),
+      NOW,
+    );
+    const late = await applySync(
+      store,
+      device(DEVICE_A, DAY),
+      payload(DEVICE_A, [day({ day: old, provider: "claude", model: "opus|5" })]),
+      NOW,
+    );
+
+    expect(late.days[0]?.reasons.map((reason) => reason.code)).toContain("stale_backfill");
+  });
+
   it("still quarantines a day that arrives for the first time past the backfill window", async () => {
     const store = memoryStore();
     const old = "2026-08-01";

@@ -9,6 +9,9 @@ identifiers. No prompts, no file names, no project paths.
 
 ## Connect
 
+Requires Node.js 22.15 or later. On an older Node, Codex days older than about a
+week sync as Reported, because Node cannot read Codex's compressed logs.
+
 ```
 npm install --global tokenburnmarket@latest
 tokenburnmarket connect
