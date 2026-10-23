@@ -18,7 +18,7 @@ import {
 } from "@tokenburnmarket/core";
 import type { SyncDay, SyncPayload, SyncTrigger, TrustLevel } from "@tokenburnmarket/core";
 import { readUsageAggregates } from "./ccusage.js";
-import { buildSyncDays, windowStart } from "./collect.js";
+import { buildSyncDays, shiftDay, utcDay, windowStart } from "./collect.js";
 import { currentConfigPath, readConfig, writeConfig } from "./config.js";
 import { readReceiptStreams } from "./receipts.js";
 import { acquireSyncLock } from "./sync-lock.js";
@@ -242,6 +242,13 @@ async function syncLocked(options: SyncOptions): Promise<number> {
     sinceDays: options.sinceDays,
   });
 
+  if (
+    options.sinceDays !== undefined &&
+    start !== undefined &&
+    start > shiftDay(utcDay(now), -Math.max(0, options.sinceDays))
+  ) {
+    log(`This device already synced the days before ${start}, so --since starts there.`);
+  }
   log(
     start
       ? `Reading usage since ${start}.`

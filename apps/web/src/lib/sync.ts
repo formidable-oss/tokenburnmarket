@@ -19,6 +19,7 @@
 */
 import {
   checkPlausibility,
+  resolvePlausibilityLimits,
   usageDayInputFromSyncDay,
   weakestTrustLevel,
 } from "@tokenburnmarket/core";
@@ -97,6 +98,15 @@ export interface UsageTwin {
   outputTokens: number;
 }
 
+/** A Usage row this Device already uploaded, as a re-send past the backfill window reads it. */
+export interface StoredUsage {
+  day: string;
+  provider: string;
+  model: string;
+  trustLevel: TrustLevel;
+  quarantineReasons: UsageReason[];
+}
+
 /** The columns the rollup reads back out of `usage_days`. */
 export interface RollupSourceRow {
   day: string;
@@ -132,6 +142,8 @@ export interface SyncStore {
   putReceipts(rows: readonly ReceiptWrite[]): Promise<void>;
   /** This Builder's Usage rows on `days` from Devices other than `deviceId`. */
   usageTwins(builderId: string, deviceId: string, days: readonly string[]): Promise<UsageTwin[]>;
+  /** This Device's own Usage rows on `days`, with the verdict each one got. */
+  storedUsage(deviceId: string, days: readonly string[]): Promise<StoredUsage[]>;
   putUsageRows(rows: readonly UsageRowWrite[]): Promise<void>;
   usageRowsForDays(builderId: string, days: readonly string[]): Promise<RollupSourceRow[]>;
   putBuilderDays(rows: readonly BuilderDayWrite[]): Promise<void>;
@@ -291,6 +303,45 @@ export function nextWatermark(current: string | null, outcomes: readonly SyncDay
   return watermark;
 }
 
+function usageKey(row: { day: string; provider: string; model: string }): string {
+  return `${row.day}|${row.provider}|${row.model}`;
+}
+
+/**
+ * The oldest day this Device may still amend, or null before its first Sync.
+ * Older days fail the `stale_backfill` check.
+ */
+export function backfillFloor(watermarkDay: string | null): string | null {
+  if (watermarkDay === null) return null;
+  const { backfillWindowDays } = resolvePlausibilityLimits();
+  const floor = Date.parse(`${watermarkDay}T00:00:00.000Z`) - backfillWindowDays * 86_400_000;
+  return new Date(floor).toISOString().slice(0, 10);
+}
+
+/**
+ * Rows behind the backfill window that this Device already uploaded, keyed by
+ * (day, provider, model).
+ *
+ * The watermark check exists to stop a Device adding work to days it has
+ * already closed. A re-send of such a day, which is what `sync --since N` does,
+ * adds nothing, so its stored row and verdict stand and the new numbers are
+ * not read. Without this, every re-send overwrote accepted days with
+ * Quarantined ones. A day behind the window that this Device never sent is
+ * still judged, and still Quarantined.
+ */
+async function keptRows(
+  store: SyncStore,
+  device: SyncDevice,
+  days: readonly SyncDay[],
+): Promise<Map<string, StoredUsage>> {
+  const floor = backfillFloor(device.watermarkDay);
+  if (floor === null) return new Map();
+  const staleDays = [...new Set(days.filter((row) => row.day < floor).map((row) => row.day))];
+  if (staleDays.length === 0) return new Map();
+  const stored = await store.storedUsage(device.id, staleDays);
+  return new Map(stored.map((row) => [usageKey(row), row]));
+}
+
 /**
  * Apply one verified Sync. The caller has already checked the signature and
  * that the payload belongs to this Device.
@@ -306,8 +357,11 @@ export async function applySync(
   payload: SyncPayload,
   now: Date,
 ): Promise<SyncResult> {
+  const kept = await keptRows(store, device, payload.days);
+  const judged = payload.days.filter((day) => !kept.has(usageKey(day)));
+
   const cutoffDay = receiptCutoffDay(now);
-  const recent = payload.days.filter((day) => day.day >= cutoffDay);
+  const recent = judged.filter((day) => day.day >= cutoffDay);
   const hashes = [...new Set(recent.flatMap((day) => day.receipts))];
   const foreign =
     hashes.length > 0
@@ -315,7 +369,7 @@ export async function applySync(
       : new Map<string, string>();
   const pastDays = [
     ...new Set(
-      payload.days.filter((day) => day.day < cutoffDay && day.receipts.length > 0).map((day) => day.day),
+      judged.filter((day) => day.day < cutoffDay && day.receipts.length > 0).map((day) => day.day),
     ),
   ];
   const twins =
@@ -324,6 +378,18 @@ export async function applySync(
   const outcomes: SyncDayOutcome[] = [];
   const usageRows: UsageRowWrite[] = [];
   for (const row of payload.days) {
+    const stored = kept.get(usageKey(row));
+    if (stored) {
+      outcomes.push({
+        day: row.day,
+        provider: row.provider,
+        model: row.model,
+        trustLevel: stored.trustLevel,
+        reasons: stored.quarantineReasons,
+      });
+      continue;
+    }
+
     const verdict = judgeDay(row, {
       now,
       watermarkDay: device.watermarkDay,
@@ -368,11 +434,13 @@ export async function applySync(
     }
   }
   if (receiptRows.length > 0) await store.putReceipts(receiptRows);
-  await store.putUsageRows(usageRows);
 
-  const touched = [...new Set(payload.days.map((day) => day.day))].sort();
-  const rows = await store.usageRowsForDays(device.builderId, touched);
-  await store.putBuilderDays(rollupBuilderDays(device.builderId, touched, rows));
+  if (usageRows.length > 0) {
+    await store.putUsageRows(usageRows);
+    const touched = [...new Set(usageRows.map((day) => day.day))].sort();
+    const rows = await store.usageRowsForDays(device.builderId, touched);
+    await store.putBuilderDays(rollupBuilderDays(device.builderId, touched, rows));
+  }
 
   const watermark = nextWatermark(device.watermarkDay, outcomes);
   await store.advanceWatermark(device.id, watermark, now);

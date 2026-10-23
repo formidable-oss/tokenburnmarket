@@ -63,7 +63,9 @@ tokenburnmarket status          # what is stored on this machine
 ```
 
 `sync` is safe to run whenever. A sync you run yourself is never skipped and is
-not held to a slot. Versions before 0.3.0 only get through inside a slot, so
+not held to a slot. Once a machine has synced, `--since` reaches back at most two
+days behind the last synced day. The server keeps what it already has for older
+days, so there is nothing to gain by sending them again. Versions before 0.3.0 only get through inside a slot, so
 update if a hand-run sync answers 429.
 
 ## MCP tools
