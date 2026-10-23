@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { configPathFor, writeConfig } from "./config.js";
 
-it("reads OpenCode SQLite receipts through the built CLI", () => {
+it.each([false, true])("collects OpenCode through the built CLI with a damaged legacy file: %s", (damaged) => {
   const home = mkdtempSync(join(tmpdir(), "tbm-usage-bundle-"));
   try {
     const root = join(home, "opencode");
@@ -23,6 +23,11 @@ it("reads OpenCode SQLite receipts through the built CLI", () => {
         tokens: { input: 1000, output: 200, reasoning: 150, cache: { read: 600, write: 0 } },
       }));
     } finally { db.close(); }
+    if (damaged) {
+      const legacy = join(root, "storage", "message", "session-1");
+      mkdirSync(legacy, { recursive: true });
+      writeFileSync(join(legacy, "truncated.json"), '{"tokens":');
+    }
     const report = { daily: [{ period: day, agents: [{ agent: "opencode", totalTokens: 1950,
       modelBreakdowns: [{ modelName: "gpt-5", inputTokens: 1000, outputTokens: 200,
         cacheReadTokens: 600, cacheCreationTokens: 0, cost: 0.02 }],
@@ -45,7 +50,11 @@ it("reads OpenCode SQLite receipts through the built CLI", () => {
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     const output = result.stdout;
     expect(output).toContain("opencode");
-    expect(output).toContain("1 rows, 1 receipts. Nothing was uploaded.");
+    expect(output).toContain(`1 rows, ${damaged ? 0 : 1} receipts. Nothing was uploaded.`);
+    if (damaged) {
+      expect(output).toContain("truncated.json");
+      expect(output).toContain("stored usage is preserved");
+    }
     expect(output).not.toContain("could not be read");
     expect(output).not.toContain("do not match");
   } finally { rmSync(home, { recursive: true, force: true }); }

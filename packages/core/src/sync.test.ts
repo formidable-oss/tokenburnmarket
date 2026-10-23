@@ -78,6 +78,17 @@ describe("SyncPayloadSchema", () => {
 });
 
 describe("signing a Sync", () => {
+  it("signs the incomplete-collection protection flag", async () => {
+    const keys = await generateDeviceKeyPair();
+    const body = payload();
+    body.days[0].onlyIfMissing = true;
+    const signed = await createSignedSync(keys.privateKey, body);
+    expect((await verifySyncBody(keys.publicKey, signed)).ok).toBe(true);
+    const changed = structuredClone(signed);
+    delete changed.payload.days[0].onlyIfMissing;
+    expect(await verifySyncBody(keys.publicKey, changed)).toEqual({ ok: false, error: "bad_signature" });
+  });
+
   it("signs the explicit history-review request and rejects a changed flag", async () => {
     const keys = await generateDeviceKeyPair();
     const signed = await createSignedSync(keys.privateKey, payload({ reviewHistory: true }));

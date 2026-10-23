@@ -99,7 +99,11 @@ Cursor read prints a warning and leaves its stored totals unchanged.
 The collector reads Codex archives and compressed logs. It counts reasoning once
 and restores OpenCode reasoning from the local database or legacy message files.
 OpenCode rows with mismatched snapshots wait for the next sync instead of replacing
-complete stored totals. Pi receipts cover the assistant messages ccusage reports.
+complete stored totals. If supplemental history is unreadable, the collector names
+the affected sources and submits ccusage totals without receipts for missing rows
+only. The server preserves existing rows, including during history review. A later
+complete read can replace a fallback row within the normal backfill window.
+Pi receipts cover the assistant messages ccusage reports.
 
 Compare reports over the same UTC dates. T3 Code can use another timezone, retain
 deleted transcripts, and price historical requests differently. Its custom account

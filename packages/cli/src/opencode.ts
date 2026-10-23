@@ -40,6 +40,11 @@ export interface OpenCodeDetails {
   outputTokens: number;
 }
 
+export interface OpenCodeReadResult {
+  details: Map<string, OpenCodeDetails>;
+  incompleteSources: string[];
+}
+
 export interface OpenCodeDetailsOptions {
   env: NodeJS.ProcessEnv;
   home: string;
@@ -52,7 +57,6 @@ export interface OpenCodeDetailsOptions {
 const PAGE_SIZE = 64;
 const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 const DB_NAME = /^opencode(?:-[a-zA-Z0-9_-]+)?\.db$/;
-const PARTIAL_WARNING = "Some OpenCode history could not be read. OpenCode details were omitted.";
 type Row = Record<string, unknown>;
 
 function object(value: unknown): Row {
@@ -163,9 +167,9 @@ async function readMessageFile(path: string, signal?: AbortSignal): Promise<stri
 /**
  * Supplement ccusage with reasoning and SHA-256 receipts of `opencode:<message id>`.
  * Compare every visible counter with the ccusage snapshot before using these details.
- * A failed or incomplete read warns once and returns an empty map.
+ * An incomplete read reports its sources and withholds supplemental counters.
  */
-export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Promise<Map<string, OpenCodeDetails>> {
+export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Promise<OpenCodeReadResult> {
   const { env, home, since, signal } = options;
   signal?.throwIfAborted();
   if (since && (!/^\d{4}-\d{2}-\d{2}$/.test(since) ||
@@ -175,14 +179,17 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
   }
   const index = new Map<string, OpenCodeDetails>();
   const seen = new Set<string>();
-  let partial = false;
+  const incompleteSources = new Set<string>();
+  const incomplete = (path: string) => {
+    if (incompleteSources.size < 10) incompleteSources.add(path);
+  };
 
-  const append = (source: string, kind: "message" | "session_message" | "legacy", row: Row = {}): string | undefined => {
+  const append = (source: string, path: string, kind: "message" | "session_message" | "legacy", row: Row = {}): string | undefined => {
     let message: Row;
     try {
       message = object(JSON.parse(source));
     } catch {
-      partial = true;
+      incomplete(path);
       return;
     }
     const tokens = object(message.tokens);
@@ -199,12 +206,12 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
     const timestamp = created > 0 ? created : 0;
     const date = new Date(timestamp);
     if (!Number.isFinite(date.getTime())) {
-      partial = true;
+      incomplete(path);
       return;
     }
     const day = date.toISOString().slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-      partial = true;
+      incomplete(path);
       return;
     }
     if (since && day < since) return;
@@ -212,7 +219,7 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
     const hash = id ? createHash("sha256").update(`opencode:${id}`).digest("hex") : undefined;
     if (hash && seen.has(hash)) return id;
     if ([tokens.input, tokens.output, tokens.reasoning, tokens.total, cache.read, cache.write]
-      .some((value) => typeof value === "number" && value > Number.MAX_SAFE_INTEGER)) partial = true;
+      .some((value) => typeof value === "number" && value > Number.MAX_SAFE_INTEGER)) incomplete(path);
     const inputTokens = count(tokens.input);
     const cachedInputTokens = count(cache.read);
     const cacheWriteTokens = count(cache.write);
@@ -222,7 +229,7 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
     // ccusage assigns a total-only residual to visible output when output is absent.
     const residual = Math.max(0, count(tokens.total) - known);
     if (outputTokens === 0) outputTokens = residual;
-    else if (residual > 0) partial = true;
+    else if (residual > 0) incomplete(path);
     if (inputTokens + cachedInputTokens + cacheWriteTokens + reasoningTokens + outputTokens === 0) return;
     if (hash) seen.add(hash);
     const key = receiptKey(day, "opencode", model);
@@ -236,7 +243,7 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
     details.outputTokens += outputTokens;
     details.reasoningTokens += reasoningTokens;
     if (![details.inputTokens, details.cachedInputTokens, details.cacheWriteTokens,
-      details.outputTokens, details.reasoningTokens].every(Number.isSafeInteger)) partial = true;
+      details.outputTokens, details.reasoningTokens].every(Number.isSafeInteger)) incomplete(path);
     if (hash) details.receipts.add(hash);
     index.set(key, details);
     return id || undefined;
@@ -254,7 +261,7 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
     try {
       canonical = await realpath(resolve(root));
     } catch (error) {
-      if (!missing(error)) partial = true;
+      if (!missing(error)) incomplete(root);
       continue;
     }
     if (canonicalRoots.has(canonical)) continue;
@@ -268,17 +275,18 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
       }
     } catch (error) {
       signal?.throwIfAborted();
-      if (!missing(error)) partial = true;
+      if (!missing(error)) incomplete(root);
       continue;
     }
     databases.sort((a, b) => a === b ? 0 : a === "opencode.db" ? -1 : b === "opencode.db" ? 1 : a.localeCompare(b));
     const databaseIds = new Set<string>();
     for (const name of databases) {
       signal?.throwIfAborted();
+      const databasePath = join(canonical, name);
       let db: Database | undefined;
       try {
         const { DatabaseSync } = await import("node:sqlite");
-        db = new DatabaseSync(join(canonical, name), { readOnly: true });
+        db = new DatabaseSync(databasePath, { readOnly: true });
         db.exec("PRAGMA busy_timeout = 100");
         const cutoffs = await forkCutoffs(db, signal);
         let foundTable = false;
@@ -288,7 +296,7 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
           const fields = columns(db, table);
           const required = ["id", "session_id", "data", ...(table === "session_message" ? ["type"] : [])];
           if (!required.every((field) => fields.has(field))) {
-            partial = true;
+            incomplete(databasePath);
             continue;
           }
           const created = fields.has("time_created") ? "time_created" : "NULL";
@@ -301,19 +309,19 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
               if (table === "session_message" && cutoff !== undefined &&
                   typeof row.seq === "number" && Number.isSafeInteger(row.seq) && row.seq <= cutoff) return;
               if (typeof row.id !== "string" || typeof row.session_id !== "string" || typeof row.data !== "string") {
-                partial = true;
+                incomplete(databasePath);
                 return;
               }
-              const id = append(row.data, table, row);
+              const id = append(row.data, databasePath, table, row);
               if (id) databaseIds.add(id);
             });
         }
-        if (!foundTable) partial = true;
+        if (!foundTable) incomplete(databasePath);
       } catch {
         signal?.throwIfAborted();
-        partial = true;
+        incomplete(databasePath);
       } finally {
-        try { db?.close(); } catch { partial = true; }
+        try { db?.close(); } catch { incomplete(databasePath); }
       }
     }
 
@@ -326,25 +334,25 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
           if (entry.isDirectory()) await walk(join(path, entry.name));
           else if (entry.isFile() && entry.name.endsWith(".json")) {
             if (databaseIds.has(entry.name.slice(0, -5))) continue;
+            const messagePath = join(path, entry.name);
             try {
-              append(await readMessageFile(join(path, entry.name), signal), "legacy");
+              append(await readMessageFile(messagePath, signal), messagePath, "legacy");
             } catch {
               signal?.throwIfAborted();
-              partial = true;
+              incomplete(messagePath);
             }
           }
         }
       } catch (error) {
         signal?.throwIfAborted();
-        if (!optional || !missing(error)) partial = true;
+        if (!optional || !missing(error)) incomplete(path);
       }
     };
     await walk(join(canonical, "storage", "message"), true);
   }
   signal?.throwIfAborted();
-  if (partial) {
-    (options.warn ?? console.warn)(PARTIAL_WARNING);
-    return new Map();
+  if (incompleteSources.size > 0) {
+    (options.warn ?? console.warn)(`OpenCode details are incomplete. Check these sources for unreadable data or unsupported records: ${[...incompleteSources].map((path) => JSON.stringify(path)).join(", ")}.`);
   }
-  return index;
+  return { details: incompleteSources.size > 0 ? new Map() : index, incompleteSources: [...incompleteSources] };
 }

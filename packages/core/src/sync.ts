@@ -41,6 +41,8 @@ export const SyncDaySchema = z
     costUsd: z.number().min(0).max(1_000_000).finite(),
     /** Empty means this agent exposes no message identifiers, so the row is Reported. */
     receipts: z.array(ReceiptHashSchema).max(MAX_RECEIPTS_PER_DAY),
+    /** Incomplete collection may fill a missing row, but must not replace stored usage. */
+    onlyIfMissing: z.literal(true).optional(),
   })
   .strict();
 

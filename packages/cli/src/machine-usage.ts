@@ -26,7 +26,8 @@ export async function readMachineUsage(options: MachineUsageOptions = {}): Promi
   signal.throwIfAborted();
   const receipts = (options.readReceipts ?? readReceiptStreams)(env, home, options.since);
   const details = base.some((row) => row.provider === "opencode")
-    ? await (options.readOpenCode ?? readOpenCodeDetails)(sourceOptions) : new Map();
+    ? await (options.readOpenCode ?? readOpenCodeDetails)(sourceOptions)
+    : { details: new Map(), incompleteSources: [] };
   const aggregates: UsageAggregate[] = [];
   for (const row of base) {
     if (row.provider !== "opencode") {
@@ -34,8 +35,14 @@ export async function readMachineUsage(options: MachineUsageOptions = {}): Promi
       continue;
     }
     const key = receiptKey(row.day, row.provider, row.model);
-    const detail = details.get(key);
-    if (!detail || detail.inputTokens !== row.inputTokens || detail.cachedInputTokens !== row.cachedInputTokens ||
+    const detail = details.details.get(key);
+    if (details.incompleteSources.length > 0 || !detail) {
+      aggregates.push({ ...row, onlyIfMissing: true });
+      receipts.delete(key);
+      options.warn?.(`OpenCode details are unavailable for ${row.day} ${row.model}. Sending ccusage totals without receipts for missing rows only; stored usage is preserved.`);
+      continue;
+    }
+    if (detail.inputTokens !== row.inputTokens || detail.cachedInputTokens !== row.cachedInputTokens ||
       detail.cacheWriteTokens !== row.cacheWriteTokens || detail.outputTokens !== row.outputTokens) {
       // Never replace a complete stored day with a snapshot that omits known reasoning usage.
       options.warn?.(`OpenCode details do not match the usage report for ${row.day} ${row.model}. This row was not uploaded; retry sync.`);

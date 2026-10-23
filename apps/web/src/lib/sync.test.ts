@@ -426,6 +426,45 @@ describe("applySync", () => {
     expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.trustLevelMin).toBe("quarantined");
   });
 
+  it.each([false, true])("preserves existing usage on incomplete collection even with history review: %s", async (reviewHistory) => {
+    const store = memoryStore();
+    const device = { id: DEVICE_A, builderId: BUILDER, watermarkDay: null };
+    const complete = day({ provider: "opencode", reasoningTokens: 200 });
+    const other = day({ provider: "opencode", model: "another-model" });
+    await applySync(store, device, payload(DEVICE_A, [complete, other]), NOW);
+    const before = structuredClone([...store.usage.values()].find((row) => row.model === complete.model));
+    const incomplete = { ...complete, reasoningTokens: 0, costUsd: 1, receipts: [], onlyIfMissing: true as const };
+    const changedOther = { ...other, costUsd: 7 };
+    await applySync(store, device, { ...payload(DEVICE_A, [incomplete, changedOther]),
+      ...(reviewHistory ? { reviewHistory: true as const } : {}),
+    }, NOW);
+    expect([...store.usage.values()].find((row) => row.model === complete.model)).toEqual(before);
+    expect([...store.usage.values()].find((row) => row.model === other.model)?.costUsd).toBe(7);
+  });
+
+  it("accepts missing incomplete usage as reported and later replaces it with complete usage", async () => {
+    const store = memoryStore();
+    const device = { id: DEVICE_A, builderId: BUILDER, watermarkDay: null };
+    const incomplete = day({ provider: "opencode", receipts: [], onlyIfMissing: true });
+    const first = await applySync(store, device, payload(DEVICE_A, [incomplete]), NOW);
+    expect(first.days[0].trustLevel).toBe("reported");
+    expect([...store.usage.values()][0].costUsd).toBe(5);
+    const complete = day({ provider: "opencode", reasoningTokens: 200, costUsd: 6 });
+    const second = await applySync(store, device, payload(DEVICE_A, [complete]), NOW);
+    expect(second.days[0].trustLevel).toBe("verified");
+    expect([...store.usage.values()][0].reasoningTokens).toBe(200);
+    expect([...store.usage.values()][0].costUsd).toBe(6);
+  });
+
+  it("still quarantines newly discovered old usage when collection is incomplete", async () => {
+    const store = memoryStore();
+    const device = { id: DEVICE_A, builderId: BUILDER, watermarkDay: "2026-08-17" };
+    const incomplete = day({ day: "2026-08-01", receipts: [], onlyIfMissing: true });
+    const result = await applySync(store, device, payload(DEVICE_A, [incomplete]), NOW);
+    expect(result.days[0].trustLevel).toBe("quarantined");
+    expect(result.days[0].reasons.map((reason) => reason.code)).toContain("stale_backfill");
+  });
+
   it("keeps accepted days as they were when the device re-sends them past the backfill window", async () => {
     const store = memoryStore();
     const old = "2026-08-01";
