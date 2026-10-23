@@ -103,7 +103,7 @@ tokenburnmarket --version
 npm, bun, pnpm or yarn. It then restarts the daemon, if one is installed.
 Agent sessions keep the MCP server they started with, so restart them too.
 
-For pnpm installations, `daemon install` uses the global launcher so later updates
+On macOS and Linux, pnpm services use the global launcher so later updates
 can change the package directory. After the first upgrade from 0.3.0, run
 `tokenburnmarket daemon install` once to replace an older service definition.
 
