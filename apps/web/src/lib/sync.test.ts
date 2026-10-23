@@ -311,7 +311,7 @@ describe("applySync", () => {
     expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(5);
   });
 
-  it("still quarantines a day past the backfill window that the device never sent", async () => {
+  it("still quarantines a day that arrives for the first time past the backfill window", async () => {
     const store = memoryStore();
     const old = "2026-08-01";
     await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day()]), NOW);

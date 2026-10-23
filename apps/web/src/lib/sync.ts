@@ -326,7 +326,7 @@ export function backfillFloor(watermarkDay: string | null): string | null {
  * already closed. A re-send of such a day, which is what `sync --since N` does,
  * adds nothing, so its stored row and verdict stand and the new numbers are
  * not read. Without this, every re-send overwrote accepted days with
- * Quarantined ones. A day behind the window that this Device never sent is
+ * Quarantined ones. A day behind the window that arrives for the first time is
  * still judged, and still Quarantined.
  */
 async function keptRows(
