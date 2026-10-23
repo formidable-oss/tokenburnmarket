@@ -67,9 +67,50 @@ tokenburnmarket status          # what is stored on this machine
 
 `sync` is safe to run whenever. A sync you run yourself is never skipped and is
 not held to a slot. Once a machine has synced, `--since` reaches back at most two
-days behind the last synced day. The server keeps what it already has for older
-days, so there is nothing to gain by sending them again. Versions before 0.3.0 only get through inside a slot, so
+days behind the last synced day. Normal sync keeps the stored rows for older
+days. Versions before 0.3.0 only get through inside a slot, so
 update if a hand-run sync answers 429.
+
+To submit missing or corrected history after a collector update, use an explicit
+review request. Preview it first:
+
+```sh
+tokenburnmarket sync --since 30 --review-history --dry-run
+tokenburnmarket sync --since 30 --review-history
+```
+
+This replaces rows outside the backfill window and quarantines them for admin
+review. Those rows stop counting until approved. The server must support history
+review before you use this option. Automatic sync never requests history review.
+
+## Usage sources
+
+The collector uses ccusage 20.0.41 for Claude Code, Codex, Grok, Pi, OpenCode,
+Antigravity, Gemini CLI, Copilot CLI, and its other supported agents. It uses an
+isolated ccusage configuration so project settings cannot hide costs or filter
+the sync window. Set source directories with the environment variables below.
+
+Cursor uses its dashboard API with your saved Cursor CLI login. This includes
+account usage from other machines. Receipt hashes let the server identify copies
+of that account history. Credentials go only to Cursor and are never uploaded to
+Token Burn Market. Sign in to the Cursor CLI to enable this source. A failed
+Cursor read prints a warning and leaves its stored totals unchanged.
+
+The collector reads Codex archives and compressed logs. It counts reasoning once
+and restores OpenCode reasoning from the local database or legacy message files.
+OpenCode rows with mismatched snapshots wait for the next sync instead of replacing
+complete stored totals. If supplemental history is unreadable, the collector names
+the affected sources and submits ccusage totals without receipts for missing rows
+only. The server preserves existing rows, including during history review. A later
+complete read can replace a fallback row within the normal backfill window.
+Pi receipts cover the assistant messages ccusage reports.
+
+Compare reports over the same UTC dates. T3 Code can use another timezone, retain
+deleted transcripts, and price historical requests differently. Its custom account
+directories must also be supplied to this collector. Missing model prices produce
+a warning. Some Gemini and Antigravity reports omit tokens from model breakdowns.
+The collector recovers them when there is one model and warns when attribution is
+ambiguous. Pi tool and summary usage is not exposed by the pinned ccusage version.
 
 ## MCP tools
 
@@ -120,14 +161,26 @@ tokenburnmarket server, and they are off in CI.
 | variable | what it does |
 | --- | --- |
 | `TBM_SERVER` | the server to talk to, same as `--server` |
-| `TBM_CCUSAGE` | a local ccusage command to run instead of `npx -y ccusage@latest` |
+| `TBM_CCUSAGE` | a local ccusage command to run instead of the tested `ccusage@20.0.41` |
+| `CLAUDE_CONFIG_DIR` | comma-separated Claude Code config directories |
+| `CODEX_HOME` | comma-separated Codex homes, including archives or separate T3 accounts |
+| `OPENCODE_DATA_DIR` | comma-separated OpenCode data directories |
+| `ANTIGRAVITY_DATA_DIR` | comma-separated Antigravity data directories, including custom T3 profiles |
+| `PI_AGENT_DIR` | comma-separated Pi session directories for ccusage |
+| `PI_CODING_AGENT_SESSION_DIR` | Pi session directory, used when `PI_AGENT_DIR` is absent |
+| `PI_CODING_AGENT_DIR` | Pi agent home, with usage under `sessions/` |
 | `GROK_HOME` | Grok config directory containing `sessions/`; defaults to `~/.grok` |
+| `AGENT_CLI_CREDENTIAL_STORE` | Cursor credential mode; `file` uses its saved auth file, `memory` disables account collection |
 | `TBM_NO_UPDATE_CHECK` | set to anything to stop checking npm for a newer version |
 | `TBM_NO_AUTO_UPDATE` | set to anything to keep the daemon to a log line instead of updating itself |
 
-Receipt streams are supported for Claude Code, Codex, and Grok. Grok receipts
+Receipt streams are supported for Claude Code, Codex, Grok, Pi, OpenCode, and Cursor. Grok receipts
 come from completed turns in `sessions/**/updates.jsonl`. Usage with a matching
 stream can be verified when it passes the server's checks.
+
+On macOS and Linux, `daemon install` preserves source directories from the current
+environment. Run it again after you change those directories. It does not copy API
+keys into the service definition.
 
 Config lives in the platform config directory: `~/Library/Application Support/tokenburnmarket`
 on macOS, `%APPDATA%\tokenburnmarket` on Windows, `$XDG_CONFIG_HOME/tokenburnmarket`

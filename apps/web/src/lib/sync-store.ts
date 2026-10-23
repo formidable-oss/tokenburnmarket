@@ -6,12 +6,13 @@
   Collector re-sends today and yesterday on every run, so a Sync interrupted
   halfway is repaired by the next one instead of needing a rollback.
 */
-import { and, eq, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { builderDays, devices, receipts, usageDays } from "@/db/schema";
 import type {
   BuilderDayWrite,
   ReceiptWrite,
+  ReceiptOwners,
   RollupSourceRow,
   StoredUsage,
   SyncStore,
@@ -22,7 +23,7 @@ import type {
 /*
   Postgres caps parameters per statement at 65535, and a busy day carries tens of
   thousands of receipts. Rows are sized against their column count: receipts have
-  four columns, Usage rows sixteen.
+  four columns, Usage rows seventeen.
 */
 const CHUNK = 1000;
 const RECEIPT_CHUNK = 5000;
@@ -34,20 +35,37 @@ function chunks<T>(items: readonly T[], size = CHUNK): T[][] {
 }
 
 export const drizzleSyncStore: SyncStore = {
-  async foreignReceipts(builderId, deviceId, hashes) {
-    const owners = new Map<string, string>();
+  async foreignReceipts(builderId, deviceId, hashes, usage) {
+    const owners: ReceiptOwners = new Map();
     for (const batch of chunks(hashes, RECEIPT_CHUNK)) {
       const rows = await db
         .select({ hash: receipts.hash, deviceId: receipts.deviceId })
         .from(receipts)
+        .innerJoin(
+          usageDays,
+          and(
+            eq(usageDays.deviceId, receipts.deviceId),
+            eq(usageDays.builderId, receipts.builderId),
+            eq(usageDays.day, receipts.day),
+            eq(usageDays.provider, usage.provider),
+            eq(usageDays.model, usage.model),
+            isNull(usageDays.duplicateOfDeviceId),
+          ),
+        )
         .where(
           and(
             eq(receipts.builderId, builderId),
             ne(receipts.deviceId, deviceId),
             inArray(receipts.hash, batch),
+            eq(receipts.day, usage.day),
           ),
-        );
-      for (const row of rows) owners.set(row.hash, row.deviceId);
+        )
+        .orderBy(receipts.deviceId);
+      for (const row of rows) {
+        const devices = owners.get(row.hash) ?? new Set<string>();
+        devices.add(row.deviceId);
+        owners.set(row.hash, devices);
+      }
     }
     return owners;
   },
@@ -66,8 +84,8 @@ export const drizzleSyncStore: SyncStore = {
         day: usageDays.day,
         provider: usageDays.provider,
         model: usageDays.model,
-        receiptCount: usageDays.receiptCount,
-        outputTokens: usageDays.outputTokens,
+        receiptFingerprint: usageDays.receiptFingerprint,
+        duplicateOfDeviceId: usageDays.duplicateOfDeviceId,
       })
       .from(usageDays)
       .where(
@@ -76,7 +94,8 @@ export const drizzleSyncStore: SyncStore = {
           ne(usageDays.deviceId, deviceId),
           inArray(usageDays.day, [...days]),
         ),
-      );
+      )
+      .orderBy(usageDays.deviceId);
   },
 
   async storedUsage(deviceId, days): Promise<StoredUsage[]> {
@@ -110,6 +129,7 @@ export const drizzleSyncStore: SyncStore = {
             trustLevel: sql`excluded.trust_level`,
             quarantineReasons: sql`excluded.quarantine_reasons`,
             receiptCount: sql`excluded.receipt_count`,
+            receiptFingerprint: sql`excluded.receipt_fingerprint`,
             duplicateOfDeviceId: sql`excluded.duplicate_of_device_id`,
             checkedAt: sql`excluded.checked_at`,
           },

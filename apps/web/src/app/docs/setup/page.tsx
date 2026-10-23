@@ -192,7 +192,7 @@ export default function DocsSetupPage() {
         <span className="type-data">TBM_SERVER</span> points the collector at another server, the
         same as <span className="type-data">--server</span>.{" "}
         <span className="type-data">TBM_CCUSAGE</span> names a local ccusage command to run instead
-        of <span className="type-data">npx -y ccusage@latest</span>.{" "}
+        of the tested ccusage version bundled into the collector configuration.{" "}
         <span className="type-data">npx tokenburnmarket --help</span> lists every command.
       </p>
     </article>

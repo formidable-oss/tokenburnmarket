@@ -15,10 +15,11 @@
 */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { currentConfigDir } from "./config.js";
 import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
 import { msUntilScheduledSync, sync } from "./sync.js";
+import { USAGE_ENVIRONMENT_KEYS, usageEnvironment } from "./usage-environment.js";
 import {
   CLI_VERSION,
   checkForUpdate,
@@ -265,6 +266,7 @@ export interface InstallContext {
   scriptPath: string;
   home: string;
   env?: NodeJS.ProcessEnv;
+  cwd?: string;
 }
 
 interface CommandResult {
@@ -292,9 +294,14 @@ function servicePath(context: InstallContext, packageManager?: string): string {
 }
 
 function serviceEnvironment(context: InstallContext, packageManager?: string): [string, string][] {
-  const env = context.env ?? process.env;
+  const sourceEnv = context.env ?? process.env;
+  const env = usageEnvironment(sourceEnv, context.home);
   return [["PATH", servicePath(context, packageManager)],
-    ...(env.PNPM_HOME ? [["PNPM_HOME", env.PNPM_HOME] as [string, string]] : [])];
+    ...(sourceEnv.PNPM_HOME ? [["PNPM_HOME", sourceEnv.PNPM_HOME] as [string, string]] : []),
+    ...USAGE_ENVIRONMENT_KEYS.flatMap((key): [string, string][] =>
+      env[key]?.trim() ? [[key, key === "AGENT_CLI_CREDENTIAL_STORE" ? env[key]!
+        : env[key]!.split(",").map((path) => resolve(context.cwd ?? process.cwd(), path)).join(",")]] : [],
+    )];
 }
 
 function xml(value: string): string {
@@ -354,8 +361,8 @@ ${serviceEnvironment(context, command.packageManager).map(([key, value]) => `   
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>${context.home}/Library/Logs/tokenburnmarket.log</string>
-  <key>StandardErrorPath</key><string>${context.home}/Library/Logs/tokenburnmarket.log</string>
+  <key>StandardOutPath</key><string>${xml(context.home)}/Library/Logs/tokenburnmarket.log</string>
+  <key>StandardErrorPath</key><string>${xml(context.home)}/Library/Logs/tokenburnmarket.log</string>
 </dict>
 </plist>`;
 }

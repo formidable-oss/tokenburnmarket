@@ -1581,6 +1581,12 @@
           "notNull": true,
           "default": 0
         },
+        "receipt_fingerprint": {
+          "name": "receipt_fingerprint",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
         "duplicate_of_device_id": {
           "name": "duplicate_of_device_id",
           "type": "uuid",

@@ -208,6 +208,7 @@ describe("installSnippet", () => {
     execPath: "/usr/local/bin/node",
     scriptPath: "/usr/local/lib/node_modules/tokenburnmarket/dist/index.js",
     home: "/home/dev",
+    env: {},
   };
 
   it("prints a launchd job on macOS, pointing at this node and this script", () => {
@@ -228,6 +229,34 @@ describe("installSnippet", () => {
 
   it("leaves the schedule to the daemon rather than the unit", () => {
     expect(installSnippet({ ...context, platform: "linux" }).join("\n")).not.toContain("--interval");
+  });
+
+  it("preserves usage roots without copying credentials into launchd", () => {
+    const printed = installSnippet({ ...context, platform: "darwin", env: {
+      CODEX_HOME: "~/Codex & archive,~/other",
+      PI_CODING_AGENT_DIR: "~/pi",
+      OPENAI_API_KEY: "must-not-be-persisted",
+    } }).join("\n");
+    expect(printed).toContain("<key>CODEX_HOME</key><string>/home/dev/Codex &amp; archive,/home/dev/other</string>");
+    expect(printed).toContain("<key>PI_AGENT_DIR</key><string>/home/dev/pi/sessions</string>");
+    expect(printed).not.toContain("must-not-be-persisted");
+  });
+
+  it("quotes custom directories in systemd environment values", () => {
+    const printed = installSnippet({ ...context, platform: "linux", env: {
+      CODEX_HOME: '/data/50% "archive"',
+      CURSOR_API_KEY: "must-not-be-persisted",
+    } }).join("\n");
+    expect(printed).toContain('Environment="CODEX_HOME=/data/50%% \\"archive\\""');
+    expect(printed).not.toContain("must-not-be-persisted");
+  });
+
+  it.each(["darwin", "linux"] as const)("keeps relative roots stable after %s service startup", (platform) => {
+    const printed = installSnippet({ ...context, platform, cwd: "/project", env: {
+      CODEX_HOME: "./codex,../archive", AGENT_CLI_CREDENTIAL_STORE: "file",
+    } }).join("\n");
+    expect(printed).toContain("/project/codex,/archive");
+    expect(printed).not.toContain("/project/file");
   });
 });
 

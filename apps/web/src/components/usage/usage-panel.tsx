@@ -53,7 +53,7 @@ function UsageHistorySection({ history }: { history: UsageHistory }) {
           </dd>
         </div>
         <div>
-          <dt className="type-label text-subtle">all-time tokens</dt>
+          <dt className="type-label text-subtle">all-time processed tokens</dt>
           <dd className="type-data mt-1 text-[1.1rem] tabular-nums">
             {tokens(history.totalTokens)}
           </dd>
@@ -218,9 +218,21 @@ export function UsagePanel({
           <p className="type-data text-[1.6rem] leading-none text-primary tabular-nums">
             {money(summary.totalCostUsd)}
           </p>
-          <p className="type-label mt-1 text-subtle">{tokens(summary.totalTokens)} tokens</p>
+          <p className="type-label mt-1 text-subtle">estimated cost</p>
+          <p className="type-label mt-1 text-subtle">{tokens(summary.totalTokens)} processed tokens</p>
         </div>
       </div>
+
+      <p className="mt-4 text-[0.85rem] text-subtle">
+        {summary.days.length > 0 ? (
+          <span className="block">
+            {dayFormat.format(new Date(`${summary.days[0]!.day}T00:00:00Z`))}
+            {" to "}
+            {dayFormat.format(new Date(`${summary.days.at(-1)!.day}T00:00:00Z`))} UTC, including today.
+          </span>
+        ) : null}
+        Processed tokens include input, cache reads, cache writes, output, and reasoning.
+      </p>
 
       {hasUsage ? (
         <>
