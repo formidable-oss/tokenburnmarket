@@ -28,6 +28,8 @@ export interface UsageAggregate {
   outputTokens: number;
   reasoningTokens: number;
   costUsd: number;
+  /** An incomplete supplemental scan must not replace an existing server row. */
+  onlyIfMissing?: true;
 }
 
 /** The command that runs ccusage, split into argv. Overridable for local installs. */

@@ -82,6 +82,7 @@ export function buildSyncDays(
         reasoningTokens: row.reasoningTokens,
         costUsd: row.costUsd,
         receipts: hashes,
+        ...(row.onlyIfMissing ? { onlyIfMissing: true as const } : {}),
       };
     })
     .sort((a, b) =>

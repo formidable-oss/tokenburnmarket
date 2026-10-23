@@ -14,7 +14,7 @@ const defaults: MachineUsageOptions = {
   home: "/nonexistent", env: {},
   readBase: async () => [row],
   readReceipts: () => new Map(),
-  readOpenCode: async () => new Map([[key, { ...row, reasoningTokens: 15, receipts: new Set([hash]) }]]),
+  readOpenCode: async () => ({ details: new Map([[key, { ...row, reasoningTokens: 15, receipts: new Set([hash]) }]]), incompleteSources: [] }),
   readCursor: async () => ({ aggregates: [], receipts: new Map() }),
 };
 
@@ -32,18 +32,22 @@ describe("readMachineUsage", () => {
     expect(usage.aggregates[0]!.reasoningTokens).toBe(15);
   });
 
-  it("retains other providers when OpenCode cannot produce a complete snapshot", async () => {
+  it.each([{ incompleteSources: [] }, { incompleteSources: ["/local/broken.db"] }])("submits missing OpenCode rows when supplemental sources fail: %j", async ({ incompleteSources }) => {
     const warnings: string[] = [];
     const claude = { ...row, provider: "claude" };
     const usage = await readMachineUsage({ ...defaults, readBase: async () => [row, claude],
-      readOpenCode: async () => new Map(), warn: (message) => warnings.push(message) });
-    expect(usage.aggregates).toEqual([claude]);
-    expect(warnings.join(" ")).toContain("This row was not uploaded");
+      readOpenCode: async () => ({ details: new Map(), incompleteSources }),
+      readReceipts: () => new Map([[key, new Set([hash])]]), warn: (message) => warnings.push(message) });
+    expect(usage.aggregates).toEqual([{ ...row, onlyIfMissing: true }, claude]);
+    expect(usage.receipts.has(key)).toBe(false);
+    const days = buildSyncDays(usage.aggregates, usage.receipts, { now: new Date("2026-10-23T00:00:00Z") });
+    expect(days.find((day) => day.provider === "opencode")).toEqual({ ...row, onlyIfMissing: true, receipts: [] });
+    expect(warnings.join(" ")).toContain("stored usage is preserved");
   });
 
   it("waits for matching snapshots when usage changes during collection", async () => {
     const usage = await readMachineUsage({ ...defaults,
-      readOpenCode: async () => new Map([[key, { ...row, outputTokens: 30, reasoningTokens: 15, receipts: new Set([hash]) }]]),
+      readOpenCode: async () => ({ details: new Map([[key, { ...row, outputTokens: 30, reasoningTokens: 15, receipts: new Set([hash]) }]]), incompleteSources: [] }),
     });
     expect(usage.aggregates).toEqual([]);
     expect(usage.receipts.size).toBe(0);

@@ -317,8 +317,7 @@ export function backfillFloor(watermarkDay: string | null): string | null {
 }
 
 /**
- * Rows behind the backfill window that this Device already uploaded, keyed by
- * (day, provider, model).
+ * Stored rows protected by the backfill window or by an incomplete collection.
  *
  * The watermark check exists to stop a Device adding work to days it has
  * already closed. A re-send of such a day, which is what `sync --since N` does,
@@ -331,13 +330,14 @@ async function keptRows(
   store: SyncStore,
   device: SyncDevice,
   days: readonly SyncDay[],
+  reviewHistory = false,
 ): Promise<Map<string, StoredUsage>> {
   const floor = backfillFloor(device.watermarkDay);
-  if (floor === null) return new Map();
-  const staleDays = [...new Set(days.filter((row) => row.day < floor).map((row) => row.day))];
-  if (staleDays.length === 0) return new Map();
-  const stored = await store.storedUsage(device.id, staleDays);
-  return new Map(stored.map((row) => [usageKey(row), row]));
+  const protectedRows = days.filter((row) => row.onlyIfMissing || (!reviewHistory && floor !== null && row.day < floor));
+  if (protectedRows.length === 0) return new Map();
+  const keys = new Set(protectedRows.map(usageKey));
+  const stored = await store.storedUsage(device.id, [...new Set(protectedRows.map((row) => row.day))]);
+  return new Map(stored.filter((row) => keys.has(usageKey(row))).map((row) => [usageKey(row), row]));
 }
 
 /**
@@ -355,7 +355,7 @@ export async function applySync(
   payload: SyncPayload,
   now: Date,
 ): Promise<SyncResult> {
-  const kept = payload.reviewHistory ? new Map<string, StoredUsage>() : await keptRows(store, device, payload.days);
+  const kept = await keptRows(store, device, payload.days, payload.reviewHistory);
   const judged = payload.days.filter((day) => !kept.has(usageKey(day)));
 
   const cutoffDay = receiptCutoffDay(now);

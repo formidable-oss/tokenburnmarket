@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -60,7 +60,7 @@ function v2Table(db: DatabaseSync, withTimestamp = true): void {
 }
 
 async function read(options: Partial<OpenCodeDetailsOptions> = {}) {
-  return readOpenCodeDetails({ env: { OPENCODE_DATA_DIR: root }, home: temporary, warn, ...options });
+  return (await readOpenCodeDetails({ env: { OPENCODE_DATA_DIR: root }, home: temporary, warn, ...options })).details;
 }
 
 beforeEach(() => {
@@ -347,7 +347,7 @@ describe("OpenCode read limits and errors", () => {
         db.close();
       }
       expect(await read()).toEqual(new Map());
-      expect(warn).toHaveBeenCalledExactlyOnceWith("Some OpenCode history could not be read. OpenCode details were omitted.");
+      expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(JSON.stringify(realpathSync(join(root, "opencode.db")))));
       expect(JSON.stringify(warn.mock.calls)).not.toContain("PRIVATE PROMPT SENTINEL");
     },
   );
@@ -361,8 +361,11 @@ describe("OpenCode read limits and errors", () => {
   it("warns and withholds valid rows when another legacy message is incomplete", async () => {
     const path = legacy(message());
     writeFileSync(join(dirname(path), "truncated.json"), '{"tokens":');
-    expect(await read()).toEqual(new Map());
-    expect(warn).toHaveBeenCalledOnce();
+    const scan = await readOpenCodeDetails({ env: { OPENCODE_DATA_DIR: root }, home: temporary, warn });
+    expect(scan.details).toEqual(new Map());
+    expect(scan.incompleteSources).toEqual([realpathSync(join(dirname(path), "truncated.json"))]);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("truncated.json"));
+    expect(warn.mock.calls[0][0]).not.toContain("retry");
   });
 
   it.each(["legacy", "database"])("limits a single %s message read", async (kind) => {
