@@ -144,6 +144,10 @@ tokenburnmarket --version
 npm, bun, pnpm or yarn. It then restarts the daemon, if one is installed.
 Agent sessions keep the MCP server they started with, so restart them too.
 
+For pnpm installations, `daemon install` uses the global launcher so later updates
+can change the package directory. After the first upgrade from 0.3.0, run
+`tokenburnmarket daemon install` once to replace an older service definition.
+
 The CLI asks the npm registry for the latest version at most once a day. When
 a newer one is out, `sync`, `status` and `connect` print one line on stderr,
 and the MCP server adds the line to the first tool answer of each session so
