@@ -14,7 +14,7 @@
   a plain file rather than a socket so a crash leaves something readable behind.
 */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { currentConfigDir } from "./config.js";
 import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
@@ -25,7 +25,10 @@ import {
   checkForUpdate,
   compareVersions,
   currentUpdateContext,
-  packageVersion,
+  installedVersion,
+  installMethod,
+  pnpmPackagePath,
+  pnpmQuery,
   runUpdateCommand,
   updateCachePath,
   updateCommand,
@@ -202,8 +205,8 @@ export interface KeepUpToDateOptions {
 export async function keepUpToDate(options: KeepUpToDateOptions): Promise<boolean> {
   const env = options.env ?? process.env;
   const running = options.running ?? CLI_VERSION;
-  const installed = options.installed ?? (() => packageVersion());
   const context = options.context ?? currentUpdateContext();
+  const installed = options.installed ?? (() => installedVersion(context));
   const check = await (options.check ?? (() => checkForUpdate({ cachePath: updateCachePath(), env })))();
 
   if (check?.outdated && compareVersions(installed(), check.latest) < 0) {
@@ -276,9 +279,10 @@ export interface InstallDaemonOptions {
   run?: (command: string, args: readonly string[]) => CommandResult;
 }
 
-function servicePath(context: InstallContext): string {
+function servicePath(context: InstallContext, packageManager?: string): string {
   return [
     dirname(context.execPath),
+    ...(packageManager ? [dirname(packageManager)] : []),
     join(context.home, ".local/bin"),
     "/opt/homebrew/bin",
     "/usr/local/bin",
@@ -289,12 +293,15 @@ function servicePath(context: InstallContext): string {
     .join(":");
 }
 
-function serviceEnvironment(context: InstallContext): [string, string][] {
-  const env = usageEnvironment(context.env ?? process.env, context.home);
-  return [["PATH", servicePath(context)], ...USAGE_ENVIRONMENT_KEYS.flatMap((key): [string, string][] =>
-    env[key]?.trim() ? [[key, key === "AGENT_CLI_CREDENTIAL_STORE" ? env[key]!
-      : env[key]!.split(",").map((path) => resolve(context.cwd ?? process.cwd(), path)).join(",")]] : [],
-  )];
+function serviceEnvironment(context: InstallContext, packageManager?: string): [string, string][] {
+  const sourceEnv = context.env ?? process.env;
+  const env = usageEnvironment(sourceEnv, context.home);
+  return [["PATH", servicePath(context, packageManager)],
+    ...(sourceEnv.PNPM_HOME ? [["PNPM_HOME", sourceEnv.PNPM_HOME] as [string, string]] : []),
+    ...USAGE_ENVIRONMENT_KEYS.flatMap((key): [string, string][] =>
+      env[key]?.trim() ? [[key, key === "AGENT_CLI_CREDENTIAL_STORE" ? env[key]!
+        : env[key]!.split(",").map((path) => resolve(context.cwd ?? process.cwd(), path)).join(",")]] : [],
+    )];
 }
 
 function xml(value: string): string {
@@ -307,8 +314,38 @@ function unitValue(value: string): string {
     .replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
 }
 
+function daemonCommand(context: InstallContext): { args: string[]; packageManager?: string } {
+  const updateContext: UpdateContext = {
+    ...context,
+    method: installMethod(context.scriptPath),
+    env: context.env ?? process.env,
+  };
+  if (context.platform !== "win32" && (updateContext.method === "pnpm" ||
+    (updateContext.method === "unknown" && context.scriptPath.includes(`/node_modules/tokenburnmarket/`)))) {
+    const path = pnpmPackagePath(updateContext);
+    let sameInstall = updateContext.method === "pnpm";
+    try {
+      sameInstall ||= path !== null &&
+        realpathSync(join(path, "dist/index.js")) === realpathSync(context.scriptPath);
+    } catch {
+      // An absent entry point cannot identify this installation.
+    }
+    if (sameInstall) {
+      const bin = pnpmQuery(updateContext, ["bin", "--global"]);
+      if (!bin) throw new Error("Could not resolve the pnpm global bin directory.");
+      // The bin shim follows pnpm updates. The resolved package path can become stale.
+      return {
+        args: [join(bin, "tokenburnmarket"), "daemon"],
+        packageManager: updateCommand({ ...updateContext, method: "pnpm" })!.command,
+      };
+    }
+  }
+  return { args: [context.execPath, context.scriptPath, "daemon"] };
+}
+
 /** The launchd job macOS wants, keyed by the reverse-DNS label launchd expects. */
 function launchdPlist(context: InstallContext): string {
+  const command = daemonCommand(context);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -316,13 +353,11 @@ function launchdPlist(context: InstallContext): string {
   <key>Label</key><string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${xml(context.execPath)}</string>
-    <string>${xml(context.scriptPath)}</string>
-    <string>daemon</string>
+${command.args.map((argument) => `    <string>${xml(argument)}</string>`).join("\n")}
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-${serviceEnvironment(context).map(([key, value]) => `    <key>${key}</key><string>${xml(value)}</string>`).join("\n")}
+${serviceEnvironment(context, command.packageManager).map(([key, value]) => `    <key>${key}</key><string>${xml(value)}</string>`).join("\n")}
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -333,14 +368,16 @@ ${serviceEnvironment(context).map(([key, value]) => `    <key>${key}</key><strin
 }
 
 function systemdUnit(context: InstallContext): string {
+  const command = daemonCommand(context);
   return `[Unit]
 Description=tokenburnmarket usage sync
 After=network-online.target
 
 [Service]
 Type=simple
-${serviceEnvironment(context).map(([key, value]) => `Environment="${key}=${unitValue(value)}"`).join("\n")}
-ExecStart=${context.execPath} ${context.scriptPath} daemon
+${serviceEnvironment(context, command.packageManager).map(([key, value]) => `Environment="${key}=${unitValue(value)}"`).join("\n")}
+ExecStart=${command.args.map((argument) => /\s|["\\%]/.test(argument)
+    ? `"${unitValue(argument)}"` : argument).join(" ")}
 Restart=always
 RestartSec=30
 
@@ -380,10 +417,11 @@ export function installDaemon(
   }
 
   if (context.platform === "darwin") {
+    const plist = launchdPlist(context);
     const path = join(context.home, "Library/LaunchAgents/com.tokenburnmarket.daemon.plist");
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     if (existsSync(path)) run("launchctl", ["unload", "-w", path]);
-    writeFileSync(path, `${launchdPlist(context)}\n`, { mode: 0o600 });
+    writeFileSync(path, `${plist}\n`, { mode: 0o600 });
     if (commandFailed(run("launchctl", ["load", "-w", path]), "Starting the LaunchAgent", log)) {
       return 1;
     }

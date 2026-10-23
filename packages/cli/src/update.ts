@@ -11,10 +11,11 @@
   found from where this file lives on disk. Running npm against a bun install
   would leave two copies and keep running the old one.
 */
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { APP_NAME, currentConfigDir } from "./config.js";
 
 /**
@@ -88,7 +89,8 @@ export interface CheckOptions {
 
 /** Whether checks are off for this environment. CI runs are never told to update. */
 export function updateChecksDisabled(env: NodeJS.ProcessEnv): boolean {
-  return Boolean(env.TBM_NO_UPDATE_CHECK?.trim() || env.CI?.trim());
+  const ci = env.CI?.trim().toLowerCase();
+  return Boolean(env.TBM_NO_UPDATE_CHECK?.trim() || (ci && ci !== "false" && ci !== "0"));
 }
 
 function readCache(path: string): CachedCheck | null {
@@ -229,7 +231,17 @@ export function updateCommand(context: UpdateContext): UpdateCommand | null {
     }
     case "pnpm":
       return {
-        command: windows ? "pnpm.cmd" : "pnpm",
+        command: firstExisting(
+          [
+            context.env.PNPM_HOME ? join(context.env.PNPM_HOME, windows ? "pnpm.cmd" : "pnpm") : undefined,
+            join(dirname(context.execPath), windows ? "pnpm.cmd" : "pnpm"),
+            join(context.home, windows ? "AppData/Local/pnpm" : context.platform === "darwin"
+              ? "Library/pnpm" : ".local/share/pnpm", windows ? "pnpm.cmd" : "pnpm"),
+            ...(context.env.PATH ?? "").split(windows ? ";" : ":")
+              .filter(Boolean).map((path) => join(path, windows ? "pnpm.cmd" : "pnpm")),
+          ],
+          windows ? "pnpm.cmd" : "pnpm",
+        ),
         args: ["add", "--global", spec],
         display: `pnpm add --global ${spec}`,
       };
@@ -281,13 +293,7 @@ export interface RunResult {
 
 /** Run an update command. `inherit` shows its output live, for a person at a terminal. */
 export function runUpdateCommand(command: UpdateCommand, inherit: boolean): RunResult {
-  const result = spawnSync(command.command, command.args, {
-    encoding: "utf8",
-    stdio: inherit ? "inherit" : "pipe",
-    // npm.cmd and friends are batch files, which Windows only runs through a shell.
-    shell: process.platform === "win32",
-    timeout: 5 * 60 * 1000,
-  });
+  const result = spawnUpdateCommand(command, inherit);
   const output = [result.stdout, result.stderr, result.error?.message]
     .filter((part): part is string => typeof part === "string" && part.trim() !== "")
     .join("\n")
@@ -295,15 +301,71 @@ export function runUpdateCommand(command: UpdateCommand, inherit: boolean): RunR
   return { status: result.status, output };
 }
 
+function spawnUpdateCommand(
+  command: UpdateCommand,
+  inherit: boolean,
+  options: Partial<SpawnSyncOptionsWithStringEncoding> = {},
+) {
+  const windows = process.platform === "win32";
+  return spawnSync(windows ? `"${command.command}"` : command.command, command.args, {
+    encoding: "utf8",
+    stdio: inherit ? "inherit" : "pipe",
+    // npm.cmd and friends are batch files, which Windows only runs through a shell.
+    shell: windows,
+    timeout: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+export function pnpmQuery(context: UpdateContext, args: string[]): string | null {
+  const command = updateCommand({ ...context, method: "pnpm" })!;
+  const result = spawnUpdateCommand({ ...command, args }, false, {
+    env: context.env,
+    cwd: context.home,
+    timeout: 10_000,
+  });
+  return result.status === 0 ? result.stdout.trim() : null;
+}
+
+/** Resolve the active package through pnpm, which can replace isolated install directories. */
+export function pnpmPackagePath(context: UpdateContext): string | null {
+  const output = pnpmQuery(context, ["list", "--global", "--json", APP_NAME]);
+  if (output === null) return null;
+  try {
+    const projects = JSON.parse(output) as { dependencies?: Record<string, { path?: unknown }> }[];
+    const path = projects[0]?.dependencies?.[APP_NAME]?.path;
+    return typeof path === "string" ? path : null;
+  } catch {
+    return null;
+  }
+}
+
+export function installedVersion(context: UpdateContext): string {
+  if (context.method !== "pnpm") return packageVersion();
+  const path = pnpmPackagePath(context);
+  return path ? packageVersion(pathToFileURL(join(path, "package.json"))) : "0.0.0";
+}
+
 /** The current context for this process. */
 export function currentUpdateContext(): UpdateContext {
-  return {
+  const context: UpdateContext = {
     method: installMethod(process.argv[1] ?? ""),
     execPath: process.execPath,
     home: homedir(),
     env: process.env,
     platform: process.platform,
   };
+  if (context.method === "unknown" && (process.argv[1] ?? "").replace(/\\/g, "/").includes(`/node_modules/${APP_NAME}/`)) {
+    const path = pnpmPackagePath(context);
+    try {
+      if (path && realpathSync(join(path, "dist/index.js")) === realpathSync(process.argv[1]!)) {
+        context.method = "pnpm";
+      }
+    } catch {
+      // A missing package cannot identify this installation.
+    }
+  }
+  return context;
 }
 
 export interface UpdateCommandOptions {

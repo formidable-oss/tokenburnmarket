@@ -1,17 +1,24 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CLI_VERSION,
   checkForUpdate,
   compareVersions,
   installMethod,
   runningProcessNotice,
+  runUpdateCommand,
   update,
   updateCommand,
   updateNotice,
 } from "./update";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:child_process")>();
+  return { ...original, spawnSync: vi.fn(original.spawnSync) };
+});
 
 const temporary: string[] = [];
 function cachePath(): string {
@@ -20,6 +27,7 @@ function cachePath(): string {
   return join(dir, "update-check.json");
 }
 afterEach(() => {
+  vi.mocked(spawnSync).mockRestore();
   for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -87,10 +95,18 @@ describe("checkForUpdate", () => {
 
   it("is off in CI and when TBM_NO_UPDATE_CHECK is set", async () => {
     const npm = registry("9.9.9");
-    for (const env of [{ CI: "true" }, { TBM_NO_UPDATE_CHECK: "1" }]) {
+    for (const env of [{ CI: "true" }, { CI: "1" }, { TBM_NO_UPDATE_CHECK: "1" },
+      { TBM_NO_UPDATE_CHECK: "false" }, { TBM_NO_UPDATE_CHECK: "0" }]) {
       expect(await checkForUpdate({ cachePath: cachePath(), env, fetch: npm.fetch })).toBeNull();
     }
     expect(npm.calls).toBe(0);
+  });
+
+  it.each(["false", "0", " FALSE ", " 0 "])("checks for updates when CI=%s", async (CI) => {
+    const npm = registry("9.9.9");
+    const result = await checkForUpdate({ cachePath: cachePath(), current: "0.3.0", env: { CI }, fetch: npm.fetch });
+    expect(result?.outdated).toBe(true);
+    expect(npm.calls).toBe(1);
   });
 
   it("ignores a broken cache file", async () => {
@@ -128,6 +144,38 @@ describe("updateCommand", () => {
   it("has nothing to run for npx or a local copy", () => {
     expect(updateCommand({ ...base, method: "npx" })).toBeNull();
     expect(updateCommand({ ...base, method: "unknown" })).toBeNull();
+  });
+});
+
+describe("runUpdateCommand", () => {
+  it("quotes an absolute Windows npm.cmd path that contains spaces", () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout: "updated", stderr: "" } as ReturnType<typeof spawnSync>);
+    const command = {
+      command: "C:\\Program Files\\nodejs\\npm.cmd",
+      args: ["install", "--global", "tokenburnmarket@latest"],
+      display: "npm install --global tokenburnmarket@latest",
+    };
+    try {
+      expect(runUpdateCommand(command, false)).toEqual({ status: 0, output: "updated" });
+      expect(spawnSync).toHaveBeenCalledWith('"C:\\Program Files\\nodejs\\npm.cmd"', command.args,
+        expect.objectContaining({ shell: true, stdio: "pipe" }));
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+  });
+
+  it("runs an executable fixture whose path contains spaces", () => {
+    const directory = join(cachePath(), "Program Files");
+    mkdirSync(directory, { recursive: true });
+    const command = join(directory, process.platform === "win32" ? "npm.cmd" : "npm");
+    writeFileSync(command, process.platform === "win32"
+      ? "@echo off\r\necho %1 %2 %3\r\n"
+      : '#!/bin/sh\nprintf "%s %s %s\\n" "$1" "$2" "$3"\n');
+    chmodSync(command, 0o700);
+    expect(runUpdateCommand({ command, args: ["install", "--global", "tokenburnmarket@latest"], display: "fixture" }, false))
+      .toEqual({ status: 0, output: "install --global tokenburnmarket@latest" });
   });
 });
 
