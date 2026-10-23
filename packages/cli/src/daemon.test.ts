@@ -1,6 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   acquireLock,
@@ -10,6 +11,7 @@ import {
   keepUpToDate,
   lockPathFor,
 } from "./daemon";
+import { currentUpdateContext } from "./update";
 
 const temporary: string[] = [];
 
@@ -17,6 +19,58 @@ function workDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "tbm-daemon-"));
   temporary.push(dir);
   return dir;
+}
+
+function pnpmFixture(sharedStore = false) {
+  const home = workDir();
+  const pnpmHome = join(home, "pnpm home");
+  const global = join(pnpmHome, "global/v11");
+  const active = join(global, "hash");
+  const bin = join(pnpmHome, "bin");
+  mkdirSync(bin, { recursive: true });
+  const packages = ["0.3.0", "0.4.0"].map((version, index) => {
+    const group = join(global, `install-${index}`);
+    const packagePath = sharedStore
+      ? join(home, "custom-store/links", `${version}-hash/node_modules/tokenburnmarket`)
+      : join(group, "node_modules/tokenburnmarket");
+    mkdirSync(join(packagePath, "dist"), { recursive: true });
+    writeFileSync(join(packagePath, "package.json"), JSON.stringify({ name: "tokenburnmarket", version }));
+    writeFileSync(join(packagePath, "dist/index.js"), `console.log(${JSON.stringify(version)});\n`);
+    if (sharedStore) {
+      mkdirSync(join(group, "node_modules"), { recursive: true });
+      symlinkSync(packagePath, join(group, "node_modules/tokenburnmarket"));
+    }
+    return { group, packagePath };
+  });
+  symlinkSync(packages[0]!.group, active);
+  const managerBin = join(home, "manager-bin");
+  mkdirSync(managerBin);
+  const pnpm = join(managerBin, "pnpm");
+  writeFileSync(pnpm, `#!${process.execPath}
+const fs = require("node:fs");
+if (process.argv[2] === "bin") console.log(${JSON.stringify(bin)});
+else if (process.argv[2] === "list") {
+  console.error("fixture warning on stderr");
+  console.log(JSON.stringify([{ dependencies: { tokenburnmarket: {
+    path: fs.realpathSync(${JSON.stringify(join(active, "node_modules/tokenburnmarket"))})
+  } } }]));
+} else process.exit(1);
+`);
+  chmodSync(pnpm, 0o700);
+  const launcher = join(bin, "tokenburnmarket");
+  writeFileSync(launcher, `#!/bin/sh\nexec "${process.execPath}" "${join(active, "node_modules/tokenburnmarket/dist/index.js")}" "$@"\n`);
+  chmodSync(launcher, 0o700);
+  return {
+    home, pnpmHome, launcher, managerBin,
+    scriptPath: realpathSync(join(packages[0]!.packagePath, "dist/index.js")),
+    context: { method: "pnpm" as const, execPath: process.execPath, home,
+      platform: process.platform,
+      env: { ...process.env, PNPM_HOME: pnpmHome, PATH: `${managerBin}:${process.env.PATH ?? ""}` } },
+    replace: () => {
+      rmSync(active);
+      symlinkSync(packages[1]!.group, active);
+    },
+  };
 }
 
 afterEach(() => {
@@ -183,6 +237,31 @@ describe("installDaemon", () => {
     scriptPath: "/usr/local/lib/node_modules/tokenburnmarket/dist/index.js",
   };
 
+  it.skipIf(process.platform === "win32").each(["darwin", "linux"] as const)(
+    "uses the active pnpm install after an update with %s", (platform) => {
+      const fixture = pnpmFixture(true);
+      expect(installDaemon({ ...fixture.context, platform, scriptPath: fixture.scriptPath }, {
+        log: () => {}, run: () => ({ status: 0, stderr: "" }),
+      })).toBe(0);
+      const service = platform === "darwin"
+        ? join(fixture.home, "Library/LaunchAgents/com.tokenburnmarket.daemon.plist")
+        : join(fixture.home, ".config/systemd/user/tokenburnmarket.service");
+      const definition = readFileSync(service, "utf8");
+      expect(definition).toContain(fixture.launcher);
+      expect(definition).not.toContain(fixture.scriptPath);
+      expect(definition).toContain("PNPM_HOME");
+      expect(definition).toContain(fixture.managerBin);
+      const args = platform === "darwin"
+        ? [...definition.split("<key>ProgramArguments</key>")[1]!.split("</array>")[0]!
+          .matchAll(/<string>(.*?)<\/string>/g)].map((match) => match[1]!)
+        : [...definition.match(/^ExecStart=(.*)$/m)![1]!.matchAll(/"([^"]+)"|(\S+)/g)]
+          .map((match) => match[1] ?? match[2]!);
+      expect(spawnSync(args[0]!, args.slice(1), { encoding: "utf8" }).stdout.trim()).toBe("0.3.0");
+      fixture.replace();
+      expect(spawnSync(args[0]!, args.slice(1), { encoding: "utf8" }).stdout.trim()).toBe("0.4.0");
+    },
+  );
+
   it("writes and loads the launchd job on macOS", () => {
     const home = workDir();
     const calls: string[] = [];
@@ -285,6 +364,43 @@ describe("keepUpToDate", () => {
   };
   const outdated = { current: "0.3.0", latest: "0.4.0", outdated: true };
   const launchd = { XPC_SERVICE_NAME: "com.tokenburnmarket.daemon" };
+
+  it.skipIf(process.platform === "win32").each([false, true])(
+    "reads the active pnpm version after an isolated update, shared store=%s", async (sharedStore) => {
+      const fixture = pnpmFixture(sharedStore);
+      const lines: string[] = [];
+      expect(await keepUpToDate({
+        log: (line) => lines.push(line), attempted: new Set(), env: launchd,
+        running: "0.3.0", check: async () => outdated, context: fixture.context,
+        run: () => {
+          fixture.replace();
+          return { status: 0, output: "" };
+        },
+      })).toBe(true);
+      expect(lines.at(-1)).toBe("0.4.0 is installed. Restarting on it.");
+      expect(JSON.parse(readFileSync(join(dirname(dirname(fixture.scriptPath)), "package.json"), "utf8")).version)
+        .toBe("0.3.0");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")("identifies a pnpm global package in a custom shared store", () => {
+    const fixture = pnpmFixture(true);
+    const script = process.argv[1];
+    const pnpmHome = process.env.PNPM_HOME;
+    const path = process.env.PATH;
+    process.argv[1] = fixture.scriptPath;
+    process.env.PNPM_HOME = fixture.pnpmHome;
+    process.env.PATH = fixture.context.env.PATH;
+    try {
+      expect(currentUpdateContext().method).toBe("pnpm");
+    } finally {
+      process.argv[1] = script!;
+      if (pnpmHome === undefined) delete process.env.PNPM_HOME;
+      else process.env.PNPM_HOME = pnpmHome;
+      if (path === undefined) delete process.env.PATH;
+      else process.env.PATH = path;
+    }
+  });
 
   it("installs the new version once and restarts under launchd", async () => {
     let onDisk = "0.3.0";
