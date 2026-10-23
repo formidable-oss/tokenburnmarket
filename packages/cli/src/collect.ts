@@ -45,7 +45,8 @@ export function windowStart(options: {
   if (options.sinceDays !== undefined) {
     const asked = shiftDay(utcDay(options.now), -Math.max(0, options.sinceDays));
     const start = asked < yesterday ? asked : yesterday;
-    return floor !== undefined && start < floor ? floor : start;
+    const clamped = floor !== undefined && start < floor ? floor : start;
+    return clamped < yesterday ? clamped : yesterday;
   }
   if (floor === undefined) return undefined;
   return floor < yesterday ? floor : yesterday;
