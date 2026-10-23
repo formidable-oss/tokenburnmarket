@@ -109,8 +109,9 @@ function transcriptFiles(dir: string, sinceDay?: string): string[] {
 
 /*
   Codex compresses rollouts older than about a week to `.jsonl.zst`. Node can
-  read them from 22.15 on. On an older Node they read as empty, and those days
-  stay Reported instead of failing the Sync.
+  read them from 22.15 on, so the CLI requires 22.15. npm only warns about the
+  engine, so on an older Node they read as empty, and those days stay Reported
+  instead of failing the Sync.
 */
 const zstdDecompressSync = (zlib as { zstdDecompressSync?: (buffer: Buffer) => Buffer })
   .zstdDecompressSync;

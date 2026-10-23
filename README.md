@@ -21,7 +21,7 @@ There are plenty of "who spent the most tokens" boards. Most rank raw spend, mos
 
 ## How it works
 
-1. Install the CLI, then `tokenburnmarket connect` to bind your machine. Approve the short code in the browser.
+1. Install the CLI (Node.js 22.15 or later), then `tokenburnmarket connect` to bind your machine. Approve the short code in the browser.
 2. The collector runs ccusage, builds daily totals per provider and model, signs them, and syncs. Only totals and identifier hashes leave your machine, never transcripts.
 3. `tokenburnmarket daemon install` starts a per-user service that uploads on the shared sync slots (00:00, 06:00, 12:00, 18:00 UTC); the MCP server does the same while an agent runs.
 4. Each closed day mints credits from your estimated cost (LiteLLM prices).
@@ -44,6 +44,8 @@ CLAUDE.md        Entry point for coding agents.
 ```
 
 ## Develop
+
+Requires Node.js 22.15 or later and pnpm 12.
 
 ```sh
 pnpm install
