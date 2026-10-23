@@ -11,12 +11,11 @@
   marked as a duplicate and left out of the Builder-day rollup. So two machines
   reading the same transcripts produce two Usage rows and one counted day.
 
-  Receipts are only kept for `RECEIPT_RETENTION_DAYS` (ADR 0005); they are most
-  of the database by size. Older days can only arrive in a Device's first Sync,
-  and there the same question is asked of the Usage rows instead: another
-  Device's row for the same day and model with the same receipt count and
-  output, give or take the same tolerance, is the same work seen twice.
+  Receipts expire after `RECEIPT_RETENTION_DAYS`. Each Usage row keeps a SHA256
+  fingerprint of its receipt set, so exact copies can still be matched later.
+  Only counted Usage rows can own duplicates.
 */
+import { createHash } from "node:crypto";
 import {
   checkPlausibility,
   resolvePlausibilityLimits,
@@ -77,6 +76,7 @@ export interface UsageRowWrite {
   trustLevel: TrustLevel;
   quarantineReasons: UsageReason[];
   receiptCount: number;
+  receiptFingerprint: string | null;
   duplicateOfDeviceId: string | null;
   checkedAt: Date;
 }
@@ -94,8 +94,8 @@ export interface UsageTwin {
   day: string;
   provider: string;
   model: string;
-  receiptCount: number;
-  outputTokens: number;
+  receiptFingerprint: string | null;
+  duplicateOfDeviceId: string | null;
 }
 
 /** A Usage row this Device already uploaded, as a re-send past the backfill window reads it. */
@@ -128,17 +128,19 @@ export interface BuilderDayWrite {
   trustLevelMin: TrustLevel;
 }
 
+export type ReceiptOwners = Map<string, Set<string>>;
+
 export interface SyncStore {
   /**
-   * Of `hashes`, the ones this Builder already has on a *different* Device,
-   * mapped to that Device. Asked before the incoming receipts are written, so a
-   * Device never sees its own earlier upload as a duplicate.
+   * Receipts on another Device's counted row for the same day and model.
+   * Duplicate rows cannot suppress their counted owner on a later Sync.
    */
   foreignReceipts(
     builderId: string,
     deviceId: string,
     hashes: readonly string[],
-  ): Promise<Map<string, string>>;
+    row: Pick<SyncDay, "day" | "provider" | "model">,
+  ): Promise<ReceiptOwners>;
   putReceipts(rows: readonly ReceiptWrite[]): Promise<void>;
   /** This Builder's Usage rows on `days` from Devices other than `deviceId`. */
   usageTwins(builderId: string, deviceId: string, days: readonly string[]): Promise<UsageTwin[]>;
@@ -177,7 +179,7 @@ function judgeDay(
     now: Date;
     watermarkDay: string | null;
     cutoffDay: string;
-    foreign: Map<string, string>;
+    foreign: ReceiptOwners;
     twins: readonly UsageTwin[];
   },
 ): Verdict {
@@ -205,20 +207,17 @@ function judgeDay(
 /** The Device that already owns most of this stream, or null when the row is new work. */
 function duplicateOwner(
   hashes: readonly string[],
-  foreign: Map<string, string>,
+  foreign: ReceiptOwners,
 ): string | null {
   if (hashes.length === 0) return null;
 
   const byDevice = new Map<string, number>();
-  let overlap = 0;
-  for (const hash of hashes) {
-    const owner = foreign.get(hash);
-    if (owner === undefined) continue;
-    overlap += 1;
-    byDevice.set(owner, (byDevice.get(owner) ?? 0) + 1);
+  const unique = new Set(hashes);
+  for (const hash of unique) {
+    for (const owner of foreign.get(hash) ?? []) {
+      byDevice.set(owner, (byDevice.get(owner) ?? 0) + 1);
+    }
   }
-  if (overlap / hashes.length < DUPLICATE_OVERLAP_RATIO) return null;
-
   let winner: string | null = null;
   let best = 0;
   for (const [device, count] of byDevice) {
@@ -227,30 +226,29 @@ function duplicateOwner(
       best = count;
     }
   }
-  return winner;
+  return best / unique.size >= DUPLICATE_OVERLAP_RATIO ? winner : null;
 }
 
-/** Whether two counts are within the share of each other that dedupe tolerates. */
-function near(a: number, b: number): boolean {
-  return Math.min(a, b) >= DUPLICATE_OVERLAP_RATIO * Math.max(a, b);
+/** Receipt order and repeated identifiers do not change the receipt set. */
+export function receiptFingerprint(hashes: readonly string[]): string | null {
+  if (hashes.length === 0) return null;
+  return createHash("sha256").update([...new Set(hashes)].sort().join("")).digest("hex");
 }
 
 /**
- * The Device that already reported this row's work, judged from Usage alone,
- * for days whose receipts are no longer kept. A row without a Receipt Stream is
- * never matched: two Devices reporting similar output with nothing behind it
- * is not evidence of anything.
+ * Historical matches require the same receipt set on a counted row.
+ * Missing fingerprints and similar token counts are not duplicate evidence.
  */
 function twinOwner(row: SyncDay, twins: readonly UsageTwin[]): string | null {
-  if (row.receipts.length === 0) return null;
+  const fingerprint = receiptFingerprint(row.receipts);
+  if (fingerprint === null) return null;
   const twin = twins.find(
     (other) =>
       other.day === row.day &&
       other.provider === row.provider &&
       other.model === row.model &&
-      other.receiptCount > 0 &&
-      near(other.receiptCount, row.receipts.length) &&
-      near(other.outputTokens, row.outputTokens),
+      other.duplicateOfDeviceId === null &&
+      other.receiptFingerprint === fingerprint,
   );
   return twin?.deviceId ?? null;
 }
@@ -357,16 +355,19 @@ export async function applySync(
   payload: SyncPayload,
   now: Date,
 ): Promise<SyncResult> {
-  const kept = await keptRows(store, device, payload.days);
+  const kept = payload.reviewHistory ? new Map<string, StoredUsage>() : await keptRows(store, device, payload.days);
   const judged = payload.days.filter((day) => !kept.has(usageKey(day)));
 
   const cutoffDay = receiptCutoffDay(now);
   const recent = judged.filter((day) => day.day >= cutoffDay);
-  const hashes = [...new Set(recent.flatMap((day) => day.receipts))];
-  const foreign =
-    hashes.length > 0
-      ? await store.foreignReceipts(device.builderId, device.id, hashes)
-      : new Map<string, string>();
+  const foreignByRow = new Map<string, ReceiptOwners>();
+  for (const row of recent) {
+    if (row.receipts.length === 0) continue;
+    foreignByRow.set(
+      usageKey(row),
+      await store.foreignReceipts(device.builderId, device.id, [...new Set(row.receipts)], row),
+    );
+  }
   const pastDays = [
     ...new Set(
       judged.filter((day) => day.day < cutoffDay && day.receipts.length > 0).map((day) => day.day),
@@ -394,7 +395,7 @@ export async function applySync(
       now,
       watermarkDay: device.watermarkDay,
       cutoffDay,
-      foreign,
+      foreign: foreignByRow.get(usageKey(row)) ?? new Map(),
       twins,
     });
     outcomes.push({
@@ -419,6 +420,7 @@ export async function applySync(
       trustLevel: verdict.trustLevel,
       quarantineReasons: verdict.reasons,
       receiptCount: row.receipts.length,
+      receiptFingerprint: receiptFingerprint(row.receipts),
       duplicateOfDeviceId: verdict.duplicateOfDeviceId,
       checkedAt: now,
     });

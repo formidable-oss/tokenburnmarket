@@ -50,6 +50,8 @@ export const SyncPayloadSchema = z
     deviceId: z.uuid(),
     /** ISO-8601 instant in UTC, e.g. `2026-08-17T09:30:00.000Z`. Replay window lives server-side. */
     sentAt: z.iso.datetime(),
+    /** Explicitly replace historical rows for plausibility checks and admin review. */
+    reviewHistory: z.literal(true).optional(),
     days: z.array(SyncDaySchema).min(1).max(MAX_SYNC_DAYS),
   })
   .strict();

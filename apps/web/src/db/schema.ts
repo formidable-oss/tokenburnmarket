@@ -220,6 +220,8 @@ export const usageDays = pgTable(
     trustLevel: trustLevel("trust_level").notNull(),
     quarantineReasons: jsonb("quarantine_reasons").$type<UsageReason[]>().notNull().default([]),
     receiptCount: integer("receipt_count").notNull().default(0),
+    /** SHA256 of the sorted receipt set. Null when no receipt evidence is available. */
+    receiptFingerprint: bytea("receipt_fingerprint"),
     /** Set when another Device of this Builder already reported these receipts. */
     duplicateOfDeviceId: uuid("duplicate_of_device_id").references(() => devices.id, {
       onDelete: "set null",
