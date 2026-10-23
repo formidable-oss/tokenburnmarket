@@ -91,6 +91,30 @@ and refuses a fill that drifted too far.
 
 Credits are play money. A winning share pays 1 credit.
 
+## Updates
+
+```
+tokenburnmarket update            # install the latest version
+tokenburnmarket update --dry-run  # print the command, run nothing
+tokenburnmarket --version
+```
+
+`update` reinstalls the package with the package manager that installed it:
+npm, bun, pnpm or yarn. It then restarts the daemon, if one is installed.
+Agent sessions keep the MCP server they started with, so restart them too.
+
+On macOS and Linux, pnpm services use the global launcher so later updates
+can change the package directory. After the first upgrade from 0.3.0, run
+`tokenburnmarket daemon install` once to replace an older service definition.
+
+The CLI asks the npm registry for the latest version at most once a day. When
+a newer one is out, `sync`, `status` and `connect` print one line on stderr,
+and the MCP server adds the line to the first tool answer of each session so
+the agent tells you. The daemon installs the update after its next sync, then
+exits so launchd or systemd starts it again on the new version. A Windows task
+keeps running the old version until the next logon. Checks never call the
+tokenburnmarket server, and they are off in CI.
+
 ## Environment
 
 | variable | what it does |
@@ -98,6 +122,8 @@ Credits are play money. A winning share pays 1 credit.
 | `TBM_SERVER` | the server to talk to, same as `--server` |
 | `TBM_CCUSAGE` | a local ccusage command to run instead of `npx -y ccusage@latest` |
 | `GROK_HOME` | Grok config directory containing `sessions/`; defaults to `~/.grok` |
+| `TBM_NO_UPDATE_CHECK` | set to anything to stop checking npm for a newer version |
+| `TBM_NO_AUTO_UPDATE` | set to anything to keep the daemon to a log line instead of updating itself |
 
 Receipt streams are supported for Claude Code, Codex, and Grok. Grok receipts
 come from completed turns in `sessions/**/updates.jsonl`. Usage with a matching

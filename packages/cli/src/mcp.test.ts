@@ -47,6 +47,7 @@ function stubFetch(routes: Record<string, unknown>): { fetch: Fetch; calls: Call
 async function connectedClient(routes: Record<string, unknown>) {
   const stub = stubFetch(routes);
   const server = createMcpServer({
+    updateNotice: async () => null,
     loadConfig: () => CONFIG,
     client: (config) => new ApiClient(config, stub.fetch),
     runSync: async (_config, log) => {
@@ -275,7 +276,7 @@ describe("read tools", () => {
 
 describe("without a connected device", () => {
   it("every tool says how to connect instead of failing silently", async () => {
-    const server = createMcpServer({ loadConfig: () => null });
+    const server = createMcpServer({ loadConfig: () => null, updateNotice: async () => null });
     const client = new Client({ name: "test", version: "0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -294,6 +295,7 @@ describe("api errors", () => {
     const revoking = (async () =>
       new Response(JSON.stringify({ error: "revoked" }), { status: 403 })) as Fetch;
     const server = createMcpServer({
+    updateNotice: async () => null,
       loadConfig: () => CONFIG,
       client: (config) => new ApiClient(config, revoking),
     });
@@ -321,6 +323,7 @@ describe("syncing itself at startup", () => {
   ) {
     const calls: SyncCall[] = [];
     const server = createMcpServer({
+    updateNotice: async () => null,
       loadConfig,
       runSync: async (config, log, options) => {
         const call: SyncCall = { config, printed: [], options };
@@ -361,6 +364,24 @@ describe("syncing itself at startup", () => {
     );
     const { tools } = await client.listTools();
     expect(tools.length).toBeGreaterThan(0);
+    await client.close();
+  });
+});
+
+describe("update notice", () => {
+  it("rides on the first answer of a session, once", async () => {
+    const server = createMcpServer({
+      loadConfig: () => null,
+      updateNotice: async () => "tokenburnmarket 0.4.0 is available (this is 0.3.0). Update with: tokenburnmarket update",
+    });
+    const client = new Client({ name: "test", version: "0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+    const first = textOf(await client.callTool({ name: "my_stats", arguments: {} }));
+    const second = textOf(await client.callTool({ name: "my_stats", arguments: {} }));
+    expect(first).toContain("Tell the user: tokenburnmarket 0.4.0 is available");
+    expect(second).not.toContain("0.4.0");
     await client.close();
   });
 });
