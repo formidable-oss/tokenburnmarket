@@ -15,10 +15,11 @@
 */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { currentConfigDir } from "./config.js";
 import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
 import { msUntilScheduledSync, sync } from "./sync.js";
+import { USAGE_ENVIRONMENT_KEYS, usageEnvironment } from "./usage-environment.js";
 import {
   CLI_VERSION,
   checkForUpdate,
@@ -261,6 +262,8 @@ export interface InstallContext {
   /** The resolved path of the CLI entry point. */
   scriptPath: string;
   home: string;
+  env?: NodeJS.ProcessEnv;
+  cwd?: string;
 }
 
 interface CommandResult {
@@ -286,6 +289,24 @@ function servicePath(context: InstallContext): string {
     .join(":");
 }
 
+function serviceEnvironment(context: InstallContext): [string, string][] {
+  const env = usageEnvironment(context.env ?? process.env, context.home);
+  return [["PATH", servicePath(context)], ...USAGE_ENVIRONMENT_KEYS.flatMap((key): [string, string][] =>
+    env[key]?.trim() ? [[key, key === "AGENT_CLI_CREDENTIAL_STORE" ? env[key]!
+      : env[key]!.split(",").map((path) => resolve(context.cwd ?? process.cwd(), path)).join(",")]] : [],
+  )];
+}
+
+function xml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+function unitValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%")
+    .replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+}
+
 /** The launchd job macOS wants, keyed by the reverse-DNS label launchd expects. */
 function launchdPlist(context: InstallContext): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -295,18 +316,18 @@ function launchdPlist(context: InstallContext): string {
   <key>Label</key><string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${context.execPath}</string>
-    <string>${context.scriptPath}</string>
+    <string>${xml(context.execPath)}</string>
+    <string>${xml(context.scriptPath)}</string>
     <string>daemon</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key><string>${servicePath(context)}</string>
+${serviceEnvironment(context).map(([key, value]) => `    <key>${key}</key><string>${xml(value)}</string>`).join("\n")}
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>${context.home}/Library/Logs/tokenburnmarket.log</string>
-  <key>StandardErrorPath</key><string>${context.home}/Library/Logs/tokenburnmarket.log</string>
+  <key>StandardOutPath</key><string>${xml(context.home)}/Library/Logs/tokenburnmarket.log</string>
+  <key>StandardErrorPath</key><string>${xml(context.home)}/Library/Logs/tokenburnmarket.log</string>
 </dict>
 </plist>`;
 }
@@ -318,7 +339,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-Environment="PATH=${servicePath(context)}"
+${serviceEnvironment(context).map(([key, value]) => `Environment="${key}=${unitValue(value)}"`).join("\n")}
 ExecStart=${context.execPath} ${context.scriptPath} daemon
 Restart=always
 RestartSec=30

@@ -39,9 +39,10 @@ export function windowStart(options: {
   now: Date;
   watermarkDay?: string | null;
   sinceDays?: number;
+  reviewHistory?: boolean;
 }): string | undefined {
   const yesterday = shiftDay(utcDay(options.now), -1);
-  const floor = options.watermarkDay ? shiftDay(options.watermarkDay, -BACKFILL_DAYS) : undefined;
+  const floor = options.watermarkDay && !options.reviewHistory ? shiftDay(options.watermarkDay, -BACKFILL_DAYS) : undefined;
   if (options.sinceDays !== undefined) {
     const asked = shiftDay(utcDay(options.now), -Math.max(0, options.sinceDays));
     const start = asked < yesterday ? asked : yesterday;
