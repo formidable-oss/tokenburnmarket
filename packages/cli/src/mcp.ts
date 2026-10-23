@@ -16,6 +16,14 @@ import { z } from "zod";
 import { ApiClient, type MarketRow, type TradeAnswer } from "./api.js";
 import { currentConfigPath, readConfig, type DeviceConfig } from "./config.js";
 import { msUntilScheduledSync, sync, type SyncOptions } from "./sync.js";
+import {
+  CLI_VERSION,
+  checkForUpdate,
+  currentUpdateContext,
+  packageVersion,
+  runningProcessNotice,
+  updateCachePath,
+} from "./update.js";
 
 const NOT_CONNECTED = "This machine is not connected. Run `tokenburnmarket connect` in a terminal.";
 
@@ -112,6 +120,18 @@ export interface McpDependencies {
     log: (line: string) => void,
     options?: AutoSyncOptions,
   ) => Promise<number>;
+  /** Injected in tests. The update notice to show, or null when this version is current. */
+  updateNotice?: () => Promise<string | null>;
+}
+
+/** The notice an agent passes on: update, or restart the session once the update is on disk. */
+async function defaultUpdateNotice(): Promise<string | null> {
+  return runningProcessNotice(
+    await checkForUpdate({ cachePath: updateCachePath() }),
+    currentUpdateContext().method,
+    packageVersion(),
+    "Restart this agent session to load it.",
+  );
 }
 
 /** The server, wired but not connected to a transport. Exported so tests can drive it. */
@@ -129,7 +149,7 @@ export function createMcpServer(dependencies: McpDependencies = {}): McpServer {
       sync({ configPath: currentConfigPath(), log, ...options, signal: dependencies.signal }));
 
   const server = new McpServer(
-    { name: "tokenburnmarket", version: "0.3.0" },
+    { name: "tokenburnmarket", version: CLI_VERSION },
     { capabilities: { tools: {} } },
   );
 
@@ -155,16 +175,31 @@ export function createMcpServer(dependencies: McpDependencies = {}): McpServer {
   server.server.oninitialized = autoSync;
   dependencies.signal?.addEventListener("abort", () => clearTimeout(timer), { once: true });
 
+  /*
+    The first answer of a session carries the update notice, once. The agent
+    is the one reading these answers, and it passes the line on to the person;
+    repeating it on every call would only crowd the tables.
+  */
+  const findNotice = dependencies.updateNotice ?? defaultUpdateNotice;
+  let noticeShown = false;
+  const withNotice = async <R extends ReturnType<typeof text>>(result: R): Promise<R> => {
+    if (noticeShown) return result;
+    noticeShown = true;
+    const notice = await findNotice().catch(() => null);
+    if (!notice) return result;
+    return { ...result, content: [...result.content, { type: "text" as const, text: `Tell the user: ${notice}` }] };
+  };
+
   /** Wraps a tool so a missing config and a refused request read the same way. */
   const withClient =
     <T>(run: (client: ApiClient, config: DeviceConfig, args: T) => Promise<ReturnType<typeof text>>) =>
     async (args: T) => {
       const config = loadConfig();
-      if (!config) return failure(NOT_CONNECTED);
+      if (!config) return withNotice(failure(NOT_CONNECTED));
       try {
-        return await run(clientFor(config), config, args);
+        return await withNotice(await run(clientFor(config), config, args));
       } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
+        return withNotice(failure(error instanceof Error ? error.message : String(error)));
       }
     };
 
@@ -179,14 +214,16 @@ export function createMcpServer(dependencies: McpDependencies = {}): McpServer {
     },
     async () => {
       const config = loadConfig();
-      if (!config) return failure(NOT_CONNECTED);
+      if (!config) return withNotice(failure(NOT_CONNECTED));
       const lines: string[] = [];
       try {
         const code = await runSync(config, (line) => lines.push(line));
         const output = lines.filter((line) => line !== "").join("\n");
-        return code === 0 ? text(output || "Nothing to sync.") : failure(output || "Sync failed.");
+        return withNotice(
+          code === 0 ? text(output || "Nothing to sync.") : failure(output || "Sync failed."),
+        );
       } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
+        return withNotice(failure(error instanceof Error ? error.message : String(error)));
       }
     },
   );

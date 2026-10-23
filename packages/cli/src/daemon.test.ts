@@ -7,6 +7,7 @@ import {
   daemon,
   installDaemon,
   installSnippet,
+  keepUpToDate,
   lockPathFor,
 } from "./daemon";
 
@@ -69,6 +70,7 @@ describe("daemon", () => {
     let runs = 0;
 
     const code = await daemon({
+      afterSync: async () => false,
       configDir: dir,
       log: () => {},
       maxRuns: 3,
@@ -94,6 +96,7 @@ describe("daemon", () => {
     let runs = 0;
 
     await daemon({
+      afterSync: async () => false,
       configDir: dir,
       log: (line) => lines.push(line),
       maxRuns: 2,
@@ -108,6 +111,25 @@ describe("daemon", () => {
     expect(lines.join("\n")).toContain("no network");
   });
 
+  it("stops after the pass that installed a newer version", async () => {
+    const dir = workDir();
+    let runs = 0;
+    const code = await daemon({
+      afterSync: async () => true,
+      configDir: dir,
+      log: () => {},
+      maxRuns: 3,
+      runSync: async () => {
+        runs += 1;
+        return 0;
+      },
+      wait: async () => {},
+    });
+    expect(code).toBe(0);
+    expect(runs).toBe(1);
+    expect(existsSync(lockPathFor(dir))).toBe(false);
+  });
+
   it("refuses to start beside a running daemon", async () => {
     const dir = workDir();
     // pid 1 is always running, and belongs to someone else, which is the case
@@ -115,6 +137,7 @@ describe("daemon", () => {
     acquireLock(lockPathFor(dir), 1);
     const lines: string[] = [];
     const code = await daemon({
+      afterSync: async () => false,
       configDir: dir,
       log: (line) => lines.push(line),
       maxRuns: 1,
@@ -249,5 +272,111 @@ describe("installDaemon", () => {
     expect(existsSync(join(home, "Library/LaunchAgents/com.tokenburnmarket.daemon.plist"))).toBe(
       false,
     );
+  });
+});
+
+describe("keepUpToDate", () => {
+  const context = {
+    method: "npm" as const,
+    execPath: "/nonexistent/bin/node",
+    home: "/nonexistent-home",
+    env: {},
+    platform: "darwin" as const,
+  };
+  const outdated = { current: "0.3.0", latest: "0.4.0", outdated: true };
+  const launchd = { XPC_SERVICE_NAME: "com.tokenburnmarket.daemon" };
+
+  it("installs the new version once and restarts under launchd", async () => {
+    let onDisk = "0.3.0";
+    const commands: string[] = [];
+    const lines: string[] = [];
+    const attempted = new Set<string>();
+    const run = (command: { display: string }) => {
+      commands.push(command.display);
+      onDisk = "0.4.0";
+      return { status: 0, output: "" };
+    };
+    const options = {
+      log: (line: string) => lines.push(line),
+      attempted,
+      env: launchd,
+      running: "0.3.0",
+      installed: () => onDisk,
+      check: async () => outdated,
+      context,
+      run,
+    };
+
+    expect(await keepUpToDate(options)).toBe(true);
+    expect(commands).toEqual(["npm install --global tokenburnmarket@latest"]);
+    expect(lines).toEqual([
+      "Updating to 0.4.0: npm install --global tokenburnmarket@latest",
+      "Installed 0.4.0.",
+      "0.4.0 is installed. Restarting on it.",
+    ]);
+  });
+
+  it("tries a failing update once per version", async () => {
+    const lines: string[] = [];
+    const attempted = new Set<string>();
+    let tries = 0;
+    const options = {
+      log: (line: string) => lines.push(line),
+      attempted,
+      env: launchd,
+      running: "0.3.0",
+      installed: () => "0.3.0",
+      check: async () => outdated,
+      context,
+      run: () => {
+        tries += 1;
+        return { status: 1, output: "EACCES" };
+      },
+    };
+
+    expect(await keepUpToDate(options)).toBe(false);
+    expect(await keepUpToDate(options)).toBe(false);
+    expect(tries).toBe(1);
+    expect(lines[1]).toBe(
+      "The update failed: EACCES Run it yourself: npm install --global tokenburnmarket@latest",
+    );
+  });
+
+  it("only logs a notice when auto-update is off", async () => {
+    const lines: string[] = [];
+    let tries = 0;
+    const result = await keepUpToDate({
+      log: (line) => lines.push(line),
+      attempted: new Set(),
+      env: { ...launchd, TBM_NO_AUTO_UPDATE: "1" },
+      running: "0.3.0",
+      installed: () => "0.3.0",
+      check: async () => outdated,
+      context,
+      run: () => {
+        tries += 1;
+        return { status: 0, output: "" };
+      },
+    });
+    expect(result).toBe(false);
+    expect(tries).toBe(0);
+    expect(lines).toEqual([
+      "tokenburnmarket 0.4.0 is available (this is 0.3.0). Update with: tokenburnmarket update",
+    ]);
+  });
+
+  it("asks for a restart instead of exiting when nothing will start it again", async () => {
+    const lines: string[] = [];
+    const result = await keepUpToDate({
+      log: (line) => lines.push(line),
+      attempted: new Set(),
+      env: {},
+      running: "0.3.0",
+      installed: () => "0.4.0",
+      check: async () => ({ ...outdated, latest: "0.4.0" }),
+      context,
+    });
+    expect(result).toBe(false);
+    expect(lines).toEqual(["0.4.0 is installed. Restart the daemon to run it."]);
   });
 });

@@ -19,6 +19,23 @@ import { dirname, join } from "node:path";
 import { currentConfigDir } from "./config.js";
 import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
 import { msUntilScheduledSync, sync } from "./sync.js";
+import {
+  CLI_VERSION,
+  checkForUpdate,
+  compareVersions,
+  currentUpdateContext,
+  packageVersion,
+  runUpdateCommand,
+  updateCachePath,
+  updateCommand,
+  updateNotice,
+  type RunResult,
+  type UpdateCheck,
+  type UpdateCommand,
+  type UpdateContext,
+} from "./update.js";
+
+const LAUNCHD_LABEL = "com.tokenburnmarket.daemon";
 
 export function lockPathFor(configDir: string): string {
   return join(configDir, "daemon.lock");
@@ -88,6 +105,11 @@ function isAlive(pid: number): boolean {
 export interface DaemonOptions {
   configDir?: string;
   log?: (line: string) => void;
+  /**
+   * Runs after every pass. True means a newer version is installed and the
+   * daemon should exit so its service manager starts that one.
+   */
+  afterSync?: () => Promise<boolean>;
   /** Injected in tests: how many passes to run before returning. Undefined means forever. */
   maxRuns?: number;
   runSync?: () => Promise<number>;
@@ -111,6 +133,8 @@ export async function daemon(options: DaemonOptions = {}): Promise<number> {
   }
 
   const runSync = options.runSync ?? (() => sync({ log, scheduled: true }));
+  const attempted = new Set<string>();
+  const afterSync = options.afterSync ?? (() => keepUpToDate({ log, attempted }));
   const untilNextSlot = options.untilNextSlot ?? (() => msUntilScheduledSync(new Date()));
   const wait = options.wait ?? sleep;
   const stop = () => {
@@ -134,12 +158,100 @@ export async function daemon(options: DaemonOptions = {}): Promise<number> {
       } catch (error) {
         log(`[${at}] sync failed: ${error instanceof Error ? error.message : String(error)}`);
       }
+      try {
+        if (await afterSync()) break;
+      } catch (error) {
+        log(`[${at}] update check failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
       await wait(untilNextSlot());
     }
   } finally {
     lock.release();
   }
   return 0;
+}
+
+/** Whether launchd or systemd started this process, and so will start it again after it exits. */
+export function underServiceManager(env: NodeJS.ProcessEnv): boolean {
+  return env.XPC_SERVICE_NAME === LAUNCHD_LABEL || Boolean(env.INVOCATION_ID);
+}
+
+export interface KeepUpToDateOptions {
+  log: (line: string) => void;
+  /** Versions this process already tried to install, so a failing update is tried once, not every slot. */
+  attempted: Set<string>;
+  env?: NodeJS.ProcessEnv;
+  /** The version this process is running. */
+  running?: string;
+  /** The version on disk now, read again after an update. */
+  installed?: () => string;
+  check?: () => Promise<UpdateCheck | null>;
+  context?: UpdateContext;
+  run?: (command: UpdateCommand, inherit: boolean) => RunResult;
+}
+
+/**
+ * Install a newer version when there is one, then say whether to restart.
+ *
+ * The daemon is the one process that runs for weeks without a person looking
+ * at it, so it updates itself rather than printing a notice nobody reads.
+ * `TBM_NO_AUTO_UPDATE=1` turns that into a log line. The package manager that
+ * installed the CLI does the install, the same as `tokenburnmarket update`.
+ */
+export async function keepUpToDate(options: KeepUpToDateOptions): Promise<boolean> {
+  const env = options.env ?? process.env;
+  const running = options.running ?? CLI_VERSION;
+  const installed = options.installed ?? (() => packageVersion());
+  const context = options.context ?? currentUpdateContext();
+  const check = await (options.check ?? (() => checkForUpdate({ cachePath: updateCachePath(), env })))();
+
+  if (check?.outdated && compareVersions(installed(), check.latest) < 0) {
+    const command = env.TBM_NO_AUTO_UPDATE?.trim() ? null : updateCommand(context);
+    if (!command) {
+      options.log(updateNotice(check, context.method) ?? "");
+    } else if (!options.attempted.has(check.latest)) {
+      options.attempted.add(check.latest);
+      options.log(`Updating to ${check.latest}: ${command.display}`);
+      const result = (options.run ?? runUpdateCommand)(command, false);
+      options.log(
+        result.status === 0
+          ? `Installed ${check.latest}.`
+          : `The update failed${result.output ? `: ${result.output}` : "."} Run it yourself: ${command.display}`,
+      );
+    }
+  }
+
+  const onDisk = installed();
+  if (compareVersions(onDisk, running) <= 0) return false;
+  if (underServiceManager(env)) {
+    options.log(`${onDisk} is installed. Restarting on it.`);
+    return true;
+  }
+  options.log(`${onDisk} is installed. Restart the daemon to run it.`);
+  return false;
+}
+
+/**
+ * Restart the installed service so it runs the version now on disk. Returns
+ * what happened, or null when no service is installed. Windows tasks start at
+ * logon, so there is nothing to restart in place.
+ */
+export function restartDaemonService(
+  context: Pick<InstallContext, "platform" | "home">,
+  run: (command: string, args: readonly string[]) => CommandResult = runCommand,
+  uid: number | undefined = process.getuid?.(),
+): string | null {
+  if (context.platform === "darwin") {
+    const path = join(context.home, "Library/LaunchAgents/com.tokenburnmarket.daemon.plist");
+    if (!existsSync(path) || uid === undefined) return null;
+    const result = run("launchctl", ["kickstart", "-k", `gui/${uid}/${LAUNCHD_LABEL}`]);
+    return result.status === 0 ? "Restarted the daemon." : `Could not restart the daemon: ${result.stderr}`;
+  }
+  if (context.platform === "win32") return null;
+  const path = join(context.home, ".config/systemd/user/tokenburnmarket.service");
+  if (!existsSync(path)) return null;
+  const result = run("systemctl", ["--user", "restart", "tokenburnmarket"]);
+  return result.status === 0 ? "Restarted the daemon." : `Could not restart the daemon: ${result.stderr}`;
 }
 
 export interface InstallContext {
@@ -180,7 +292,7 @@ function launchdPlist(context: InstallContext): string {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.tokenburnmarket.daemon</string>
+  <key>Label</key><string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
     <string>${context.execPath}</string>
