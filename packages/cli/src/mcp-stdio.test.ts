@@ -40,7 +40,7 @@ describe("the built server over stdio", () => {
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [entry, "mcp"],
-      env: { PATH: process.env.PATH ?? "", HOME: home, USERPROFILE: home },
+      env: { PATH: process.env.PATH ?? "", HOME: home, USERPROFILE: home, TBM_NO_UPDATE_CHECK: "1" },
     });
     const client = new Client({ name: "stdio-test", version: "0" });
     await client.connect(transport);
@@ -65,7 +65,7 @@ describe("the built server over stdio", () => {
 // Client.close() sends signals after a grace period and used to hide the EOF bug.
 it("exits on stdin EOF without the client sending a signal", async () => {
   const child = spawn(process.execPath, [entry, "mcp"], {
-    env: { ...process.env, HOME: home, USERPROFILE: home }, stdio: "pipe",
+    env: { ...process.env, HOME: home, USERPROFILE: home, TBM_NO_UPDATE_CHECK: "1" }, stdio: "pipe",
   });
   const exited = new Promise<number | null>((resolve) => child.once("exit", resolve));
   child.stdin.end();
@@ -80,7 +80,7 @@ it.each(["EOF", "SIGTERM"])("stops an active collector on %s", async (mode) => {
   const pidFile = join(isolatedHome, "worker.pid");
   const script = join(isolatedHome, "collector.cjs");
   await writeFile(script, `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(()=>{},1000);`);
-  const env = { ...process.env, HOME: isolatedHome, USERPROFILE: isolatedHome, XDG_CONFIG_HOME: isolatedHome,
+  const env = { ...process.env, TBM_NO_UPDATE_CHECK: "1", HOME: isolatedHome, USERPROFILE: isolatedHome, XDG_CONFIG_HOME: isolatedHome,
     TBM_CCUSAGE: `${process.execPath} ${script}` };
   writeConfig({ deviceId: "test", deviceToken: "test", privateKey: "test", publicKey: "test", serverUrl: "http://127.0.0.1:1", handle: "test", deviceName: "test", connectedAt: new Date().toISOString() },
     configPathFor({ platform: process.platform, env, home: isolatedHome }));
