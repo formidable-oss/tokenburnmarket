@@ -222,6 +222,10 @@ describe("windowStart", () => {
     expect(windowStart({ now, sinceDays: 120, watermarkDay: "2026-08-17" })).toBe("2026-08-15");
     expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-08-17" })).toBe("2026-08-15");
   });
+
+  it("never lets --since start later than yesterday, however new the watermark is", () => {
+    expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-09-30" })).toBe("2026-08-16");
+  });
 });
 
 describe("buildSyncDays", () => {

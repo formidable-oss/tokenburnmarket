@@ -5,8 +5,8 @@
 --
 -- A row qualifies when `stale_backfill` is its only failed check. The other
 -- reasons it may carry, a thin Receipt Stream and a duplicate of another
--- Device, only ever make a row Reported. Rows an Admin chose to keep out stay
--- out. The next daily mint pays the restored days, because the mint tops a day
+-- Device, only ever make a row Reported. Rows whose latest Admin decision is
+-- `keep` stay out. The next daily mint pays the restored days, because the mint tops a day
 -- up to what it is worth.
 CREATE TEMP TABLE restored_usage ON COMMIT DROP AS
 SELECT u.device_id, u.builder_id, u.day, u.provider, u.model
@@ -18,15 +18,19 @@ WHERE u.trust_level = 'quarantined'
     FROM jsonb_array_elements(u.quarantine_reasons) AS r(reason)
     WHERE r.reason->>'code' NOT IN ('stale_backfill', 'receipt_stream_thin', 'duplicate_of_device')
   )
-  AND NOT EXISTS (
-    SELECT 1
-    FROM quarantine_reviews q
-    WHERE q.device_id = u.device_id
-      AND q.day = u.day
-      AND q.provider = u.provider
-      AND q.model = u.model
-      AND q.decision = 'keep'
-  );
+  AND COALESCE(
+    (
+      SELECT q.decision
+      FROM quarantine_reviews q
+      WHERE q.device_id = u.device_id
+        AND q.day = u.day
+        AND q.provider = u.provider
+        AND q.model = u.model
+      ORDER BY q.created_at DESC
+      LIMIT 1
+    ),
+    'verified'
+  ) <> 'keep';
 --> statement-breakpoint
 -- The verdict the checks give without the watermark: Verified with a Receipt
 -- Stream, Reported without one, Reported when the stream is thin or the row is
