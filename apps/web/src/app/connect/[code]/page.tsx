@@ -82,6 +82,15 @@ export default async function ConnectPage({ params, searchParams }: PageProps<"/
     return <Dead title="Rejected." message="Nothing was bound. The command on that machine will stop with an error." />;
   }
 
+  if (done === "taken") {
+    return (
+      <Dead
+        title="This device is on another account."
+        message="Its key belongs to a device that still works for someone else, so nothing was bound. Its owner can revoke it in settings. Or delete the tokenburnmarket config on that machine and run connect again."
+      />
+    );
+  }
+
   if (!code) {
     return <Dead title="Not a code." message="Connect codes look like ABCD-2345. Check the one your terminal printed." />;
   }

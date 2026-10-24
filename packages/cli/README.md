@@ -30,7 +30,8 @@ approved the code, because anyone signed in can approve a code they can see.
 Running `connect` again on a connected machine keeps its key, so the server keeps
 the same device and the machine's history counts once. A device you revoked in
 Settings is not brought back: connecting with its key makes a new device, and
-the revoked one keeps the usage it uploaded. If you connected one machine more
+the revoked one keeps the usage it uploaded. A key that another account's device
+still uses cannot be approved until that device is revoked. If you connected one machine more
 than once with an older version, open Settings on the site and set those devices
 to the same machine.
 
