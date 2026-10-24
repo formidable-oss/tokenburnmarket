@@ -111,6 +111,21 @@ WITH repaired AS (
       ) OR (
         u.checked_at >= '2026-10-21T13:48:45Z'::timestamptz
         AND u.day < (u.checked_at AT TIME ZONE 'UTC')::date - 6
+        -- Equal cost, token counts and receipt count are the same Usage read
+        -- twice, so that link stays.
+        AND NOT EXISTS (
+          SELECT 1 FROM usage_days owner
+          WHERE owner.device_id = u.duplicate_of_device_id
+            AND owner.builder_id = u.builder_id AND owner.day = u.day
+            AND owner.provider = u.provider AND owner.model = u.model
+            AND owner.cost_usd = u.cost_usd
+            AND owner.input_tokens = u.input_tokens
+            AND owner.cached_input_tokens = u.cached_input_tokens
+            AND owner.cache_write_tokens = u.cache_write_tokens
+            AND owner.output_tokens = u.output_tokens
+            AND owner.reasoning_tokens = u.reasoning_tokens
+            AND owner.receipt_count = u.receipt_count
+        )
       )
     )
     AND NOT EXISTS (
