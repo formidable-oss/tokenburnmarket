@@ -41,6 +41,8 @@ export const SyncDaySchema = z
     costUsd: z.number().min(0).max(1_000_000).finite(),
     /** Empty means this agent exposes no message identifiers, so the row is Reported. */
     receipts: z.array(ReceiptHashSchema).max(MAX_RECEIPTS_PER_DAY),
+    /** Incomplete collection may fill a missing row, but must not replace stored usage. */
+    onlyIfMissing: z.literal(true).optional(),
   })
   .strict();
 
@@ -50,6 +52,8 @@ export const SyncPayloadSchema = z
     deviceId: z.uuid(),
     /** ISO-8601 instant in UTC, e.g. `2026-08-17T09:30:00.000Z`. Replay window lives server-side. */
     sentAt: z.iso.datetime(),
+    /** Explicitly replace historical rows for plausibility checks and admin review. */
+    reviewHistory: z.literal(true).optional(),
     days: z.array(SyncDaySchema).min(1).max(MAX_SYNC_DAYS),
   })
   .strict();

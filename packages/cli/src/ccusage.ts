@@ -1,17 +1,20 @@
 /*
-  ccusage is the Collector's meter. It already knows how to read every agent CLI
-  on this machine and how to price the tokens, so this module only runs it and
-  reshapes what comes back.
+  ccusage reads local usage for supported agents and estimates token cost.
+  This module converts its reports to disjoint token counts.
 
   Two calls, because no single report has everything:
     `daily --by-agent`  every detected agent, per model, with cost
     `codex daily`       reasoning tokens, which the unified report drops
 
-  ccusage is spawned rather than imported: its JSON is a stable contract, its
-  internals are not, and `npx` keeps the Collector's own install small. Point
+  ccusage runs as a pinned CLI because its adapters are not a JavaScript API.
+  `npx` keeps the Collector's own install small. Point
   TBM_CCUSAGE at a local install to skip the download.
 */
 import { runCollector } from "./collector-process.js";
+import { homedir, tmpdir } from "node:os";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { usageEnvironment } from "./usage-environment.js";
 
 /** One (day, provider, model) aggregate, before receipts are attached. */
 export interface UsageAggregate {
@@ -25,13 +28,15 @@ export interface UsageAggregate {
   outputTokens: number;
   reasoningTokens: number;
   costUsd: number;
+  /** An incomplete supplemental scan must not replace an existing server row. */
+  onlyIfMissing?: true;
 }
 
 /** The command that runs ccusage, split into argv. Overridable for local installs. */
 export function ccusageCommand(env: NodeJS.ProcessEnv): string[] {
   const override = env.TBM_CCUSAGE?.trim();
   if (override) return override.split(/\s+/);
-  return ["npx", "-y", "ccusage@latest"];
+  return ["npx", "-y", "ccusage@20.0.41"];
 }
 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -65,7 +70,7 @@ function money(value: unknown): number {
  * a version changed a field name, are dropped rather than guessed at: a missing
  * day is better than an invented one.
  */
-export function parseUnifiedDaily(json: unknown): UsageAggregate[] {
+export function parseUnifiedDaily(json: unknown, warn?: (message: string) => void): UsageAggregate[] {
   const daily = isRecord(json) && Array.isArray(json.daily) ? json.daily : [];
   const out: UsageAggregate[] = [];
 
@@ -80,11 +85,15 @@ export function parseUnifiedDaily(json: unknown): UsageAggregate[] {
       const provider = typeof agent.agent === "string" ? agent.agent : "";
       if (!provider || provider === "all") continue;
       const breakdowns = Array.isArray(agent.modelBreakdowns) ? agent.modelBreakdowns : [];
+      const first = out.length;
 
       for (const model of breakdowns) {
         if (!isRecord(model)) continue;
         const name = typeof model.modelName === "string" ? model.modelName : "";
         if (!name) continue;
+        if (model.missingPricing === true || typeof model.cost !== "number" || !Number.isFinite(model.cost)) {
+          warn?.(`No usable price for ${provider} ${name} on ${day}. Tokens are retained with zero estimated cost.`);
+        }
         out.push({
           day,
           provider,
@@ -97,6 +106,18 @@ export function parseUnifiedDaily(json: unknown): UsageAggregate[] {
           costUsd: money(model.cost),
         });
       }
+
+      // ccusage omits extra output from modelBreakdowns, but retains it in the agent total.
+      const rows = out.slice(first);
+      const visible = rows.reduce((sum, row) => sum + row.inputTokens + row.cachedInputTokens +
+        row.cacheWriteTokens + row.outputTokens, 0);
+      const extra = count(agent.totalTokens) - visible;
+      if (extra > 0 && rows.length === 1) {
+        if (provider === "opencode" || provider === "gemini") rows[0]!.reasoningTokens = extra;
+        else rows[0]!.outputTokens += extra;
+      } else if (extra > 0 && provider !== "opencode") {
+        warn?.(`ccusage omitted ${extra} tokens from the ${provider} model breakdown on ${day}. Model totals are incomplete.`);
+      }
     }
   }
 
@@ -104,9 +125,8 @@ export function parseUnifiedDaily(json: unknown): UsageAggregate[] {
 }
 
 /**
- * Reasoning tokens per (day, model) from `ccusage codex daily --json`. Codex
- * bills them, the unified report does not carry them, and they are most of what
- * a reasoning model actually produces.
+ * Reasoning is part of Codex output. The supplemental report lets us split
+ * that output into disjoint counts for the sync payload.
  */
 export function parseCodexReasoning(json: unknown): Map<string, number> {
   const daily = isRecord(json) && Array.isArray(json.daily) ? json.daily : [];
@@ -131,14 +151,24 @@ export interface CcusageOptions {
   /** Oldest UTC day to ask for, `YYYY-MM-DD`. Omitted means everything on this machine. */
   since?: string;
   env?: NodeJS.ProcessEnv;
+  home?: string;
   signal?: AbortSignal;
+  warn?: (message: string) => void;
   /** Injected in tests. Real runs spawn ccusage. */
   exec?: (args: string[]) => Promise<string>;
 }
 
 async function spawnCcusage(env: NodeJS.ProcessEnv, args: string[], signal?: AbortSignal): Promise<string> {
   const [command, ...base] = ccusageCommand(env);
-  return runCollector(command!, [...base, ...args], env, signal);
+  const directory = await mkdtemp(join(tmpdir(), "tbm-ccusage-"));
+  try {
+    const config = join(directory, "config.json");
+    // Project ccusage settings can hide costs or restrict dates during an automatic sync.
+    await writeFile(config, "{}", { mode: 0o600 });
+    return await runCollector(command!, [...base, ...args, "--config", config], env, signal);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -151,26 +181,35 @@ async function spawnCcusage(env: NodeJS.ProcessEnv, args: string[], signal?: Abo
 export async function readUsageAggregates(
   options: CcusageOptions = {},
 ): Promise<UsageAggregate[]> {
-  const env = options.env ?? process.env;
+  const env = usageEnvironment(options.env ?? process.env, options.home ?? homedir());
   const exec = options.exec ?? ((args: string[]) => spawnCcusage(env, args, options.signal));
   const window = options.since ? ["--since", options.since.replace(/-/g, "")] : [];
   const common = ["--json", "--timezone", "UTC", ...window];
 
-  const aggregates = parseUnifiedDaily(JSON.parse(await exec(["daily", "--by-agent", ...common])));
+  const document: unknown = JSON.parse(await exec(["daily", "--by-agent", ...common]));
+  if (!isRecord(document) || !Array.isArray(document.daily) || document.daily.some((row) =>
+    !isRecord(row) || !dayOf(row) || !Array.isArray(row.agents) || row.agents.some((agent) =>
+      !isRecord(agent) || typeof agent.agent !== "string" || !Array.isArray(agent.modelBreakdowns),
+    ),
+  )) {
+    throw new Error("Unsupported ccusage daily report. No usage was uploaded.");
+  }
+  const aggregates = parseUnifiedDaily(document, options.warn);
 
-  // Codex is the only adapter with reasoning tokens today. If it is not
-  // installed, ccusage still answers, with an empty report.
+  // The unified report includes Codex reasoning in output without a separate counter.
   let reasoning = new Map<string, number>();
   try {
     reasoning = parseCodexReasoning(JSON.parse(await exec(["codex", "daily", ...common])));
   } catch {
     options.signal?.throwIfAborted();
+    options.warn?.("Codex reasoning breakdown is unavailable. Output totals still include reasoning.");
     reasoning = new Map();
   }
 
-  return aggregates.map((row) =>
-    row.provider === "codex"
-      ? { ...row, reasoningTokens: reasoning.get(`${row.day} ${row.model}`) ?? 0 }
-      : row,
-  );
+  return aggregates.map((row) => {
+    if (row.provider !== "codex") return row;
+    // The second scan can see newer events. Keep the first scan's total.
+    const reasoningTokens = Math.min(row.outputTokens, reasoning.get(`${row.day} ${row.model}`) ?? 0);
+    return { ...row, outputTokens: row.outputTokens - reasoningTokens, reasoningTokens };
+  });
 }

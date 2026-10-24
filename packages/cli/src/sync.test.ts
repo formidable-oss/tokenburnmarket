@@ -165,6 +165,35 @@ describe("scheduled syncs", () => {
 });
 
 describe("what a sync records", () => {
+  it("sends the requested historical window with a signed review flag", async () => {
+    const { path } = freshConfig({ lastSyncedDay: "2026-08-22" });
+    const server = acceptingServer();
+    const requests: { payload: { reviewHistory?: boolean; days: { day: string }[] } }[] = [];
+    const code = await sync({
+      configPath: path, now: () => NOW, env: ENV, home: tmpdir(), sinceDays: 30, reviewHistory: true,
+      readUsage: async (options) => {
+        expect(options?.since).toBe("2026-07-23");
+        return [{ ...ONE_DAY[0]!, day: "2026-07-24" }];
+      },
+      fetch: async (input, init) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return server.fetch(input, init);
+      },
+      log: () => {},
+    });
+    expect(code).toBe(0);
+    expect(requests[0]!.payload).toMatchObject({ reviewHistory: true, days: [{ day: "2026-07-24" }] });
+  });
+
+  it("requires an explicit manual date window for history review", async () => {
+    const { path } = freshConfig();
+    for (const extra of [{}, { sinceDays: 30, scheduled: true }]) {
+      expect(await sync({ configPath: path, reviewHistory: true, ...extra, log: () => {},
+        readUsage: async () => { throw new Error("must not collect"); },
+      })).toBe(1);
+    }
+  });
+
   it("stores when it synced alongside the watermark", async () => {
     const { path } = freshConfig();
     const server = acceptingServer();
@@ -206,7 +235,7 @@ describe("what a sync records", () => {
 
     expect(asked).toEqual(["2026-08-20"]);
     expect(lines).toContain(
-      "This device already synced the days before 2026-08-20, so --since starts there.",
+      "The server's backfill limit starts at 2026-08-20. Older missing or corrected usage requires review.",
     );
   });
 

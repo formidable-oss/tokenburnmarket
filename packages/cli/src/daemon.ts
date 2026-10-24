@@ -15,10 +15,11 @@
 */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { currentConfigDir } from "./config.js";
 import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
 import { msUntilScheduledSync, sync } from "./sync.js";
+import { USAGE_ENVIRONMENT_KEYS, usageEnvironment } from "./usage-environment.js";
 import {
   CLI_VERSION,
   checkForUpdate,
@@ -265,6 +266,7 @@ export interface InstallContext {
   scriptPath: string;
   home: string;
   env?: NodeJS.ProcessEnv;
+  cwd?: string;
 }
 
 interface CommandResult {
@@ -277,10 +279,11 @@ export interface InstallDaemonOptions {
   run?: (command: string, args: readonly string[]) => CommandResult;
 }
 
-function servicePath(context: InstallContext, packageManager?: string): string {
+/** The service PATH. `pathDirs` come first: pnpm and its global bin, which pnpm 11 requires on PATH. */
+function servicePath(context: InstallContext, pathDirs: readonly string[] = []): string {
   return [
+    ...pathDirs,
     dirname(context.execPath),
-    ...(packageManager ? [dirname(packageManager)] : []),
     join(context.home, ".local/bin"),
     "/opt/homebrew/bin",
     "/usr/local/bin",
@@ -291,10 +294,20 @@ function servicePath(context: InstallContext, packageManager?: string): string {
     .join(":");
 }
 
-function serviceEnvironment(context: InstallContext, packageManager?: string): [string, string][] {
-  const env = context.env ?? process.env;
-  return [["PATH", servicePath(context, packageManager)],
-    ...(env.PNPM_HOME ? [["PNPM_HOME", env.PNPM_HOME] as [string, string]] : [])];
+/** Switches the service keeps from the shell that ran `daemon install`. */
+const SERVICE_SWITCHES = ["TBM_NO_AUTO_UPDATE", "TBM_NO_UPDATE_CHECK"] as const;
+
+function serviceEnvironment(context: InstallContext, pathDirs?: readonly string[]): [string, string][] {
+  const sourceEnv = context.env ?? process.env;
+  const env = usageEnvironment(sourceEnv, context.home);
+  return [["PATH", servicePath(context, pathDirs)],
+    ...(sourceEnv.PNPM_HOME ? [["PNPM_HOME", sourceEnv.PNPM_HOME] as [string, string]] : []),
+    ...SERVICE_SWITCHES.flatMap((key): [string, string][] =>
+      sourceEnv[key]?.trim() ? [[key, sourceEnv[key]!.trim()]] : []),
+    ...USAGE_ENVIRONMENT_KEYS.flatMap((key): [string, string][] =>
+      env[key]?.trim() ? [[key, key === "AGENT_CLI_CREDENTIAL_STORE" ? env[key]!
+        : env[key]!.split(",").map((path) => resolve(context.cwd ?? process.cwd(), path)).join(",")]] : [],
+    )];
 }
 
 function xml(value: string): string {
@@ -307,7 +320,7 @@ function unitValue(value: string): string {
     .replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
 }
 
-function daemonCommand(context: InstallContext): { args: string[]; packageManager?: string } {
+function daemonCommand(context: InstallContext): { args: string[]; pathDirs?: string[] } {
   const updateContext: UpdateContext = {
     ...context,
     method: installMethod(context.scriptPath),
@@ -329,7 +342,7 @@ function daemonCommand(context: InstallContext): { args: string[]; packageManage
       // The bin shim follows pnpm updates. The resolved package path can become stale.
       return {
         args: [join(bin, "tokenburnmarket"), "daemon"],
-        packageManager: updateCommand({ ...updateContext, method: "pnpm" })!.command,
+        pathDirs: [dirname(updateCommand({ ...updateContext, method: "pnpm" })!.command), bin],
       };
     }
   }
@@ -350,12 +363,12 @@ ${command.args.map((argument) => `    <string>${xml(argument)}</string>`).join("
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-${serviceEnvironment(context, command.packageManager).map(([key, value]) => `    <key>${key}</key><string>${xml(value)}</string>`).join("\n")}
+${serviceEnvironment(context, command.pathDirs).map(([key, value]) => `    <key>${key}</key><string>${xml(value)}</string>`).join("\n")}
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>${context.home}/Library/Logs/tokenburnmarket.log</string>
-  <key>StandardErrorPath</key><string>${context.home}/Library/Logs/tokenburnmarket.log</string>
+  <key>StandardOutPath</key><string>${xml(context.home)}/Library/Logs/tokenburnmarket.log</string>
+  <key>StandardErrorPath</key><string>${xml(context.home)}/Library/Logs/tokenburnmarket.log</string>
 </dict>
 </plist>`;
 }
@@ -368,7 +381,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-${serviceEnvironment(context, command.packageManager).map(([key, value]) => `Environment="${key}=${unitValue(value)}"`).join("\n")}
+${serviceEnvironment(context, command.pathDirs).map(([key, value]) => `Environment="${key}=${unitValue(value)}"`).join("\n")}
 ExecStart=${command.args.map((argument) => /\s|["\\%]/.test(argument)
     ? `"${unitValue(argument)}"` : argument).join(" ")}
 Restart=always

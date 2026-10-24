@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import * as zlib from "node:zlib";
+import { expandUsagePath, usageEnvironment, usageRoots } from "./usage-environment.js";
 
 /** Streams keyed by (day, provider, model). Values are unique hashes. */
 export type ReceiptIndex = Map<string, Set<string>>;
@@ -62,7 +63,11 @@ const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
  */
 function utcDayFromSeconds(value: unknown): string | null {
   if (typeof value !== "number" || !Number.isInteger(value)) return null;
-  const day = new Date(value * 1000);
+  return utcDayFromMilliseconds(value * 1000);
+}
+
+function utcDayFromMilliseconds(value: number): string | null {
+  const day = new Date(value);
   if (Number.isNaN(day.getTime())) return null;
   const key = day.toISOString().slice(0, 10);
   return DAY_KEY.test(key) ? key : null;
@@ -128,26 +133,18 @@ function readLines(path: string): string[] {
 
 /** Config roots for Claude Code. CLAUDE_CONFIG_DIR wins and may list several, comma separated. */
 export function claudeRoots(env: NodeJS.ProcessEnv, home: string): string[] {
-  const configured = env.CLAUDE_CONFIG_DIR?.trim();
-  if (configured) {
-    return configured
-      .split(",")
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0);
-  }
-  return [join(home, ".claude"), join(home, ".config", "claude")];
+  return usageRoots(env.CLAUDE_CONFIG_DIR, home, [join(home, ".claude"), join(home, ".config", "claude")]);
 }
 
-/** Config root for Codex. CODEX_HOME wins, as the Codex CLI itself defines it. */
+/** Match ccusage's comma-separated CODEX_HOME roots. */
 export function codexRoots(env: NodeJS.ProcessEnv, home: string): string[] {
-  const configured = env.CODEX_HOME?.trim();
-  return configured ? [configured] : [join(home, ".codex")];
+  return usageRoots(env.CODEX_HOME, home, [join(home, ".codex")]);
 }
 
 /** Config root for Grok. GROK_HOME wins, as the Grok CLI itself defines it. */
 export function grokRoots(env: NodeJS.ProcessEnv, home: string): string[] {
   const configured = env.GROK_HOME?.trim();
-  return configured ? [configured] : [join(home, ".grok")];
+  return configured ? [expandUsagePath(configured, home)] : [join(home, ".grok")];
 }
 
 /**
@@ -211,6 +208,8 @@ export function readCodexStreams(roots: readonly string[], sinceDay?: string): R
       let sessionId = "";
       let model = "";
       let ordinal = 0;
+      const compactions = new Set<string>();
+      const requests = new Map<string, { day: string; model: string; sessionId: string }>();
 
       for (const line of readLines(file)) {
         if (line.length === 0) continue;
@@ -233,6 +232,20 @@ export function readCodexStreams(roots: readonly string[], sinceDay?: string): R
           if (typeof payload.model === "string") model = payload.model;
           continue;
         }
+        if (entry.type === "token_usage_record") {
+          const responseId = payload.response_id;
+          const day = utcDay(entry.timestamp);
+          const requestModel = typeof payload.model === "string" && payload.model ? payload.model : model;
+          if (sessionId && requestModel && day && (!sinceDay || day >= sinceDay) &&
+            typeof responseId === "string" && responseId && isRecord(payload.usage)) {
+            if (!requests.has(responseId)) requests.set(responseId, { day, model: requestModel, sessionId });
+          }
+          continue;
+        }
+        if (entry.type === "compacted") {
+          if (typeof payload.compaction_response_id === "string") compactions.add(payload.compaction_response_id);
+          continue;
+        }
         if (payload.type !== "token_count") continue;
 
         const position = ordinal;
@@ -244,6 +257,11 @@ export function readCodexStreams(roots: readonly string[], sinceDay?: string): R
         if (sinceDay && day < sinceDay) continue;
 
         add(index, day, "codex", model, sha256(`${sessionId}:${position}:${entry.timestamp}`));
+      }
+      for (const responseId of compactions) {
+        const request = requests.get(responseId);
+        if (request) add(index, request.day, "codex", request.model,
+          sha256(JSON.stringify(["codex-response", request.sessionId, responseId])));
       }
     }
   }
@@ -324,7 +342,11 @@ export function readGrokStreams(roots: readonly string[], sinceDay?: string): Re
         const modelUsage = usage && isRecord(usage.modelUsage) ? usage.modelUsage : undefined;
         if (!modelUsage) continue;
 
-        const day = utcDayFromSeconds(entry.timestamp);
+        const metadata = isRecord(params._meta) ? params._meta : {};
+        const agentTime = metadata.agentTimestampMs;
+        const day = typeof agentTime === "number" && Number.isFinite(agentTime) && agentTime > 0
+          ? utcDayFromMilliseconds(agentTime)
+          : utcDayFromSeconds(entry.timestamp);
         if (!day) continue;
         if (sinceDay && day < sinceDay) continue;
 
@@ -340,6 +362,33 @@ export function readGrokStreams(roots: readonly string[], sinceDay?: string): Re
   return index;
 }
 
+/** Match the Pi assistant messages that ccusage includes in its aggregates. */
+export function readPiStreams(roots: readonly string[], sinceDay?: string): ReceiptIndex {
+  const index: ReceiptIndex = new Map();
+  for (const root of roots) {
+    for (const file of transcriptFiles(root, sinceDay)) {
+      for (const line of readLines(file)) {
+        if (!line.includes('"assistant"')) continue;
+        let entry: unknown;
+        try { entry = JSON.parse(line); } catch { continue; }
+        if (!isRecord(entry) || !isRecord(entry.message) || entry.message.role !== "assistant") continue;
+        const message = entry.message;
+        if (typeof entry.id !== "string" || !entry.id || typeof message.model !== "string" || !message.model ||
+          !isRecord(message.usage)) continue;
+        const usage = message.usage;
+        if (![usage.input, usage.output, usage.cacheRead, usage.cacheWrite, usage.totalTokens]
+          .some((value) => typeof value === "number" && Number.isFinite(value) && value > 0)) continue;
+        const day = utcDay(entry.timestamp);
+        if (!day || (sinceDay && day < sinceDay)) continue;
+        const model = `[pi] ${message.model}`;
+        // Pi forks copy entry IDs and timestamps. Session IDs would count those copies twice.
+        add(index, day, "pi", model, sha256(JSON.stringify(["pi", entry.id, entry.timestamp, model])));
+      }
+    }
+  }
+  return index;
+}
+
 /** Every adapter, merged. Any other agent ccusage reports arrives without a stream, so Reported. */
 export function readReceiptStreams(
   env: NodeJS.ProcessEnv,
@@ -350,6 +399,7 @@ export function readReceiptStreams(
   const rest = [
     readCodexStreams(codexRoots(env, home), sinceDay),
     readGrokStreams(grokRoots(env, home), sinceDay),
+    readPiStreams(usageRoots(usageEnvironment(env, home).PI_AGENT_DIR, home, [join(home, ".pi", "agent", "sessions")]), sinceDay),
   ];
   for (const stream of rest) {
     for (const [key, hashes] of stream) {

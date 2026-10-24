@@ -229,22 +229,27 @@ export function updateCommand(context: UpdateContext): UpdateCommand | null {
       );
       return { command: bun, args: ["add", "--global", spec], display: `bun add --global ${spec}` };
     }
-    case "pnpm":
+    case "pnpm": {
+      // PNPM_HOME and PATH name the pnpm the person uses. A pnpm next to node
+      // can be another version with another global directory, so it comes last.
+      const pnpm = windows ? "pnpm.cmd" : "pnpm";
       return {
         command: firstExisting(
           [
-            context.env.PNPM_HOME ? join(context.env.PNPM_HOME, windows ? "pnpm.cmd" : "pnpm") : undefined,
-            join(dirname(context.execPath), windows ? "pnpm.cmd" : "pnpm"),
-            join(context.home, windows ? "AppData/Local/pnpm" : context.platform === "darwin"
-              ? "Library/pnpm" : ".local/share/pnpm", windows ? "pnpm.cmd" : "pnpm"),
+            context.env.PNPM_HOME ? join(context.env.PNPM_HOME, "bin", pnpm) : undefined,
+            context.env.PNPM_HOME ? join(context.env.PNPM_HOME, pnpm) : undefined,
             ...(context.env.PATH ?? "").split(windows ? ";" : ":")
-              .filter(Boolean).map((path) => join(path, windows ? "pnpm.cmd" : "pnpm")),
+              .filter(Boolean).map((path) => join(path, pnpm)),
+            join(dirname(context.execPath), pnpm),
+            join(context.home, windows ? "AppData/Local/pnpm" : context.platform === "darwin"
+              ? "Library/pnpm" : ".local/share/pnpm", pnpm),
           ],
-          windows ? "pnpm.cmd" : "pnpm",
+          pnpm,
         ),
         args: ["add", "--global", spec],
         display: `pnpm add --global ${spec}`,
       };
+    }
     case "yarn":
       return {
         command: windows ? "yarn.cmd" : "yarn",
@@ -301,6 +306,18 @@ export function runUpdateCommand(command: UpdateCommand, inherit: boolean): RunR
   return { status: result.status, output };
 }
 
+/**
+ * `env` with pnpm's global bin directories on PATH. pnpm 11 refuses global
+ * commands when its bin directory is missing from PATH, and a service manager
+ * starts the daemon with a short PATH that leaves it out.
+ */
+export function pnpmEnvironment(env: NodeJS.ProcessEnv, platform = process.platform): NodeJS.ProcessEnv {
+  if (!env.PNPM_HOME || platform === "win32") return env;
+  const path = [join(env.PNPM_HOME, "bin"), env.PNPM_HOME, ...(env.PATH ?? "").split(":")]
+    .filter((entry, index, all) => entry !== "" && all.indexOf(entry) === index);
+  return { ...env, PATH: path.join(":") };
+}
+
 function spawnUpdateCommand(
   command: UpdateCommand,
   inherit: boolean,
@@ -313,6 +330,9 @@ function spawnUpdateCommand(
     // npm.cmd and friends are batch files, which Windows only runs through a shell.
     shell: windows,
     timeout: 5 * 60 * 1000,
+    // A project's .npmrc or packageManager field must not redirect a global install.
+    cwd: homedir(),
+    env: pnpmEnvironment(process.env),
     ...options,
   });
 }
@@ -320,7 +340,7 @@ function spawnUpdateCommand(
 export function pnpmQuery(context: UpdateContext, args: string[]): string | null {
   const command = updateCommand({ ...context, method: "pnpm" })!;
   const result = spawnUpdateCommand({ ...command, args }, false, {
-    env: context.env,
+    env: pnpmEnvironment(context.env, context.platform),
     cwd: context.home,
     timeout: 10_000,
   });

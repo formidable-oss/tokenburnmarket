@@ -38,6 +38,7 @@ const USAGE = `tokenburnmarket
   --server URL     the server to talk to, also settable as TBM_SERVER
   --name NAME      what this device is called, defaults to the hostname
   --since N        collect the last N days instead of the days since the last sync
+  --review-history replace older rows for admin review; requires --since N
   --dry-run        show what would be uploaded, upload nothing
   --quiet          print nothing unless something went wrong
   --version        print the version
@@ -53,10 +54,10 @@ turns the check off, TBM_NO_AUTO_UPDATE=1 keeps the daemon to a notice.
 
 /** One line on stderr when a newer version is out, so piped output stays clean. */
 async function printUpdateNotice(): Promise<void> {
-  const notice = updateNotice(
-    await checkForUpdate({ cachePath: updateCachePath() }),
-    currentUpdateContext().method,
-  );
+  const check = await checkForUpdate({ cachePath: updateCachePath() });
+  // Finding the install method can start pnpm, so only do it when there is news.
+  if (!check?.outdated) return;
+  const notice = updateNotice(check, currentUpdateContext().method);
   if (notice) console.error(`\n${notice}`);
 }
 
@@ -110,6 +111,7 @@ async function main(): Promise<number> {
       const quiet = switches.has("quiet");
       const code = await sync({
         sinceDays: since,
+        reviewHistory: switches.has("review-history"),
         dryRun: switches.has("dry-run"),
         log: quiet ? () => {} : undefined,
       });
@@ -137,6 +139,7 @@ async function main(): Promise<number> {
           execPath: process.execPath,
           scriptPath: process.argv[1] ?? "tokenburnmarket",
           home: process.env.HOME ?? process.env.USERPROFILE ?? "~",
+          env: process.env,
         };
         if (switches.has("dry-run")) {
           for (const line of installSnippet(context)) console.log(line);

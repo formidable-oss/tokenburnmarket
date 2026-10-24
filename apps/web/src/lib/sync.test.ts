@@ -9,7 +9,9 @@ import {
   applySync,
   nextWatermark,
   receiptCutoffDay,
+  receiptFingerprint,
   type BuilderDayWrite,
+  type ForeignReceipt,
   type ReceiptWrite,
   type RollupSourceRow,
   type SyncStore,
@@ -19,6 +21,7 @@ import {
 const BUILDER = "11111111-1111-4111-8111-111111111111";
 const DEVICE_A = "22222222-2222-4222-8222-222222222222";
 const DEVICE_B = "33333333-3333-4333-8333-333333333333";
+const DEVICE_C = "44444444-4444-4444-8444-444444444444";
 const NOW = new Date("2026-08-17T12:00:00.000Z");
 const DAY = "2026-08-16";
 
@@ -52,6 +55,8 @@ interface Memory extends SyncStore {
   usage: Map<string, UsageRowWrite>;
   builderDays: Map<string, BuilderDayWrite>;
   watermarks: Map<string, string | null>;
+  /** How many rows each `foreignReceipts` call asked about. */
+  foreignReceiptCalls: number[];
 }
 
 function memoryStore(): Memory {
@@ -59,19 +64,27 @@ function memoryStore(): Memory {
   const usage = new Map<string, UsageRowWrite>();
   const builderDays = new Map<string, BuilderDayWrite>();
   const watermarks = new Map<string, string | null>();
+  const foreignReceiptCalls: number[] = [];
 
   return {
     receipts,
     usage,
     builderDays,
     watermarks,
-    async foreignReceipts(builderId, deviceId, hashes) {
-      const owners = new Map<string, string>();
-      for (const row of receipts.values()) {
-        if (row.builderId !== builderId || row.deviceId === deviceId) continue;
-        if (hashes.includes(row.hash)) owners.set(row.hash, row.deviceId);
+    foreignReceiptCalls,
+    async foreignReceipts(builderId, deviceId, rows) {
+      foreignReceiptCalls.push(rows.length);
+      const found: ForeignReceipt[] = [];
+      for (const incoming of rows) {
+        for (const row of receipts.values()) {
+          if (row.builderId !== builderId || row.deviceId === deviceId) continue;
+          const owner = usage.get(`${row.deviceId}|${incoming.day}|${incoming.provider}|${incoming.model}`);
+          if (row.day !== incoming.day || !owner || owner.duplicateOfDeviceId !== null) continue;
+          if (!incoming.receipts.includes(row.hash)) continue;
+          found.push({ hash: row.hash, deviceId: row.deviceId, day: incoming.day, provider: incoming.provider, model: incoming.model });
+        }
       }
-      return owners;
+      return found;
     },
     async putReceipts(rows) {
       for (const row of rows) receipts.set(`${row.deviceId}|${row.hash}`, row);
@@ -152,6 +165,186 @@ describe("applySync", () => {
     );
   });
 
+  it("keeps one counted owner through A, B, A and repeated updates", async () => {
+    const store = memoryStore();
+    for (const id of [DEVICE_A, DEVICE_B, DEVICE_A, DEVICE_B, DEVICE_A]) {
+      await applySync(store, device(id), payload(id, [day()]), NOW);
+      expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(5);
+      expect([...store.usage.values()].filter((row) => row.duplicateOfDeviceId === null)).toHaveLength(1);
+    }
+    expect(store.usage.get(`${DEVICE_A}|${DAY}|claude|claude-opus-5`)?.duplicateOfDeviceId).toBeNull();
+    expect(store.usage.get(`${DEVICE_B}|${DAY}|claude|claude-opus-5`)?.duplicateOfDeviceId).toBe(DEVICE_A);
+  });
+
+  it("counts new unique work when a duplicate device updates its day", async () => {
+    const store = memoryStore();
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day()]), NOW);
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day()]), NOW);
+    await applySync(store, device(DEVICE_B, DAY), payload(DEVICE_B, [day({
+      receipts: [...stream(10), ...stream(10, "b")], costUsd: 10,
+    })]), NOW);
+    await applySync(store, device(DEVICE_A, DAY), payload(DEVICE_A, [day({
+      receipts: [...stream(10), ...stream(10, "c")], costUsd: 10,
+    })]), NOW);
+    expect([...store.usage.values()].map((row) => row.duplicateOfDeviceId)).toEqual([null, null]);
+    expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(20);
+  });
+
+  it.each([DAY, "2026-08-01"].flatMap((rowDay) =>
+    [DEVICE_A, DEVICE_B].map((first) => ({ rowDay, first })),
+  ))("recovers a prior duplicate cycle for $rowDay when $first syncs", async ({ rowDay, first }) => {
+    const store = memoryStore();
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: rowDay })]), NOW);
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({ day: rowDay })]), NOW);
+    const owner = store.usage.get(`${DEVICE_A}|${rowDay}|claude|claude-opus-5`)!;
+    owner.duplicateOfDeviceId = DEVICE_B;
+    owner.trustLevel = "reported";
+    owner.quarantineReasons = [{ code: "duplicate_of_device", message: "legacy cycle" }];
+    const second = first === DEVICE_A ? DEVICE_B : DEVICE_A;
+    for (const id of [first, second, first]) {
+      await applySync(store, device(id, rowDay), payload(id, [day({ day: rowDay })]), NOW);
+      expect(store.builderDays.get(`${BUILDER}|${rowDay}`)?.costUsd).toBe(5);
+    }
+    expect(store.usage.get(`${first}|${rowDay}|claude|claude-opus-5`)).toMatchObject({
+      duplicateOfDeviceId: null, trustLevel: "verified", quarantineReasons: [],
+    });
+    expect(store.usage.get(`${second}|${rowDay}|claude|claude-opus-5`)?.duplicateOfDeviceId).toBe(first);
+  });
+
+  it("requires one counted owner to cover the overlap threshold", async () => {
+    const store = memoryStore();
+    const a = stream(5);
+    const b = stream(5, "b");
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ receipts: a })]), NOW);
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({ receipts: b })]), NOW);
+    await applySync(store, device(DEVICE_C), payload(DEVICE_C, [day({ receipts: [...a, ...b] })]), NOW);
+    expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(15);
+  });
+
+  it("finds a counted owner even when another counted device shares some receipts", async () => {
+    const store = memoryStore();
+    const shared = stream(5);
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day()]), NOW);
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({
+      receipts: [...shared, ...stream(5, "b")],
+    })]), NOW);
+    await applySync(store, device(DEVICE_C), payload(DEVICE_C, [day()]), NOW);
+    expect(store.usage.get(`${DEVICE_C}|${DAY}|claude|claude-opus-5`)?.duplicateOfDeviceId).toBe(DEVICE_A);
+    expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(10);
+  });
+
+  it("dedupes recent streams at the overlap threshold and counts new unique work below it", async () => {
+    const store = memoryStore();
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day()]), NOW);
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({
+      receipts: [...stream(9), ...stream(1, "b")],
+    })]), NOW);
+    expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(5);
+    await applySync(store, device(DEVICE_B, DAY), payload(DEVICE_B, [day({
+      receipts: [...stream(8), ...stream(2, "b")],
+    })]), NOW);
+    expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(10);
+  });
+
+  it("counts changed historical receipt sets instead of keeping an old duplicate verdict", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({ day: old })]), NOW);
+    await applySync(store, device(DEVICE_B, old), payload(DEVICE_B, [day({
+      day: old, receipts: [...stream(10), ...stream(1, "b")],
+    })]), NOW);
+    expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(10);
+  });
+
+  it("does not match receipts owned only by a different model", async () => {
+    const store = memoryStore();
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day()]), NOW);
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({ model: "other" })]), NOW);
+    expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(10);
+  });
+
+  it("counts disjoint old receipt sets with identical or similar totals", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({
+      day: old, receipts: stream(10, "b"), outputTokens: 950,
+    })]), NOW);
+    expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(10);
+    expect([...store.usage.values()].map((row) => row.duplicateOfDeviceId)).toEqual([null, null]);
+  });
+
+  it("keeps the fingerprint after raw receipts expire and dedupes later exact copies", async () => {
+    const store = memoryStore();
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day()]), NOW);
+    const fingerprint = store.usage.get(`${DEVICE_A}|${DAY}|claude|claude-opus-5`)?.receiptFingerprint;
+    expect(fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    store.receipts.clear();
+    const later = new Date("2026-09-01T12:00:00.000Z");
+    for (const id of [DEVICE_B, DEVICE_A, DEVICE_B]) {
+      await applySync(store, device(id), payload(id, [day()]), later);
+      expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(5);
+    }
+    expect(store.receipts.size).toBe(0);
+  });
+
+  it("dedupes an exact copy of an old row stored before fingerprints", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    store.usage.get(`${DEVICE_A}|${old}|claude|claude-opus-5`)!.receiptFingerprint = null;
+    // A second Device's first Sync: different receipt hashes, every figure identical.
+    const second = await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({
+      day: old, receipts: stream(10, "b"),
+    })]), NOW);
+    expect(second.days[0]?.reasons.map((reason) => reason.code)).toContain("duplicate_of_device");
+    expect(store.usage.get(`${DEVICE_B}|${old}|claude|claude-opus-5`)?.duplicateOfDeviceId).toBe(DEVICE_A);
+    expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(5);
+  });
+
+  it.each([
+    ["cost", { costUsd: 5.000001 }],
+    ["input", { inputTokens: 5001 }],
+    ["cached input", { cachedInputTokens: 200_001 }],
+    ["cache write", { cacheWriteTokens: 20_001 }],
+    ["output", { outputTokens: 1001 }],
+    ["reasoning", { reasoningTokens: 1 }],
+    ["receipt count", { receipts: stream(11) }],
+  ] as const)("does not infer an old duplicate from an unfingerprinted row when %s differs", async (_, change) => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    store.usage.get(`${DEVICE_A}|${old}|claude|claude-opus-5`)!.receiptFingerprint = null;
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({ day: old, ...change })]), NOW);
+    expect(store.usage.get(`${DEVICE_B}|${old}|claude|claude-opus-5`)?.duplicateOfDeviceId).toBeNull();
+  });
+
+  it("does not match an unfingerprinted old row that is itself a duplicate", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    await applySync(store, device(DEVICE_B), payload(DEVICE_B, [day({ day: old })]), NOW);
+    for (const row of store.usage.values()) row.receiptFingerprint = null;
+    store.usage.delete(`${DEVICE_A}|${old}|claude|claude-opus-5`);
+    await applySync(store, device(DEVICE_C), payload(DEVICE_C, [day({ day: old })]), NOW);
+    expect(store.usage.get(`${DEVICE_C}|${old}|claude|claude-opus-5`)?.duplicateOfDeviceId).toBeNull();
+  });
+
+  it("counts matching recent and old totals without receipts on both devices", async () => {
+    const store = memoryStore();
+    const days = [day({ receipts: [] }), day({ day: "2026-08-01", receipts: [] })];
+    for (const id of [DEVICE_A, DEVICE_B, DEVICE_A]) {
+      await applySync(store, device(id), payload(id, days), NOW);
+    }
+    for (const row of store.usage.values()) {
+      expect(row).toMatchObject({
+        duplicateOfDeviceId: null, receiptFingerprint: null, trustLevel: "reported",
+      });
+    }
+    expect([...store.builderDays.values()].map((row) => row.costUsd)).toEqual([10, 10]);
+  });
+
   it("counts a second device that did different work", async () => {
     const store = memoryStore();
     await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day()]), NOW);
@@ -179,14 +372,14 @@ describe("applySync", () => {
     expect(receiptCutoffDay(NOW)).toBe("2026-08-11");
   });
 
-  it("dedupes a first sync's old days against another device's usage", async () => {
+  it("dedupes exact old copies from their receipt fingerprints", async () => {
     const store = memoryStore();
     const old = "2026-08-01";
     await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
     const second = await applySync(
       store,
       device(DEVICE_B),
-      payload(DEVICE_B, [day({ day: old, receipts: stream(10, "z") })]),
+      payload(DEVICE_B, [day({ day: old, receipts: [...stream(10)].reverse() })]),
       NOW,
     );
 
@@ -271,6 +464,45 @@ describe("applySync", () => {
     expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.trustLevelMin).toBe("quarantined");
   });
 
+  it.each([false, true])("preserves existing usage on incomplete collection even with history review: %s", async (reviewHistory) => {
+    const store = memoryStore();
+    const device = { id: DEVICE_A, builderId: BUILDER, watermarkDay: null };
+    const complete = day({ provider: "opencode", reasoningTokens: 200 });
+    const other = day({ provider: "opencode", model: "another-model" });
+    await applySync(store, device, payload(DEVICE_A, [complete, other]), NOW);
+    const before = structuredClone([...store.usage.values()].find((row) => row.model === complete.model));
+    const incomplete = { ...complete, reasoningTokens: 0, costUsd: 1, receipts: [], onlyIfMissing: true as const };
+    const changedOther = { ...other, costUsd: 7 };
+    await applySync(store, device, { ...payload(DEVICE_A, [incomplete, changedOther]),
+      ...(reviewHistory ? { reviewHistory: true as const } : {}),
+    }, NOW);
+    expect([...store.usage.values()].find((row) => row.model === complete.model)).toEqual(before);
+    expect([...store.usage.values()].find((row) => row.model === other.model)?.costUsd).toBe(7);
+  });
+
+  it("accepts missing incomplete usage as reported and later replaces it with complete usage", async () => {
+    const store = memoryStore();
+    const device = { id: DEVICE_A, builderId: BUILDER, watermarkDay: null };
+    const incomplete = day({ provider: "opencode", receipts: [], onlyIfMissing: true });
+    const first = await applySync(store, device, payload(DEVICE_A, [incomplete]), NOW);
+    expect(first.days[0].trustLevel).toBe("reported");
+    expect([...store.usage.values()][0].costUsd).toBe(5);
+    const complete = day({ provider: "opencode", reasoningTokens: 200, costUsd: 6 });
+    const second = await applySync(store, device, payload(DEVICE_A, [complete]), NOW);
+    expect(second.days[0].trustLevel).toBe("verified");
+    expect([...store.usage.values()][0].reasoningTokens).toBe(200);
+    expect([...store.usage.values()][0].costUsd).toBe(6);
+  });
+
+  it("still quarantines newly discovered old usage when collection is incomplete", async () => {
+    const store = memoryStore();
+    const device = { id: DEVICE_A, builderId: BUILDER, watermarkDay: "2026-08-17" };
+    const incomplete = day({ day: "2026-08-01", receipts: [], onlyIfMissing: true });
+    const result = await applySync(store, device, payload(DEVICE_A, [incomplete]), NOW);
+    expect(result.days[0].trustLevel).toBe("quarantined");
+    expect(result.days[0].reasons.map((reason) => reason.code)).toContain("stale_backfill");
+  });
+
   it("keeps accepted days as they were when the device re-sends them past the backfill window", async () => {
     const store = memoryStore();
     const old = "2026-08-01";
@@ -309,6 +541,101 @@ describe("applySync", () => {
     expect(again.days[0]?.trustLevel).toBe("verified");
     expect(store.usage.get(`${DEVICE_A}|${old}|claude|claude-opus-5`)?.costUsd).toBe(5);
     expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(5);
+  });
+
+  it("replaces corrected historical totals only when explicitly submitted for review", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    const corrected = { ...payload(DEVICE_A, [day({ day: old, costUsd: 6 })]), reviewHistory: true as const };
+    const result = await applySync(store, device(DEVICE_A, DAY), corrected, NOW);
+    expect(result.days[0]).toMatchObject({ trustLevel: "quarantined" });
+    expect(result.days[0]!.reasons.map((reason) => reason.code)).toContain("stale_backfill");
+    expect(store.usage.get(`${DEVICE_A}|${old}|claude|claude-opus-5`)?.costUsd).toBe(6);
+    expect(store.builderDays.get(`${BUILDER}|${old}`)?.trustLevelMin).toBe("quarantined");
+    expect(result.nextWatermark).toBe(DAY);
+  });
+
+  it("keeps unchanged old rows during a history review and reviews only new or changed ones", async () => {
+    const store = memoryStore();
+    const [same, changed, legacy, fresh] = ["2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04"];
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [
+      day({ day: same }), day({ day: changed }), day({ day: legacy }), day(),
+    ]), NOW);
+    // Stored before fingerprints existed: only the figures can say it is unchanged.
+    store.usage.get(`${DEVICE_A}|${legacy}|claude|claude-opus-5`)!.receiptFingerprint = null;
+    const before = store.usage.get(`${DEVICE_A}|${same}|claude|claude-opus-5`);
+
+    // `sync --since 30 --review-history`: the same transcripts, one corrected day, one new one.
+    const review = await applySync(store, device(DEVICE_A, DAY), {
+      ...payload(DEVICE_A, [
+        day({ day: same, receipts: [...stream(10)].reverse() }),
+        day({ day: changed, costUsd: 6 }),
+        day({ day: legacy }),
+        day({ day: fresh }),
+        day(),
+      ]),
+      reviewHistory: true,
+    }, NOW);
+
+    expect(review.days.map((row) => row.trustLevel)).toEqual([
+      "verified", "quarantined", "verified", "quarantined", "verified",
+    ]);
+    expect(review.days[1]?.reasons.map((reason) => reason.code)).toEqual(["stale_backfill"]);
+    expect(review.days[3]?.reasons.map((reason) => reason.code)).toEqual(["stale_backfill"]);
+    expect(store.usage.get(`${DEVICE_A}|${same}|claude|claude-opus-5`)).toBe(before);
+    expect(store.builderDays.get(`${BUILDER}|${same}`)?.trustLevelMin).toBe("verified");
+    expect(store.builderDays.get(`${BUILDER}|${legacy}`)?.trustLevelMin).toBe("verified");
+    expect(store.usage.get(`${DEVICE_A}|${changed}|claude|claude-opus-5`)?.costUsd).toBe(6);
+  });
+
+  it("reviews an old row whose receipt set changed even when its figures did not", async () => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: old })]), NOW);
+    const review = await applySync(store, device(DEVICE_A, DAY), {
+      ...payload(DEVICE_A, [day({ day: old, receipts: stream(10, "b") })]),
+      reviewHistory: true,
+    }, NOW);
+    expect(review.days[0]?.trustLevel).toBe("quarantined");
+    expect(review.days[0]?.reasons.map((reason) => reason.code)).toContain("stale_backfill");
+  });
+
+  it("lets incomplete collection refresh a stored row without receipts inside the backfill window", async () => {
+    const store = memoryStore();
+    const incomplete = (costUsd: number) =>
+      day({ provider: "opencode", receipts: [], costUsd, onlyIfMissing: true });
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [incomplete(5)]), NOW);
+    const later = await applySync(store, device(DEVICE_A, DAY), payload(DEVICE_A, [incomplete(7)]), NOW);
+    expect(later.days[0]?.trustLevel).toBe("reported");
+    expect(store.usage.get(`${DEVICE_A}|${DAY}|opencode|claude-opus-5`)?.costUsd).toBe(7);
+    expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(7);
+  });
+
+  it.each([false, true])("keeps a stored row without receipts past the backfill window on incomplete collection, review: %s", async (reviewHistory) => {
+    const store = memoryStore();
+    const old = "2026-08-01";
+    const incomplete = (costUsd: number) =>
+      day({ day: old, provider: "opencode", receipts: [], costUsd, onlyIfMissing: true });
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [incomplete(5)]), NOW);
+    const before = store.usage.get(`${DEVICE_A}|${old}|opencode|claude-opus-5`);
+    await applySync(store, device(DEVICE_A, DAY), {
+      ...payload(DEVICE_A, [incomplete(7)]),
+      ...(reviewHistory ? { reviewHistory: true as const } : {}),
+    }, NOW);
+    expect(store.usage.get(`${DEVICE_A}|${old}|opencode|claude-opus-5`)).toBe(before);
+  });
+
+  it("asks for every recent row's foreign receipts in one call", async () => {
+    const store = memoryStore();
+    const days = [day(), day({ model: "claude-fable-5-1", receipts: stream(10, "b") }), day({ receipts: [], provider: "gemini" })];
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, days), NOW);
+    store.foreignReceiptCalls.length = 0;
+    const second = await applySync(store, device(DEVICE_B), payload(DEVICE_B, days), NOW);
+    expect(store.foreignReceiptCalls).toEqual([2]);
+    expect(second.days.map((row) => row.reasons.map((reason) => reason.code))).toEqual([
+      ["duplicate_of_device"], ["duplicate_of_device"], ["no_receipt_stream"],
+    ]);
   });
 
   it("does not mistake a new row past the backfill window for a stored one with a similar name", async () => {
@@ -380,5 +707,14 @@ describe("nextWatermark", () => {
 
   it("ignores quarantined days", () => {
     expect(nextWatermark("2026-08-16", [outcome("2026-09-01", "quarantined")])).toBe("2026-08-16");
+  });
+});
+
+describe("receiptFingerprint", () => {
+  it("hashes a sorted set and keeps empty evidence unknown", () => {
+    expect(receiptFingerprint([])).toBeNull();
+    expect(receiptFingerprint(stream(10))).toBe(receiptFingerprint([...stream(10)].reverse()));
+    expect(receiptFingerprint(stream(10))).toBe(receiptFingerprint([...stream(10), ...stream(10)]));
+    expect(receiptFingerprint(stream(10))).not.toBe(receiptFingerprint(stream(10, "b")));
   });
 });

@@ -22,6 +22,8 @@ import { buildSyncDays, shiftDay, utcDay, windowStart } from "./collect.js";
 import { currentConfigPath, readConfig, writeConfig } from "./config.js";
 import { readReceiptStreams } from "./receipts.js";
 import { acquireSyncLock } from "./sync-lock.js";
+import { usageEnvironment } from "./usage-environment.js";
+import { readMachineUsage } from "./machine-usage.js";
 
 /** One row of the server's answer, or of the local preview a dry run prints. */
 interface DayOutcome {
@@ -42,6 +44,7 @@ export interface SyncOptions {
   signal?: AbortSignal;
   /** `--since N`: collect the last N days instead of the days since the watermark. */
   sinceDays?: number;
+  reviewHistory?: boolean;
   dryRun?: boolean;
   /**
    * A sync nobody asked for, from the MCP server or the daemon. It only runs
@@ -60,6 +63,7 @@ export interface SyncOptions {
   home?: string;
   /** Injected in tests. Defaults spawn ccusage and talk to the real server. */
   readUsage?: typeof readUsageAggregates;
+  collectUsage?: typeof readMachineUsage;
   fetch?: typeof fetch;
 }
 
@@ -212,15 +216,19 @@ export async function sync(options: SyncOptions = {}): Promise<number> {
 async function syncLocked(options: SyncOptions): Promise<number> {
   const log = options.log ?? ((line: string) => console.log(line));
   const now = (options.now ?? (() => new Date()))();
-  const env = options.env ?? process.env;
   const home = options.home ?? homedir();
+  const env = usageEnvironment(options.env ?? process.env, home);
   const configPath = options.configPath ?? currentConfigPath();
-  const readUsage = options.readUsage ?? readUsageAggregates;
   const fetchImpl = options.fetch ?? fetch;
 
   const config = readConfig(configPath);
   if (!config) {
     log("Not connected. Run: tokenburnmarket connect");
+    return 1;
+  }
+
+  if (options.reviewHistory && (options.scheduled || options.sinceDays === undefined)) {
+    log("History review requires a manual sync with --since N.");
     return 1;
   }
 
@@ -240,6 +248,7 @@ async function syncLocked(options: SyncOptions): Promise<number> {
     now,
     watermarkDay: config.lastSyncedDay,
     sinceDays: options.sinceDays,
+    reviewHistory: options.reviewHistory,
   });
 
   if (
@@ -247,16 +256,23 @@ async function syncLocked(options: SyncOptions): Promise<number> {
     start !== undefined &&
     start > shiftDay(utcDay(now), -Math.max(0, options.sinceDays))
   ) {
-    log(`This device already synced the days before ${start}, so --since starts there.`);
+    log(`The server's backfill limit starts at ${start}. Older missing or corrected usage requires review.`);
   }
   log(
     start
       ? `Reading usage since ${start}.`
       : "Reading all usage on this machine. This takes a moment the first time.",
   );
-  const aggregates = await readUsage({ since: start, env, signal: options.signal });
+  if (options.reviewHistory) {
+    log("Older rows will be replaced and quarantined for admin review. Each affected day stops counting in full until an admin decides.");
+  }
+  const sourceOptions = { since: start, env, home, signal: options.signal, warn: log };
+  const collected = options.readUsage ? await options.readUsage(sourceOptions) : null;
   options.signal?.throwIfAborted();
-  const receipts = readReceiptStreams(env, home, start);
+  const { aggregates, receipts } = collected !== null
+    ? { aggregates: collected, receipts: readReceiptStreams(env, home, start) }
+    : await (options.collectUsage ?? readMachineUsage)(sourceOptions);
+  options.signal?.throwIfAborted();
   const days = buildSyncDays(aggregates, receipts, { now, start });
 
   if (days.length === 0) {
@@ -265,7 +281,8 @@ async function syncLocked(options: SyncOptions): Promise<number> {
   }
 
   // Budget less the envelope around the days, which is small and fixed.
-  const envelope = JSON.stringify({ version: 1, deviceId: config.deviceId, sentAt: now.toISOString(), days: [] }).length;
+  const historyOption = options.reviewHistory ? { reviewHistory: true as const } : {};
+  const envelope = JSON.stringify({ version: 1, deviceId: config.deviceId, sentAt: now.toISOString(), ...historyOption, days: [] }).length;
   const pages = pageDays(days, (options.maxPayloadBytes ?? MAX_PAYLOAD_BYTES) - envelope);
 
   const payloads: SyncPayload[] = [];
@@ -274,6 +291,7 @@ async function syncLocked(options: SyncOptions): Promise<number> {
     // long first sync can outlive the window a single timestamp would get.
     const payload: SyncPayload = {
       version: 1,
+      ...historyOption,
       deviceId: config.deviceId,
       sentAt: (options.now ?? (() => new Date()))().toISOString(),
       days: pageDaysList,

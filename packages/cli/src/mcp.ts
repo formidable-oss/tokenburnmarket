@@ -20,7 +20,7 @@ import {
   CLI_VERSION,
   checkForUpdate,
   currentUpdateContext,
-  packageVersion,
+  installedVersion,
   runningProcessNotice,
   updateCachePath,
 } from "./update.js";
@@ -126,10 +126,15 @@ export interface McpDependencies {
 
 /** The notice an agent passes on: update, or restart the session once the update is on disk. */
 async function defaultUpdateNotice(): Promise<string | null> {
+  const check = await checkForUpdate({ cachePath: updateCachePath() });
+  // Finding the install method can start pnpm, so only do it when there is news.
+  if (!check?.outdated) return null;
+  const context = currentUpdateContext();
   return runningProcessNotice(
-    await checkForUpdate({ cachePath: updateCachePath() }),
-    currentUpdateContext().method,
-    packageVersion(),
+    check,
+    context.method,
+    // pnpm can install the new version in a new directory, so ask it what is on disk.
+    installedVersion(context),
     "Restart this agent session to load it.",
   );
 }
