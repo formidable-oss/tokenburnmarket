@@ -88,8 +88,19 @@ export interface ReceiptWrite {
   hash: string;
 }
 
+/** The work a Usage row reports. Two rows are the same report only when all of it is equal. */
+export interface UsageFigures {
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  costUsd: number;
+  receiptCount: number;
+}
+
 /** Another Device's Usage row, as the dedupe for days past receipt retention reads it. */
-export interface UsageTwin {
+export interface UsageTwin extends UsageFigures {
   deviceId: string;
   day: string;
   provider: string;
@@ -99,12 +110,22 @@ export interface UsageTwin {
 }
 
 /** A Usage row this Device already uploaded, as a re-send past the backfill window reads it. */
-export interface StoredUsage {
+export interface StoredUsage extends UsageFigures {
   day: string;
   provider: string;
   model: string;
   trustLevel: TrustLevel;
   quarantineReasons: UsageReason[];
+  receiptFingerprint: string | null;
+}
+
+/** A receipt another Device already reported, with the counted Usage row it sits under. */
+export interface ForeignReceipt {
+  hash: string;
+  deviceId: string;
+  day: string;
+  provider: string;
+  model: string;
 }
 
 /** The columns the rollup reads back out of `usage_days`. */
@@ -132,15 +153,15 @@ export type ReceiptOwners = Map<string, Set<string>>;
 
 export interface SyncStore {
   /**
-   * Receipts on another Device's counted row for the same day and model.
-   * Duplicate rows cannot suppress their counted owner on a later Sync.
+   * Each row's receipts that sit on another Device's counted row for the same
+   * day and model, for all `rows` at once. Duplicate rows cannot suppress their
+   * counted owner on a later Sync.
    */
   foreignReceipts(
     builderId: string,
     deviceId: string,
-    hashes: readonly string[],
-    row: Pick<SyncDay, "day" | "provider" | "model">,
-  ): Promise<ReceiptOwners>;
+    rows: readonly Pick<SyncDay, "day" | "provider" | "model" | "receipts">[],
+  ): Promise<ForeignReceipt[]>;
   putReceipts(rows: readonly ReceiptWrite[]): Promise<void>;
   /** This Builder's Usage rows on `days` from Devices other than `deviceId`. */
   usageTwins(builderId: string, deviceId: string, days: readonly string[]): Promise<UsageTwin[]>;
@@ -235,20 +256,50 @@ export function receiptFingerprint(hashes: readonly string[]): string | null {
   return createHash("sha256").update([...new Set(hashes)].sort().join("")).digest("hex");
 }
 
+function figuresOf(row: SyncDay): UsageFigures {
+  return {
+    inputTokens: row.inputTokens,
+    cachedInputTokens: row.cachedInputTokens,
+    cacheWriteTokens: row.cacheWriteTokens,
+    outputTokens: row.outputTokens,
+    reasoningTokens: row.reasoningTokens,
+    costUsd: row.costUsd,
+    receiptCount: row.receipts.length,
+  };
+}
+
+/** Exact equality. Cost is compared at the six decimals it is stored to. */
+function sameFigures(a: UsageFigures, b: UsageFigures): boolean {
+  return (
+    Math.round(a.costUsd * 1e6) === Math.round(b.costUsd * 1e6) &&
+    a.inputTokens === b.inputTokens &&
+    a.cachedInputTokens === b.cachedInputTokens &&
+    a.cacheWriteTokens === b.cacheWriteTokens &&
+    a.outputTokens === b.outputTokens &&
+    a.reasoningTokens === b.reasoningTokens &&
+    a.receiptCount === b.receiptCount
+  );
+}
+
 /**
- * Historical matches require the same receipt set on a counted row.
- * Missing fingerprints and similar token counts are not duplicate evidence.
+ * Historical matches require the same receipt set on a counted row. Rows
+ * stored before fingerprints existed have none; for those, only an exact copy
+ * of every figure, receipt count included, is the same work. Similar totals
+ * are not duplicate evidence, and neither is a row without receipts.
  */
 function twinOwner(row: SyncDay, twins: readonly UsageTwin[]): string | null {
   const fingerprint = receiptFingerprint(row.receipts);
   if (fingerprint === null) return null;
+  const figures = figuresOf(row);
   const twin = twins.find(
     (other) =>
       other.day === row.day &&
       other.provider === row.provider &&
       other.model === row.model &&
       other.duplicateOfDeviceId === null &&
-      other.receiptFingerprint === fingerprint,
+      (other.receiptFingerprint === null
+        ? sameFigures(other, figures)
+        : other.receiptFingerprint === fingerprint),
   );
   return twin?.deviceId ?? null;
 }
@@ -325,6 +376,11 @@ export function backfillFloor(watermarkDay: string | null): string | null {
  * not read. Without this, every re-send overwrote accepted days with
  * Quarantined ones. A day behind the window that arrives for the first time is
  * still judged, and still Quarantined.
+ *
+ * A history review replaces only the old rows whose figures or receipt set
+ * changed; an identical re-send keeps its verdict. An incomplete collection
+ * (`onlyIfMissing`) inside the window may replace a stored row with no
+ * receipts, since there is no evidence to lose, but never one with receipts.
  */
 async function keptRows(
   store: SyncStore,
@@ -333,11 +389,31 @@ async function keptRows(
   reviewHistory = false,
 ): Promise<Map<string, StoredUsage>> {
   const floor = backfillFloor(device.watermarkDay);
-  const protectedRows = days.filter((row) => row.onlyIfMissing || (!reviewHistory && floor !== null && row.day < floor));
-  if (protectedRows.length === 0) return new Map();
-  const keys = new Set(protectedRows.map(usageKey));
-  const stored = await store.storedUsage(device.id, [...new Set(protectedRows.map((row) => row.day))]);
-  return new Map(stored.filter((row) => keys.has(usageKey(row))).map((row) => [usageKey(row), row]));
+  const pastFloor = (row: SyncDay) => floor !== null && row.day < floor;
+  const candidates = days.filter((row) => row.onlyIfMissing || pastFloor(row));
+  if (candidates.length === 0) return new Map();
+  const stored = await store.storedUsage(device.id, [...new Set(candidates.map((row) => row.day))]);
+  const byKey = new Map(stored.map((row) => [usageKey(row), row]));
+
+  const kept = new Map<string, StoredUsage>();
+  for (const row of candidates) {
+    const existing = byKey.get(usageKey(row));
+    if (existing === undefined) continue;
+    const keep = !pastFloor(row)
+      ? existing.receiptCount > 0
+      : row.onlyIfMissing || !reviewHistory || unchanged(row, existing);
+    if (keep) kept.set(usageKey(row), existing);
+  }
+  return kept;
+}
+
+/**
+ * Whether a re-sent row reports exactly what is stored. A row stored before
+ * fingerprints existed is judged on its figures and receipt count alone.
+ */
+function unchanged(row: SyncDay, stored: StoredUsage): boolean {
+  if (!sameFigures(stored, figuresOf(row))) return false;
+  return stored.receiptFingerprint === null || stored.receiptFingerprint === receiptFingerprint(row.receipts);
 }
 
 /**
@@ -360,13 +436,16 @@ export async function applySync(
 
   const cutoffDay = receiptCutoffDay(now);
   const recent = judged.filter((day) => day.day >= cutoffDay);
+  const withReceipts = recent.filter((row) => row.receipts.length > 0);
   const foreignByRow = new Map<string, ReceiptOwners>();
-  for (const row of recent) {
-    if (row.receipts.length === 0) continue;
-    foreignByRow.set(
-      usageKey(row),
-      await store.foreignReceipts(device.builderId, device.id, [...new Set(row.receipts)], row),
-    );
+  if (withReceipts.length > 0) {
+    for (const receipt of await store.foreignReceipts(device.builderId, device.id, withReceipts)) {
+      const owners = foreignByRow.get(usageKey(receipt)) ?? new Map<string, Set<string>>();
+      const devices = owners.get(receipt.hash) ?? new Set<string>();
+      devices.add(receipt.deviceId);
+      owners.set(receipt.hash, devices);
+      foreignByRow.set(usageKey(receipt), owners);
+    }
   }
   const pastDays = [
     ...new Set(

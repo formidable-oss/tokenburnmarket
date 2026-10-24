@@ -6,13 +6,13 @@
   Collector re-sends today and yesterday on every run, so a Sync interrupted
   halfway is repaired by the next one instead of needing a rollback.
 */
-import { and, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { builderDays, devices, receipts, usageDays } from "@/db/schema";
 import type {
   BuilderDayWrite,
+  ForeignReceipt,
   ReceiptWrite,
-  ReceiptOwners,
   RollupSourceRow,
   StoredUsage,
   SyncStore,
@@ -35,11 +35,36 @@ function chunks<T>(items: readonly T[], size = CHUNK): T[][] {
 }
 
 export const drizzleSyncStore: SyncStore = {
-  async foreignReceipts(builderId, deviceId, hashes, usage) {
-    const owners: ReceiptOwners = new Map();
-    for (const batch of chunks(hashes, RECEIPT_CHUNK)) {
-      const rows = await db
-        .select({ hash: receipts.hash, deviceId: receipts.deviceId })
+  async foreignReceipts(builderId, deviceId, rows) {
+    /*
+      One statement per RECEIPT_CHUNK hashes, however many rows they come from.
+      Each row keeps its own (day, provider, model, hashes) condition, so a
+      receipt is only reported under the row whose stream it is in.
+    */
+    const statements: { usage: (typeof rows)[number]; hashes: string[] }[][] = [[]];
+    let size = 0;
+    for (const usage of rows) {
+      for (const hashes of chunks([...new Set(usage.receipts)], RECEIPT_CHUNK)) {
+        if (size + hashes.length > RECEIPT_CHUNK && size > 0) {
+          statements.push([]);
+          size = 0;
+        }
+        statements.at(-1)!.push({ usage, hashes });
+        size += hashes.length;
+      }
+    }
+
+    const found: ForeignReceipt[] = [];
+    for (const parts of statements) {
+      if (parts.length === 0) continue;
+      const matches = await db
+        .select({
+          hash: receipts.hash,
+          deviceId: receipts.deviceId,
+          day: usageDays.day,
+          provider: usageDays.provider,
+          model: usageDays.model,
+        })
         .from(receipts)
         .innerJoin(
           usageDays,
@@ -47,8 +72,6 @@ export const drizzleSyncStore: SyncStore = {
             eq(usageDays.deviceId, receipts.deviceId),
             eq(usageDays.builderId, receipts.builderId),
             eq(usageDays.day, receipts.day),
-            eq(usageDays.provider, usage.provider),
-            eq(usageDays.model, usage.model),
             isNull(usageDays.duplicateOfDeviceId),
           ),
         )
@@ -56,18 +79,22 @@ export const drizzleSyncStore: SyncStore = {
           and(
             eq(receipts.builderId, builderId),
             ne(receipts.deviceId, deviceId),
-            inArray(receipts.hash, batch),
-            eq(receipts.day, usage.day),
+            or(
+              ...parts.map(({ usage, hashes }) =>
+                and(
+                  eq(receipts.day, usage.day),
+                  eq(usageDays.provider, usage.provider),
+                  eq(usageDays.model, usage.model),
+                  inArray(receipts.hash, hashes),
+                ),
+              ),
+            ),
           ),
         )
         .orderBy(receipts.deviceId);
-      for (const row of rows) {
-        const devices = owners.get(row.hash) ?? new Set<string>();
-        devices.add(row.deviceId);
-        owners.set(row.hash, devices);
-      }
+      found.push(...matches);
     }
-    return owners;
+    return found;
   },
 
   async putReceipts(rows: readonly ReceiptWrite[]) {
@@ -84,6 +111,13 @@ export const drizzleSyncStore: SyncStore = {
         day: usageDays.day,
         provider: usageDays.provider,
         model: usageDays.model,
+        inputTokens: usageDays.inputTokens,
+        cachedInputTokens: usageDays.cachedInputTokens,
+        cacheWriteTokens: usageDays.cacheWriteTokens,
+        outputTokens: usageDays.outputTokens,
+        reasoningTokens: usageDays.reasoningTokens,
+        costUsd: usageDays.costUsd,
+        receiptCount: usageDays.receiptCount,
         receiptFingerprint: usageDays.receiptFingerprint,
         duplicateOfDeviceId: usageDays.duplicateOfDeviceId,
       })
@@ -107,6 +141,14 @@ export const drizzleSyncStore: SyncStore = {
         model: usageDays.model,
         trustLevel: usageDays.trustLevel,
         quarantineReasons: usageDays.quarantineReasons,
+        inputTokens: usageDays.inputTokens,
+        cachedInputTokens: usageDays.cachedInputTokens,
+        cacheWriteTokens: usageDays.cacheWriteTokens,
+        outputTokens: usageDays.outputTokens,
+        reasoningTokens: usageDays.reasoningTokens,
+        costUsd: usageDays.costUsd,
+        receiptCount: usageDays.receiptCount,
+        receiptFingerprint: usageDays.receiptFingerprint,
       })
       .from(usageDays)
       .where(and(eq(usageDays.deviceId, deviceId), inArray(usageDays.day, [...days])));
