@@ -400,8 +400,9 @@ describe("paging", () => {
     } else {
       expect(await run).toBe(code);
       expect(lines).toContain("The server refused 1 part. Run the same command again to retry:");
+      // Held before the refused day, so the next plain sync sends it again.
       const stored = JSON.parse(readFileSync(path, "utf8")) as DeviceConfig;
-      expect(stored.lastSyncedDay).toBe("2026-08-22");
+      expect(stored.lastSyncedDay).toBeNull();
     }
     expect(server.pages.map((page) => page.days[0])).toEqual(sent);
   });

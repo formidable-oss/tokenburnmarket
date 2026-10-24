@@ -345,7 +345,8 @@ async function syncLocked(options: SyncOptions): Promise<number> {
   // Each page is its own Sync as far as the server is concerned, and the
   // watermark is saved after every one. A page the server refuses is reported,
   // and the later pages still go up, so one bad page cannot keep today off the
-  // board. A refusal about the device itself stops the run instead.
+  // board. The watermark then stays before the refused days, so the next sync
+  // sends them again. A refusal about the device itself stops the run instead.
   const outcomes: DayOutcome[] = [];
   const refused: string[] = [];
   let watermark = config.lastSyncedDay ?? null;
@@ -368,7 +369,7 @@ async function syncLocked(options: SyncOptions): Promise<number> {
       continue;
     }
     outcomes.push(...result.days);
-    watermark = result.nextWatermark ?? watermark;
+    if (refused.length === 0) watermark = result.nextWatermark ?? watermark;
     writeConfig({ ...config, lastSyncedDay: watermark, lastSyncedAt: now.toISOString() }, configPath);
   }
 
