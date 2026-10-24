@@ -105,6 +105,7 @@ const MESSAGES: Record<string, string> = {
   missing_token: "This machine is not connected. Run: tokenburnmarket connect",
   bad_token: "This device is no longer recognised. Run: tokenburnmarket connect",
   revoked: "This device was revoked. Approve a new one in settings.",
+  trading_off: "This device cannot place bets. Turn on trading for it in Settings on the site.",
 };
 
 export class ApiClient {

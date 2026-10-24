@@ -4,17 +4,10 @@
   ccusage supplies the numbers, the Receipt Streams supply the evidence, and
   this module decides which days to send at all.
 */
-import { MAX_RECEIPTS_PER_DAY } from "@tokenburnmarket/core";
+import { BACKFILL_WINDOW_DAYS, MAX_RECEIPTS_PER_DAY } from "@tokenburnmarket/core";
 import type { SyncDay } from "@tokenburnmarket/core";
 import type { UsageAggregate } from "./ccusage.js";
 import { receiptKey, type ReceiptIndex } from "./receipts.js";
-
-/**
- * Days before the watermark a Sync still re-sends, so a transcript written late
- * can still amend its day. Matches `backfillWindowDays` in the server's
- * plausibility limits: send more and the day comes back Quarantined.
- */
-export const BACKFILL_DAYS = 2;
 
 export function utcDay(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -31,25 +24,24 @@ export function shiftDay(day: string, days: number): string {
  * may have gained messages after the last run. Beyond that the watermark rules,
  * minus the backfill window.
  *
- * `--since` can widen the window up to the backfill window and no further once
- * the device has synced. The server keeps what it already has for older days
- * and quarantines any it never saw, so sending them can only cost a review.
+ * `--since N` reaches back N days and `--all` reads everything. Sending old
+ * days is safe: the server adds the days it does not have, raises or corrects
+ * the ones it has, and never lowers a day this machine has lost part of.
  */
 export function windowStart(options: {
   now: Date;
   watermarkDay?: string | null;
   sinceDays?: number;
-  reviewHistory?: boolean;
+  all?: boolean;
 }): string | undefined {
+  if (options.all) return undefined;
   const yesterday = shiftDay(utcDay(options.now), -1);
-  const floor = options.watermarkDay && !options.reviewHistory ? shiftDay(options.watermarkDay, -BACKFILL_DAYS) : undefined;
   if (options.sinceDays !== undefined) {
     const asked = shiftDay(utcDay(options.now), -Math.max(0, options.sinceDays));
-    const start = asked < yesterday ? asked : yesterday;
-    const clamped = floor !== undefined && start < floor ? floor : start;
-    return clamped < yesterday ? clamped : yesterday;
+    return asked < yesterday ? asked : yesterday;
   }
-  if (floor === undefined) return undefined;
+  if (!options.watermarkDay) return undefined;
+  const floor = shiftDay(options.watermarkDay, -BACKFILL_WINDOW_DAYS);
   return floor < yesterday ? floor : yesterday;
 }
 

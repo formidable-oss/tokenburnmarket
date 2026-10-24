@@ -24,6 +24,16 @@ It prints a short code and a URL. Approve it in the browser and this machine is
 bound to your account, then it runs the first sync and prints where to see
 yourself. The private key it generates never leaves the machine.
 
+In a terminal, `connect` asks before it connects the machine to the account that
+approved the code, because anyone signed in can approve a code they can see.
+
+Running `connect` again on a connected machine keeps its key, so the server keeps
+the same device and the machine's history counts once. A device you revoked in
+Settings is not brought back: connecting with its key makes a new device, and
+the revoked one keeps the usage it uploaded. If you connected one machine more
+than once with an older version, open Settings on the site and set those devices
+to the same machine.
+
 ## Keep it synced
 
 ```
@@ -61,28 +71,45 @@ changes nothing. It refuses to persist an executable from a temporary npx cache.
 ```
 tokenburnmarket sync            # the days since the last sync
 tokenburnmarket sync --since 7  # the last seven days
+tokenburnmarket sync --all      # every day this machine still has
 tokenburnmarket sync --dry-run  # what would go, without sending it
 tokenburnmarket status          # what is stored on this machine
 ```
 
 `sync` is safe to run whenever. A sync you run yourself is never skipped and is
-not held to a slot. Once a machine has synced, `--since` reaches back at most two
-days behind the last synced day. Normal sync keeps the stored rows for older
-days. Versions before 0.3.0 only get through inside a slot, so
-update if a hand-run sync answers 429.
+not held to a slot. Versions before 0.3.0 only get through inside a slot, so
+update if a hand-run sync answers 429. A row the server would refuse, such as a
+negative count, is left out with a note, and the other rows still go up. If the
+server refuses one part of a large upload, the later parts still go up, and the
+command ends with an error that names the refused days.
 
-To submit missing or corrected history after a collector update, use an explicit
-review request. Preview it first:
+Every sync sends the days since the last synced day, plus the two days before
+it. Older days change only when you send them again with `--since N` or `--all`.
+The server then adds the days it does not have. It replaces a day it has when
+the new reading saw at least the same messages, or reports at least as many
+tokens. That is how a corrected estimate lands. The last few days always take
+the latest reading, because they are still being written. An older day never
+goes down because old transcripts were deleted from this machine.
+
+## Fix your history
+
+After an update, or when your numbers look low, send your whole history once
+from every machine you use, then let the daemon keep it current:
 
 ```sh
-tokenburnmarket sync --since 30 --review-history --dry-run
-tokenburnmarket sync --since 30 --review-history
+tokenburnmarket update                 # or, on a new machine: npm install --global tokenburnmarket@latest
+tokenburnmarket sync --all --dry-run   # optional: see what will go up
+tokenburnmarket sync --all
+tokenburnmarket daemon install
 ```
 
-This replaces rows outside the backfill window and quarantines them for admin
-review. Each affected day stops counting in full until an admin decides. The
-server must support history review before you use this option. Automatic sync
-never requests history review.
+If you connected one machine more than once, open Settings on the site and set
+those devices to the same machine. Each day then counts once for that machine,
+from the most complete copy. Different machines, such as a laptop, a VM, and a
+remote server, always add up.
+
+`--review-history` from 0.4.0 still works. It now does the same as `--all`, and
+nothing is quarantined for its age.
 
 ## Usage sources
 
@@ -102,9 +129,8 @@ and restores OpenCode reasoning from the local database or legacy message files.
 If OpenCode details are unreadable for a day or change during the scan, that
 day's OpenCode rows use ccusage totals without receipts for missing rows only.
 Legacy message files older than the sync window are skipped. One warning names
-the affected days and sources. The server preserves existing rows, including
-during history review. A later complete read can replace a fallback row within
-the normal backfill window.
+the affected days and sources. The server preserves existing rows. A later
+complete read can replace a fallback row within the normal backfill window.
 Pi receipts cover the assistant messages ccusage reports.
 
 Compare reports over the same UTC dates. T3 Code can use another timezone, retain
@@ -131,6 +157,9 @@ the trade against the live book, writes nothing, and returns the cost, the
 average price and where the price would land, so the person can decide. Prices
 move, so a quote is an offer, not a promise: the server re-prices under a lock
 and refuses a fill that drifted too far.
+
+A new device can only quote. To let your agent place bets, tick the box when you
+approve the device, or allow bets for it in Settings on the site.
 
 Credits are play money. A winning share pays 1 credit.
 

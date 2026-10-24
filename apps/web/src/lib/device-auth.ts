@@ -9,7 +9,7 @@
   The token does not expire. A Device is a machine, not a session; `revoked_at`
   is the off switch, and it is the one a Builder can actually reach.
 */
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { SignJWT, jwtVerify } from "jose";
 import { db } from "@/db";
 import { builders, devices } from "@/db/schema";
@@ -85,13 +85,4 @@ export async function requireDevice(request: Request): Promise<DeviceAuth> {
   if (row.device.revokedAt) return { ok: false, status: 403, error: "revoked" };
 
   return { ok: true, device: row.device, handle: row.handle };
-}
-
-/** The Devices a Builder still owns, newest first. Revoked Devices are kept but listed last. */
-export async function activeDevicesFor(builderId: string) {
-  return db
-    .select()
-    .from(devices)
-    .where(and(eq(devices.builderId, builderId), isNull(devices.revokedAt)))
-    .orderBy(devices.createdAt);
 }

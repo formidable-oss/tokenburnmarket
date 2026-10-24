@@ -1,6 +1,6 @@
 # ADR 0004 — Curved daily Credit mint
 
-Status: accepted · 2026-08-17
+Status: accepted · 2026-08-17 · upward re-mint limited to a week by ADR 0007
 
 ## Context
 If Credits scaled linearly with spend, Max-20x subscribers would own every market and betting skill would not matter.

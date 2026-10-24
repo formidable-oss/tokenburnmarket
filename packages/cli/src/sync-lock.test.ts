@@ -8,7 +8,7 @@ import { afterEach, expect, it } from "vitest";
 import { generateDeviceKeyPair } from "@tokenburnmarket/core/signing";
 import { writeConfig } from "./config";
 import { sync } from "./sync";
-import { acquireSyncLock } from "./sync-lock";
+import { MAX_LOCK_AGE_MS, acquireSyncLock } from "./sync-lock";
 
 const directories: string[] = [];
 function temp(): string {
@@ -39,6 +39,16 @@ it("recovers dead owners without allowing stale release to remove a replacement"
   stale.release();
   expect(acquireSyncLock(path)).toBeNull();
   replacement.release();
+});
+
+it("treats an owner older than the longest sync as stale, even if its PID is in use", () => {
+  const path = join(temp(), "lock");
+  acquireSyncLock(path, 4242);
+  const inUse = () => true;
+  expect(acquireSyncLock(path, process.pid, inUse)).toBeNull();
+  const recovered = acquireSyncLock(path, process.pid, inUse, () => Date.now() + MAX_LOCK_AGE_MS + 60_000);
+  expect(recovered).not.toBeNull();
+  recovered!.release();
 });
 
 it("lets only one competing process recover a stale lock", async () => {

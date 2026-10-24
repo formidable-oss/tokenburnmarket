@@ -1,6 +1,6 @@
 # ADR 0003 — Signed device syncs, Receipt Streams, and Trust Levels instead of "unfakeable"
 
-Status: accepted · 2026-08-17
+Status: accepted · 2026-08-17 · plausibility ceilings and the watermark check superseded by ADR 0006
 
 ## Context
 Usage comes from user-owned local transcript files; no provider exposes per-user token totals for subscription accounts. Cryptographic proof of usage is impossible.

@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readConfig, type DeviceConfig } from "./config";
+import { readConfig, writeConfig, type DeviceConfig } from "./config";
 import { connect } from "./connect";
 
 const SERVER = "https://example.test";
@@ -50,6 +50,70 @@ function run(options: { runSync?: (config: DeviceConfig) => Promise<number> } = 
 }
 
 describe("connect", () => {
+  it("keeps this machine's key when it reconnects to the same server", async () => {
+    const configPath = join(mkdtempSync(join(tmpdir(), "tbm-connect-")), "config.json");
+    const sent: string[] = [];
+    const lines: string[] = [];
+    const server = approvingServer();
+    const recording = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (new URL(String(input)).pathname === "/api/connect/start") {
+        sent.push((JSON.parse(String(init?.body)) as { publicKey: string }).publicKey);
+      }
+      return server(input, init);
+    }) as typeof fetch;
+    const once = (serverUrl: string) =>
+      connect({
+        serverUrl,
+        deviceName: "workbench",
+        configPath,
+        fetch: recording,
+        pollIntervalMs: 0,
+        log: (line) => lines.push(line),
+        runSync: async () => 0,
+      });
+
+    const first = await once(SERVER);
+    writeConfig({ ...first, lastSyncedDay: "2026-08-20", lastSyncedAt: "2026-08-20T12:00:00.000Z" }, configPath);
+    const again = await once(SERVER);
+    expect(sent[1]).toBe(sent[0]);
+    expect(again.privateKey).toBe(first.privateKey);
+    // The same Device keeps its watermark, so its next sync is not the whole history.
+    expect(again.lastSyncedDay).toBe("2026-08-20");
+    expect(lines).toContain("Approve the code to reconnect the same device.");
+
+    const elsewhere = await once("https://other.example.test");
+    expect(sent[2]).not.toBe(sent[0]);
+    expect(elsewhere.privateKey).not.toBe(first.privateKey);
+    expect(elsewhere.lastSyncedDay).toBeUndefined();
+    expect(lines).toContain("Connecting to another server replaces the stored device.");
+  });
+
+  it("asks before connecting to the account that approved the code, and saves nothing on no", async () => {
+    const configPath = join(mkdtempSync(join(tmpdir(), "tbm-connect-")), "config.json");
+    const questions: string[] = [];
+    const attempt = (answer: boolean) =>
+      connect({
+        serverUrl: SERVER,
+        deviceName: "workbench",
+        configPath,
+        fetch: approvingServer(),
+        pollIntervalMs: 0,
+        log: () => {},
+        runSync: async () => 0,
+        confirm: async (question) => {
+          questions.push(question);
+          return answer;
+        },
+      });
+
+    await expect(attempt(false)).rejects.toThrow("Not connected, and nothing was saved.");
+    expect(readConfig(configPath)).toBeNull();
+    expect(questions).toEqual(["Connect this machine to @ada? [y/N] "]);
+
+    expect((await attempt(true)).handle).toBe("ada");
+    expect(readConfig(configPath)?.handle).toBe("ada");
+  });
+
   it("syncs once approved, then says where to look", async () => {
     const { result, lines, synced } = run();
     const config = await result;

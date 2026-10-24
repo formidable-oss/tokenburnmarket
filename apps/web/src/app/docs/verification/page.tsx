@@ -10,18 +10,20 @@ export const metadata: Metadata = {
 };
 
 /*
-  The checks and their ceilings mirror DEFAULT_PLAUSIBILITY_LIMITS in
+  The checks mirror checkPlausibility and DEFAULT_PLAUSIBILITY_LIMITS in
   packages/core/src/plausibility.ts. Change both together.
 */
 const checks = [
-  ["Negative counts", "A token count or a cost below zero is not a mistake we round away."],
-  ["Future day", "A day that has not happened yet, or one that has not had time to produce that many tokens."],
-  ["Output rate", "Output tokens per elapsed second, capped per model. 1000 by default, 2000 for the small fast ones."],
-  ["Output to input", "Output tokens may exceed total input, fresh plus cached, by at most four times."],
-  ["Cache ratio", "Cache reads may exceed cache writes by at most four hundred times within a day."],
-  ["Daily cost", "A ceiling per provider, sized against the largest known plan tier. 3000 USD by default."],
-  ["Backfill window", "A device may amend the two days before its own watermark. Older days do not move."],
-  ["Receipt coherence", "Each receipt stands for a message or billed turn, so tokens per receipt has to be believable."],
+  ["Negative counts", "A token count or a cost below zero. The collector leaves the row out and says why."],
+  ["Future day", "Usage on a day that has not started yet on the server clock. The server does not store it, and the collector sends that day again once it has begun."],
+  [
+    "Cost",
+    "A cost higher than the tokens could cost at any model's price: $2,000 per million tokens, which leaves room for priority pricing on the dearest model. The server does not store it.",
+  ],
+  [
+    "Receipt coherence",
+    "Each receipt stands for a message or billed turn, so tokens per receipt has to be believable. A stream that does not fit its tokens is not evidence, and the day is reported instead of verified.",
+  ],
 ] as const;
 
 export default function DocsVerificationPage() {
@@ -55,17 +57,18 @@ export default function DocsVerificationPage() {
           <Badge tone="reported">reported</Badge>
           <p className="mt-2 text-[0.95rem] text-muted">
             Signed by a bound device, no receipt stream we can lean on. Agents whose transcripts
-            have no per-message identifiers we can read land here, and so does a day carrying more
-            receipts than its tokens account for. It counts on leaderboards with the badge attached,
-            and mints at half.
+            have no per-message identifiers we can read land here, and so does a day whose receipts
+            do not fit its tokens. It counts on leaderboards with the badge attached, and mints at
+            half.
           </p>
         </li>
         <li className="bg-surface px-5 py-4">
           <Badge tone="quarantined">quarantined</Badge>
           <p className="mt-2 text-[0.95rem] text-muted">
-            Failed a check, with the reasons attached. Out of leaderboards, out of the mint, and
-            out of market resolution until an admin reviews it. Approving a day only ever adds
-            credits: a day already minted is never clawed back.
+            A row an admin kept out, with the reasons attached. Out of leaderboards, out of the
+            mint, and out of market resolution until an admin approves it. Uploads are no longer
+            quarantined: a number no real usage can produce is refused instead. Approving a day
+            only ever adds credits: a day already minted is never clawed back.
           </p>
         </li>
       </ul>
@@ -87,10 +90,9 @@ export default function DocsVerificationPage() {
         </li>
         <li>
           Coherence. The number of receipts and the tokens attributed to them have to fit each
-          other. A day with enormous totals and a handful of receipts does not, and is quarantined.
-          Surplus receipts are the harmless direction — more receipts than the tokens account for
-          moves no ranking, since boards rank cost and tokens — so that row drops to reported
-          instead of taking the day down with it.
+          other. A day with enormous totals and a handful of receipts does not, and neither does a
+          day with more receipts than its tokens account for. Either way the stream is not
+          evidence, so the day counts as reported instead of verified.
         </li>
       </ul>
 
@@ -98,8 +100,9 @@ export default function DocsVerificationPage() {
 
       <h2 className="type-heading">The checks</h2>
       <p className="mt-3 text-[0.95rem] text-muted">
-        Deliberately loose. A false quarantine costs a real builder their day; a missed one costs
-        play money.
+        Only a number no real usage can produce is refused. Size is not one of them: a short
+        prompt can ask for a long answer, and an API loop can run all day. Heavy usage counts in
+        full.
       </p>
       <dl className="mt-6 grid gap-4">
         {checks.map(([name, detail]) => (
@@ -109,6 +112,28 @@ export default function DocsVerificationPage() {
           </div>
         ))}
       </dl>
+
+      <div className="signal-rail my-10" aria-hidden />
+
+      <h2 className="type-heading">Syncing history again</h2>
+      <p className="mt-3 text-[0.95rem] text-muted">
+        Every sync sends the last few days. Older days change only when a sync reads them again,
+        with <code className="type-data">--since N</code> or <code className="type-data">--all</code>.
+        The server then adds the days it does not have. It replaces a day it has when the new
+        reading saw at least the same messages, or reports at least as many tokens. That is how a
+        corrected estimate lands. The last few days always take the latest reading, because they
+        are still being written. An older day never goes down because old transcripts were deleted
+        from your machine.
+      </p>
+      <p className="mt-3 text-[0.95rem] text-muted">
+        One machine counts once. Reconnecting a machine keeps its device. If you connected one
+        machine more than once, mark those devices as the same machine in{" "}
+        <Link href="/settings" className="text-primary-text hover:underline">
+          settings
+        </Link>
+        . Each day then counts once for that machine, from the most complete copy. Different
+        machines always add up.
+      </p>
 
       <div className="signal-rail my-10" aria-hidden />
 
@@ -125,6 +150,13 @@ export default function DocsVerificationPage() {
           href="https://github.com/formidable-oss/tokenburnmarket/blob/main/docs/adr/0003-receipt-streams-and-trust-levels.md"
         >
           ADR 0003
+        </a>{" "}
+        and{" "}
+        <a
+          className="text-primary-text hover:underline"
+          href="https://github.com/formidable-oss/tokenburnmarket/blob/main/docs/adr/0006-history-resync-machines-and-impossible-numbers.md"
+        >
+          ADR 0006
         </a>
         . What a trust level is worth in credits is on the{" "}
         <Link href="/docs/credits" className="text-primary-text hover:underline">

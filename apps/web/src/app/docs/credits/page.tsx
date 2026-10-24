@@ -90,8 +90,9 @@ export default function DocsCreditsPage() {
           coherence, so it is worth less, and the badge says so on the boards.
         </li>
         <li>
-          Quarantined usage mints nothing while it is under review. If a review approves the day,
-          the credits are added then. Nothing is ever clawed back from a day already minted.
+          Quarantined usage mints nothing while it is held. If an admin approves the day, the
+          credits are added then, however old the day is. Nothing is ever clawed back from a day
+          already minted.
         </li>
       </ul>
       <p className="mt-4 text-[0.95rem] text-muted">
@@ -112,8 +113,11 @@ export default function DocsCreditsPage() {
           closes.
         </li>
         <li>
-          The mint runs once a day, at 01:00 UTC, over days that have closed. Late syncs are
-          expected, so a day is re-minted upward as more usage for it arrives.
+          The mint runs once a day, at 00:20 UTC, over days that have closed. Late syncs are
+          expected, so a day is topped up as more usage for it arrives, for a week after it is
+          first minted. After that its credits are final: usage added to an old day later moves the
+          boards but mints nothing. A day that was never minted, such as history from a new device,
+          still mints once.
         </li>
         <li>
           Re-minting only ever adds. If a day&apos;s usage grows, you get the difference; it never

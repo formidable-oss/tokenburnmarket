@@ -17,16 +17,26 @@ export const SYNC_PAYLOAD_VERSION = 1;
 export const MAX_SYNC_DAYS = 400;
 export const MAX_RECEIPTS_PER_DAY = 50_000;
 
+/**
+ * Days before a Device's watermark that every Sync re-sends and may replace.
+ * Older stored rows change only when a new reading supersedes them (ADR 0006).
+ */
+export const BACKFILL_WINDOW_DAYS = 2;
+
 const tokenCount = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
 /** Lowercase sha256 hex of a per-message identifier. Never message content. */
 export const ReceiptHashSchema = z.string().regex(/^[0-9a-f]{64}$/, "expected a sha256 hex digest");
 
-/** UTC calendar day, `YYYY-MM-DD`. */
+/** UTC calendar day, `YYYY-MM-DD`, from 2000 on. */
 export const UtcDaySchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "expected a YYYY-MM-DD UTC day")
-  .refine((day) => !Number.isNaN(Date.parse(`${day}T00:00:00.000Z`)), "not a real calendar day");
+  .refine((day) => {
+    const start = Date.parse(`${day}T00:00:00.000Z`);
+    // Date.parse rolls 02-31 into March and accepts year 0; Postgres takes neither.
+    return !Number.isNaN(start) && new Date(start).toISOString().slice(0, 10) === day && day >= "2000-01-01";
+  }, "not a real calendar day");
 
 export const SyncDaySchema = z
   .object({
@@ -52,7 +62,10 @@ export const SyncPayloadSchema = z
     deviceId: z.uuid(),
     /** ISO-8601 instant in UTC, e.g. `2026-08-17T09:30:00.000Z`. Replay window lives server-side. */
     sentAt: z.iso.datetime(),
-    /** Explicitly replace historical rows for plausibility checks and admin review. */
+    /**
+     * Sent by 0.4.0 Collectors for `--review-history`. Accepted so their
+     * signatures still verify. The server treats every Sync the same way.
+     */
     reviewHistory: z.literal(true).optional(),
     days: z.array(SyncDaySchema).min(1).max(MAX_SYNC_DAYS),
   })

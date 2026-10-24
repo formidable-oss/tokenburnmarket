@@ -7,7 +7,7 @@
   the revision it expects, so a repeat of either is harmless.
 */
 import { MINT_CURVE_VERSION } from "@tokenburnmarket/core";
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { builderDays, builders, creditLedger } from "@/db/schema";
 import { SIGNUP_REF, type MintCandidate, type MintStore, type MintWrite } from "./mint";
@@ -37,9 +37,11 @@ const balanceFromLedger = sql`coalesce((
  * the condition can be asserted: the `or` has to stay parenthesised, or day and
  * cost stop constraining anything at all.
  */
-export function mintCandidateFilter(throughDay: string) {
+export function mintCandidateFilter(throughDay: string, oldestTopUp: string) {
   return and(
     lte(builderDays.day, throughDay),
+    // A day minted before is topped up for a week at most (ADR 0007).
+    or(eq(builderDays.mintRevision, 0), gte(builderDays.day, oldestTopUp)),
     // A day with no cost mints nothing, ever.
     sql`${builderDays.costUsd} > 0`,
     /*
@@ -53,11 +55,11 @@ export function mintCandidateFilter(throughDay: string) {
 }
 
 export const drizzleMintStore: MintStore = {
-  async candidates(throughDay): Promise<MintCandidate[]> {
+  async candidates(throughDay, oldestTopUp): Promise<MintCandidate[]> {
     return db
       .select(candidateColumns)
       .from(builderDays)
-      .where(mintCandidateFilter(throughDay))
+      .where(mintCandidateFilter(throughDay, oldestTopUp))
       .orderBy(builderDays.day);
   },
 

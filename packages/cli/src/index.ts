@@ -6,6 +6,7 @@
   Usage, status says what is stored here, daemon syncs on a timer, and mcp
   serves the whole thing to an agent over stdio, syncing itself when it starts.
 */
+import { createInterface } from "node:readline/promises";
 import { parseArgs } from "./args.js";
 import { connect } from "./connect.js";
 import { currentConfigPath, readConfig, resolveServerUrl } from "./config.js";
@@ -26,7 +27,7 @@ import {
 const USAGE = `tokenburnmarket
 
   connect [--server URL] [--name NAME]   bind this machine to your account and sync
-  sync [--since N] [--dry-run] [--quiet] upload usage for the days that changed
+  sync [--since N | --all] [--dry-run]   upload usage for the days that changed
   status                                 show what is stored on this machine
   update [--dry-run]                     install the latest version the way this one was installed
   daemon                                 sync on the shared sync slots, in the foreground
@@ -38,7 +39,7 @@ const USAGE = `tokenburnmarket
   --server URL     the server to talk to, also settable as TBM_SERVER
   --name NAME      what this device is called, defaults to the hostname
   --since N        collect the last N days instead of the days since the last sync
-  --review-history replace older rows for admin review; requires --since N
+  --all            collect every day on this machine, to fill in or correct history
   --dry-run        show what would be uploaded, upload nothing
   --quiet          print nothing unless something went wrong
   --version        print the version
@@ -51,6 +52,16 @@ Config lives in the platform config directory. The CLI checks npm for a newer
 version once a day and says so; the daemon installs it. TBM_NO_UPDATE_CHECK=1
 turns the check off, TBM_NO_AUTO_UPDATE=1 keeps the daemon to a notice.
 `;
+
+/** A yes or no on the terminal. Anything but y or yes is no. */
+async function askYesNo(question: string): Promise<boolean> {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return /^y(es)?$/i.test((await prompt.question(question)).trim());
+  } finally {
+    prompt.close();
+  }
+}
 
 /** One line on stderr when a newer version is out, so piped output stays clean. */
 async function printUpdateNotice(): Promise<void> {
@@ -98,6 +109,7 @@ async function main(): Promise<number> {
       await connect({
         serverUrl: resolveServerUrl(flags.server, process.env),
         deviceName: flags.name,
+        confirm: process.stdin.isTTY && process.stdout.isTTY ? askYesNo : undefined,
       });
       await printUpdateNotice();
       return 0;
@@ -107,11 +119,17 @@ async function main(): Promise<number> {
         console.error("--since takes a number of days, for example --since 7");
         return 1;
       }
+      if (since !== undefined && switches.has("all")) {
+        console.error("Use --since N or --all, not both.");
+        return 1;
+      }
       // For cron lines and scripts. Failures still go to stderr through the thrown error.
       const quiet = switches.has("quiet");
+      // 0.4.0 documented --review-history. Every sync now does what it was for.
+      const all = switches.has("all") || (switches.has("review-history") && since === undefined);
       const code = await sync({
         sinceDays: since,
-        reviewHistory: switches.has("review-history"),
+        all,
         dryRun: switches.has("dry-run"),
         log: quiet ? () => {} : undefined,
       });

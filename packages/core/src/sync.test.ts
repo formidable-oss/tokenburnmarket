@@ -6,6 +6,7 @@ import {
   SYNC_PAYLOAD_VERSION,
   type SyncPayload,
   SyncPayloadSchema,
+  UtcDaySchema,
   createSignedSync,
   syncSigningInput,
   usageDayInputFromSyncDay,
@@ -176,5 +177,14 @@ describe("signing a Sync", () => {
       }),
       { numRuns: 25 },
     );
+  });
+});
+
+describe("UtcDaySchema", () => {
+  it("takes only real calendar days from 2000 on, the ones Postgres stores", () => {
+    expect(UtcDaySchema.safeParse("2024-02-29").success).toBe(true);
+    for (const day of ["2026-02-31", "2026-13-01", "0000-01-01", "1999-12-31", "2026-8-1"]) {
+      expect(UtcDaySchema.safeParse(day).success, day).toBe(false);
+    }
   });
 });

@@ -287,18 +287,17 @@ describe("windowStart", () => {
     expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-08-12" })).toBe("2026-08-10");
   });
 
-  it("does not let --since reach behind the backfill window of a synced device", () => {
-    expect(windowStart({ now, sinceDays: 120, watermarkDay: "2026-08-17" })).toBe("2026-08-15");
-    expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-08-17" })).toBe("2026-08-15");
+  it("reaches as far back as --since asks, once the device has synced too", () => {
+    expect(windowStart({ now, sinceDays: 120, watermarkDay: "2026-08-17" })).toBe("2026-04-19");
+    expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-08-17" })).toBe("2026-08-10");
   });
 
-  it("allows an explicit history review to reach older days", () => {
-    expect(windowStart({ now, sinceDays: 30, watermarkDay: "2026-08-17", reviewHistory: true }))
-      .toBe("2026-07-18");
+  it("reads everything on this machine with --all", () => {
+    expect(windowStart({ now, all: true, watermarkDay: "2026-08-17" })).toBeUndefined();
   });
 
   it("never lets --since start later than yesterday, however new the watermark is", () => {
-    expect(windowStart({ now, sinceDays: 7, watermarkDay: "2026-09-30" })).toBe("2026-08-16");
+    expect(windowStart({ now, sinceDays: 0, watermarkDay: "2026-09-30" })).toBe("2026-08-16");
   });
 });
 

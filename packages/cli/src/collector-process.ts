@@ -47,7 +47,10 @@ export function runCollector(
           process.kill(-child.pid, "SIGKILL");
         }
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        // ESRCH: the group is gone. EPERM: macOS says this for a group whose
+        // processes have all exited. Either way there is nothing left to stop,
+        // and a throw here would crash the MCP server or the daemon.
+        if (!["ESRCH", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
       }
     }
     function abort() {

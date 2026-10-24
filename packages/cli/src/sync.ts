@@ -14,11 +14,12 @@ import {
   SYNC_JITTER_MS,
   SYNC_TRIGGER_HEADER,
   syncSlotStart,
+  SyncDaySchema,
   SyncPayloadSchema,
 } from "@tokenburnmarket/core";
 import type { SyncDay, SyncPayload, SyncTrigger, TrustLevel } from "@tokenburnmarket/core";
 import { readUsageAggregates } from "./ccusage.js";
-import { buildSyncDays, shiftDay, utcDay, windowStart } from "./collect.js";
+import { buildSyncDays, windowStart } from "./collect.js";
 import { currentConfigPath, readConfig, writeConfig } from "./config.js";
 import { readReceiptStreams } from "./receipts.js";
 import { acquireSyncLock } from "./sync-lock.js";
@@ -44,7 +45,8 @@ export interface SyncOptions {
   signal?: AbortSignal;
   /** `--since N`: collect the last N days instead of the days since the watermark. */
   sinceDays?: number;
-  reviewHistory?: boolean;
+  /** `--all`: collect every day on this machine. */
+  all?: boolean;
   dryRun?: boolean;
   /**
    * A sync nobody asked for, from the MCP server or the daemon. It only runs
@@ -135,8 +137,11 @@ export function formatSummary(rows: readonly DayOutcome[], costs: Map<string, nu
   return [line(header), ...body.map(line)];
 }
 
-/** What the server will decide, computed locally so `--dry-run` is worth running. */
-function preview(days: readonly SyncDay[], now: Date, watermarkDay?: string): DayOutcome[] {
+/**
+ * What the checks say about each row, computed locally so `--dry-run` is worth
+ * running. The server also matches rows against what it already has.
+ */
+function preview(days: readonly SyncDay[], now: Date): DayOutcome[] {
   return days.map((day) => {
     const result = checkPlausibility(
       {
@@ -151,7 +156,7 @@ function preview(days: readonly SyncDay[], now: Date, watermarkDay?: string): Da
         costUsd: day.costUsd,
         receiptCount: day.receipts.length,
       },
-      { now, deviceWatermarkDay: watermarkDay },
+      { now },
     );
     return {
       day: day.day,
@@ -162,6 +167,19 @@ function preview(days: readonly SyncDay[], now: Date, watermarkDay?: string): Da
     };
   });
 }
+
+/** A page the server answered with an error, kept with its status. */
+class SyncRefused extends Error {
+  constructor(
+    readonly status: number,
+    detail: string,
+  ) {
+    super(`Sync was refused with ${status}. ${detail.slice(0, 200)}`.trim());
+  }
+}
+
+/** Refusals about the device or the clock, which every later page would get too. */
+const REFUSALS_FOR_EVERY_PAGE = new Set([401, 403, 429]);
 
 async function upload(
   serverUrl: string,
@@ -184,8 +202,7 @@ async function upload(
     body: JSON.stringify(signed),
   });
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Sync was refused with ${response.status}. ${detail.slice(0, 200)}`.trim());
+    throw new SyncRefused(response.status, await response.text().catch(() => ""));
   }
   return (await response.json()) as SyncResponse;
 }
@@ -227,11 +244,6 @@ async function syncLocked(options: SyncOptions): Promise<number> {
     return 1;
   }
 
-  if (options.reviewHistory && (options.scheduled || options.sinceDays === undefined)) {
-    log("History review requires a manual sync with --since N.");
-    return 1;
-  }
-
   if (options.scheduled && !options.dryRun) {
     if (!inSyncWindow(now)) {
       log(`Outside a sync slot. The next one is ${nextSyncSlot(now).toISOString().slice(11, 16)} UTC.`);
@@ -248,23 +260,18 @@ async function syncLocked(options: SyncOptions): Promise<number> {
     now,
     watermarkDay: config.lastSyncedDay,
     sinceDays: options.sinceDays,
-    reviewHistory: options.reviewHistory,
+    all: options.all,
   });
+  // A wide window on a device that synced before goes over days the server has.
+  const history = Boolean(config.lastSyncedDay) && (options.all || options.sinceDays !== undefined);
 
-  if (
-    options.sinceDays !== undefined &&
-    start !== undefined &&
-    start > shiftDay(utcDay(now), -Math.max(0, options.sinceDays))
-  ) {
-    log(`The server's backfill limit starts at ${start}. Older missing or corrected usage requires review.`);
-  }
   log(
     start
       ? `Reading usage since ${start}.`
       : "Reading all usage on this machine. This takes a moment the first time.",
   );
-  if (options.reviewHistory) {
-    log("Older rows will be replaced and quarantined for admin review. Each affected day stops counting in full until an admin decides.");
+  if (history) {
+    log("The server adds missing days. A day it already has changes only if this machine still has all its messages or reports more tokens.");
   }
   const sourceOptions = { since: start, env, home, signal: options.signal, warn: log };
   const collected = options.readUsage ? await options.readUsage(sourceOptions) : null;
@@ -273,7 +280,20 @@ async function syncLocked(options: SyncOptions): Promise<number> {
     ? { aggregates: collected, receipts: readReceiptStreams(env, home, start) }
     : await (options.collectUsage ?? readMachineUsage)(sourceOptions);
   options.signal?.throwIfAborted();
-  const days = buildSyncDays(aggregates, receipts, { now, start });
+  // A row the server would refuse is left out with a note, so one bad estimate
+  // cannot hold back every other day.
+  const days: SyncDay[] = [];
+  const skipped: string[] = [];
+  for (const day of buildSyncDays(aggregates, receipts, { now, start })) {
+    const parsed = SyncDaySchema.safeParse(day);
+    if (parsed.success) days.push(day);
+    else skipped.push(`${day.day} ${day.provider} ${day.model}: ${parsed.error.issues[0]?.message ?? "invalid"}`);
+  }
+  if (skipped.length > 0) {
+    log(`Skipping ${skipped.length === 1 ? "1 row" : `${skipped.length} rows`} the server would refuse:`);
+    for (const line of skipped.slice(0, 5)) log(`  ${line}`);
+    if (skipped.length > 5) log(`  and ${skipped.length - 5} more`);
+  }
 
   if (days.length === 0) {
     log("Nothing to sync.");
@@ -281,8 +301,7 @@ async function syncLocked(options: SyncOptions): Promise<number> {
   }
 
   // Budget less the envelope around the days, which is small and fixed.
-  const historyOption = options.reviewHistory ? { reviewHistory: true as const } : {};
-  const envelope = JSON.stringify({ version: 1, deviceId: config.deviceId, sentAt: now.toISOString(), ...historyOption, days: [] }).length;
+  const envelope = JSON.stringify({ version: 1, deviceId: config.deviceId, sentAt: now.toISOString(), days: [] }).length;
   const pages = pageDays(days, (options.maxPayloadBytes ?? MAX_PAYLOAD_BYTES) - envelope);
 
   const payloads: SyncPayload[] = [];
@@ -291,7 +310,6 @@ async function syncLocked(options: SyncOptions): Promise<number> {
     // long first sync can outlive the window a single timestamp would get.
     const payload: SyncPayload = {
       version: 1,
-      ...historyOption,
       deviceId: config.deviceId,
       sentAt: (options.now ?? (() => new Date()))().toISOString(),
       days: pageDaysList,
@@ -314,7 +332,7 @@ async function syncLocked(options: SyncOptions): Promise<number> {
 
   if (options.dryRun) {
     log("");
-    for (const line of formatSummary(preview(days, now, config.lastSyncedDay ?? undefined), costs)) {
+    for (const line of formatSummary(preview(days, now), costs)) {
       log(line);
     }
     log("");
@@ -324,22 +342,31 @@ async function syncLocked(options: SyncOptions): Promise<number> {
 
   if (payloads.length > 1) log(`Uploading in ${payloads.length} parts.`);
 
-  // Each page is its own Sync as far as the server is concerned. The watermark
-  // is saved after every one, so a page that fails leaves the earlier pages
-  // counted and the next run resuming from where this one stopped.
+  // Each page is its own Sync as far as the server is concerned, and the
+  // watermark is saved after every one. A page the server refuses is reported,
+  // and the later pages still go up, so one bad page cannot keep today off the
+  // board. A refusal about the device itself stops the run instead.
   const outcomes: DayOutcome[] = [];
+  const refused: string[] = [];
   let watermark = config.lastSyncedDay ?? null;
   for (const payload of payloads) {
     options.signal?.throwIfAborted();
-    const result = await upload(
-      config.serverUrl,
-      config.deviceToken,
-      payload,
-      config.privateKey,
-      options.scheduled ? "scheduled" : "manual",
-      fetchImpl,
-      options.signal,
-    );
+    let result: SyncResponse;
+    try {
+      result = await upload(
+        config.serverUrl,
+        config.deviceToken,
+        payload,
+        config.privateKey,
+        options.scheduled ? "scheduled" : "manual",
+        fetchImpl,
+        options.signal,
+      );
+    } catch (error) {
+      if (!(error instanceof SyncRefused) || REFUSALS_FOR_EVERY_PAGE.has(error.status)) throw error;
+      refused.push(`${payload.days[0]!.day} to ${payload.days.at(-1)!.day}: ${error.message}`);
+      continue;
+    }
     outcomes.push(...result.days);
     watermark = result.nextWatermark ?? watermark;
     writeConfig({ ...config, lastSyncedDay: watermark, lastSyncedAt: now.toISOString() }, configPath);
@@ -353,7 +380,7 @@ async function syncLocked(options: SyncOptions): Promise<number> {
   const quarantined = outcomes.filter((day) => day.trustLevel === "quarantined");
   if (quarantined.length > 0) {
     log("");
-    log("Quarantined, visible only to you until reviewed:");
+    log("Not counted:");
     for (const day of quarantined) {
       for (const reason of day.reasons) log(`  ${day.day} ${day.provider}  ${reason.message}`);
     }
@@ -362,5 +389,12 @@ async function syncLocked(options: SyncOptions): Promise<number> {
   const total = days.reduce((sum, day) => sum + day.costUsd, 0);
   if (!options.brief) log("");
   log(`${outcomes.length} rows, ${money(total)}, ${receiptTotal} receipts. @${config.handle}`);
+
+  if (refused.length > 0) {
+    log("");
+    log(`The server refused ${refused.length === 1 ? "1 part" : `${refused.length} parts`}. Run the same command again to retry:`);
+    for (const line of refused) log(`  ${line}`);
+    return 1;
+  }
   return 0;
 }

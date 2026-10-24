@@ -18,6 +18,8 @@ export interface DeviceCaller {
   country: string | null;
   /** Cached balance, kept in step with the ledger by every write that touches it. */
   creditBalance: number;
+  /** Whether the calling Device may place bets (ADR 0007). */
+  canTrade: boolean;
 }
 
 type Guarded = { ok: true; caller: DeviceCaller } | { ok: false; response: Response };
@@ -52,6 +54,7 @@ export async function deviceCaller(request: Request): Promise<Guarded> {
       handle: builder.handle,
       country: builder.country,
       creditBalance: builder.creditBalance,
+      canTrade: auth.device.canTrade,
     },
   };
 }

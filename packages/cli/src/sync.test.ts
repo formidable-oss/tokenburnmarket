@@ -165,12 +165,12 @@ describe("scheduled syncs", () => {
 });
 
 describe("what a sync records", () => {
-  it("sends the requested historical window with a signed review flag", async () => {
+  it("sends the whole requested window without a history flag", async () => {
     const { path } = freshConfig({ lastSyncedDay: "2026-08-22" });
     const server = acceptingServer();
     const requests: { payload: { reviewHistory?: boolean; days: { day: string }[] } }[] = [];
     const code = await sync({
-      configPath: path, now: () => NOW, env: ENV, home: tmpdir(), sinceDays: 30, reviewHistory: true,
+      configPath: path, now: () => NOW, env: ENV, home: tmpdir(), sinceDays: 30,
       readUsage: async (options) => {
         expect(options?.since).toBe("2026-07-23");
         return [{ ...ONE_DAY[0]!, day: "2026-07-24" }];
@@ -182,16 +182,26 @@ describe("what a sync records", () => {
       log: () => {},
     });
     expect(code).toBe(0);
-    expect(requests[0]!.payload).toMatchObject({ reviewHistory: true, days: [{ day: "2026-07-24" }] });
+    expect(requests[0]!.payload).toMatchObject({ days: [{ day: "2026-07-24" }] });
+    expect(requests[0]!.payload).not.toHaveProperty("reviewHistory");
   });
 
-  it("requires an explicit manual date window for history review", async () => {
-    const { path } = freshConfig();
-    for (const extra of [{}, { sinceDays: 30, scheduled: true }]) {
-      expect(await sync({ configPath: path, reviewHistory: true, ...extra, log: () => {},
-        readUsage: async () => { throw new Error("must not collect"); },
-      })).toBe(1);
-    }
+  it("reads every day on the machine with --all", async () => {
+    const { path } = freshConfig({ lastSyncedDay: "2026-08-22" });
+    const server = acceptingServer();
+    const asked: (string | undefined)[] = [];
+    const lines: string[] = [];
+    expect(await sync({
+      configPath: path, now: () => NOW, env: ENV, home: tmpdir(), all: true,
+      readUsage: async ({ since } = {}) => {
+        asked.push(since);
+        return ONE_DAY;
+      },
+      fetch: server.fetch,
+      log: (line) => lines.push(line),
+    })).toBe(0);
+    expect(asked).toEqual([undefined]);
+    expect(lines).toContain("The server adds missing days. A day it already has changes only if this machine still has all its messages or reports more tokens.");
   });
 
   it("stores when it synced alongside the watermark", async () => {
@@ -213,11 +223,30 @@ describe("what a sync records", () => {
     expect(stored.lastSyncedDay).toBe("2026-08-22");
   });
 
-  it("starts --since at the backfill window once the device has synced", async () => {
+  it("skips a row the server would refuse and sends the rest", async () => {
+    const { path } = freshConfig();
+    const server = acceptingServer();
+    const sent: { day: string; model: string }[][] = [];
+    const lines: string[] = [];
+    const code = await sync({
+      configPath: path, now: () => NOW, env: ENV, home: tmpdir(),
+      readUsage: async () => [{ ...ONE_DAY[0]!, model: "runaway", costUsd: 2_000_000 }, ...ONE_DAY],
+      fetch: async (input, init) => {
+        sent.push((JSON.parse(String(init?.body)) as { payload: { days: { day: string; model: string }[] } }).payload.days);
+        return server.fetch(input, init);
+      },
+      log: (line) => lines.push(line),
+    });
+    expect(code).toBe(0);
+    expect(sent.flat().map((row) => row.model)).toEqual(["claude-sonnet-5"]);
+    expect(lines).toContain("Skipping 1 row the server would refuse:");
+    expect(lines.some((line) => line.startsWith("  2026-08-22 claude runaway:"))).toBe(true);
+  });
+
+  it("reaches back as far as --since asks once the device has synced", async () => {
     const { path } = freshConfig({ lastSyncedDay: "2026-08-22" });
     const server = acceptingServer();
     const asked: (string | undefined)[] = [];
-    const lines: string[] = [];
 
     await sync({
       configPath: path,
@@ -230,13 +259,10 @@ describe("what a sync records", () => {
         return ONE_DAY;
       },
       fetch: server.fetch,
-      log: (line) => lines.push(line),
+      log: () => {},
     });
 
-    expect(asked).toEqual(["2026-08-20"]);
-    expect(lines).toContain(
-      "The server's backfill limit starts at 2026-08-20. Older missing or corrected usage requires review.",
-    );
+    expect(asked).toEqual(["2026-04-24"]);
   });
 
   it("records nothing on a dry run", async () => {
@@ -341,6 +367,43 @@ describe("paging", () => {
     expect(lines.filter((line) => / receipts\. @/.test(line))).toEqual([
       "3 rows, $3.75, 0 receipts. @ada",
     ]);
+  });
+
+  it.each([
+    [400, ["2026-08-20", "2026-08-21", "2026-08-22"], 1],
+    [403, ["2026-08-20"], null],
+  ] as const)("after a %i on the first part, sends %j", async (status, sent, code) => {
+    const { path } = freshConfig();
+    const server = pagingServer();
+    const lines: string[] = [];
+    const onePage = JSON.stringify({
+      version: 1,
+      deviceId: "5b0d0f4a-4a6c-4a5e-9f2e-0f0e6b7a1c2d",
+      sentAt: NOW.toISOString(),
+      days: [{ ...THREE_DAYS[0]!, receipts: [] }],
+    }).length;
+    const refusing = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await server.fetch(input, init);
+      return server.pages.length === 1 ? new Response("no", { status }) : response;
+    }) as typeof fetch;
+
+    const run = sync({
+      configPath: path, now: () => NOW, env: ENV, home: tmpdir(),
+      maxPayloadBytes: Math.floor(onePage * 1.5),
+      readUsage: async () => THREE_DAYS,
+      fetch: refusing,
+      log: (line) => lines.push(line),
+    });
+
+    if (code === null) {
+      await expect(run).rejects.toThrow(`Sync was refused with ${status}.`);
+    } else {
+      expect(await run).toBe(code);
+      expect(lines).toContain("The server refused 1 part. Run the same command again to retry:");
+      const stored = JSON.parse(readFileSync(path, "utf8")) as DeviceConfig;
+      expect(stored.lastSyncedDay).toBe("2026-08-22");
+    }
+    expect(server.pages.map((page) => page.days[0])).toEqual(sent);
   });
 
   it("sends everything in one request when it fits", async () => {

@@ -3,14 +3,17 @@
   instead of Postgres. What is pinned down here is the part that costs real
   Credits if it is wrong: a re-run mints nothing, a Trust Level decides the
   multiplier, a day that grew tops up by the difference only, and the cached
-  balance always equals the sum of the rows.
+  balance always equals the sum of the rows, and a minted day is final once its
+  week of top-ups is over.
 */
 import { describe, expect, it } from "vitest";
 import { SIGNUP_GRANT_CREDITS, mintForDay, roundCredits } from "@tokenburnmarket/core";
 import type { TrustLevel } from "@tokenburnmarket/core";
 import {
+  MINT_TOP_UP_DAYS,
   grantSignupCredits,
   lastMintableDay,
+  oldestTopUpDay,
   planMint,
   remintBuilderDay,
   runMint,
@@ -70,8 +73,10 @@ function memoryStore(candidates: MintCandidate[]): Memory {
     ledger,
     days,
     balances,
-    async candidates(throughDay) {
-      return [...days.values()].filter((row) => row.day <= throughDay && row.costUsd > 0);
+    async candidates(throughDay, oldestTopUp) {
+      return [...days.values()].filter(
+        (row) => row.day <= throughDay && row.costUsd > 0 && (row.mintRevision === 0 || row.day >= oldestTopUp),
+      );
     },
     async candidateFor(builderId, dayKey) {
       return days.get(`${builderId}|${dayKey}`) ?? null;
@@ -145,6 +150,17 @@ describe("remintBuilderDay", () => {
     expect(store.balances.get(BUILDER)).toBeCloseTo(expected, 4);
   });
 
+  it("tops up a day an admin cleared, however long ago it was first minted", async () => {
+    const store = memoryStore([day({ costUsd: 30 })]);
+    await runMint(store, NOW);
+    store.days.get(`${BUILDER}|${DAY}`)!.costUsd = 80;
+    const monthLater = new Date(NOW.getTime() + 30 * 86_400_000);
+
+    expect((await runMint(store, monthLater)).minted).toBe(0);
+    const delta = roundCredits(mintForDay(80, "verified").credits - mintForDay(30, "verified").credits);
+    expect(await remintBuilderDay(store, BUILDER, DAY, monthLater)).toBeCloseTo(delta, 4);
+  });
+
   it("leaves a day that has not cleared the buffer to the cron", async () => {
     const store = memoryStore([day({ day: "2026-08-16", costUsd: 30 })]);
     expect(await remintBuilderDay(store, BUILDER, "2026-08-16", NOW)).toBe(0);
@@ -198,6 +214,24 @@ describe("runMint", () => {
     expect(store.ledger[1]!.delta).toBeCloseTo(roundCredits(total - first), 4);
     expect(store.ledger[1]!.refId).toBe(`${DAY}:1`);
     expect(store.balances.get(BUILDER)).toBeCloseTo(total, 4);
+  });
+
+  it("stops topping up a minted day a week after it could first be minted", async () => {
+    const store = memoryStore([day({ costUsd: 30 })]);
+    await runMint(store, NOW);
+    store.days.get(`${BUILDER}|${DAY}`)!.costUsd = 80;
+
+    const weekLater = new Date(NOW.getTime() + (MINT_TOP_UP_DAYS + 1) * 86_400_000);
+    expect((await runMint(store, weekLater)).minted).toBe(0);
+    expect(store.ledger).toHaveLength(1);
+    expect(oldestTopUpDay(weekLater) > DAY).toBe(true);
+  });
+
+  it("still mints an old day the first time it has usage", async () => {
+    const store = memoryStore([day({ day: "2026-01-10", costUsd: 30 })]);
+    const result = await runMint(store, NOW);
+    expect(result.minted).toBe(1);
+    expect(store.balances.get(BUILDER)).toBeCloseTo(mintForDay(30, "verified").credits, 4);
   });
 
   it("refuses a second writer holding the same revision", async () => {

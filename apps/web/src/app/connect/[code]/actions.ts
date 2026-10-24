@@ -19,7 +19,9 @@ async function decide(formData: FormData, approve: boolean) {
   if (!session?.user?.id) redirect(`/signin?next=/connect/${code}`);
 
   if (approve) {
-    const bound = await approveConnectCode(code, session.user.id);
+    const bound = await approveConnectCode(code, session.user.id, {
+      canTrade: formData.get("trade") === "on",
+    });
     redirect(`/connect/${code}?done=${bound ? "approved" : "expired"}`);
   }
 
