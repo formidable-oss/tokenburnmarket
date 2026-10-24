@@ -8,6 +8,7 @@ import {
   checkForUpdate,
   compareVersions,
   installMethod,
+  pnpmEnvironment,
   runningProcessNotice,
   runUpdateCommand,
   update,
@@ -144,6 +145,33 @@ describe("updateCommand", () => {
   it("has nothing to run for npx or a local copy", () => {
     expect(updateCommand({ ...base, method: "npx" })).toBeNull();
     expect(updateCommand({ ...base, method: "unknown" })).toBeNull();
+  });
+
+  it("prefers the pnpm on PNPM_HOME and PATH over one next to node", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tbm-pnpm-"));
+    temporary.push(dir);
+    const executable = (path: string) => {
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, "#!/bin/sh\n");
+      chmodSync(path, 0o755);
+      return path;
+    };
+    executable(join(dir, "node-bin", "pnpm"));
+    const onPath = executable(join(dir, "path-bin", "pnpm"));
+    const context = { ...base, method: "pnpm" as const, execPath: join(dir, "node-bin", "node") };
+
+    expect(updateCommand({ ...context, env: { PATH: join(dir, "path-bin") } })?.command).toBe(onPath);
+    const home = executable(join(dir, "pnpm-home", "bin", "pnpm"));
+    expect(updateCommand({ ...context, env: { PATH: join(dir, "path-bin"), PNPM_HOME: join(dir, "pnpm-home") } })
+      ?.command).toBe(home);
+  });
+});
+
+describe("pnpmEnvironment", () => {
+  it("puts the pnpm global bin directories first on PATH", () => {
+    expect(pnpmEnvironment({ PNPM_HOME: "/p", PATH: "/usr/bin:/p" }, "linux").PATH).toBe("/p/bin:/p:/usr/bin");
+    expect(pnpmEnvironment({ PATH: "/usr/bin" }, "linux").PATH).toBe("/usr/bin");
+    expect(pnpmEnvironment({ PNPM_HOME: "C:\\p", PATH: "C:\\bin" }, "win32").PATH).toBe("C:\\bin");
   });
 });
 

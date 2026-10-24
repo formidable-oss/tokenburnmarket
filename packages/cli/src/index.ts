@@ -54,10 +54,10 @@ turns the check off, TBM_NO_AUTO_UPDATE=1 keeps the daemon to a notice.
 
 /** One line on stderr when a newer version is out, so piped output stays clean. */
 async function printUpdateNotice(): Promise<void> {
-  const notice = updateNotice(
-    await checkForUpdate({ cachePath: updateCachePath() }),
-    currentUpdateContext().method,
-  );
+  const check = await checkForUpdate({ cachePath: updateCachePath() });
+  // Finding the install method can start pnpm, so only do it when there is news.
+  if (!check?.outdated) return;
+  const notice = updateNotice(check, currentUpdateContext().method);
   if (notice) console.error(`\n${notice}`);
 }
 

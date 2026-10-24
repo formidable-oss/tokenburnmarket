@@ -251,6 +251,15 @@ describe("installSnippet", () => {
     expect(printed).not.toContain("must-not-be-persisted");
   });
 
+  it("keeps the update switches the service would otherwise lose", () => {
+    const printed = installSnippet({ ...context, platform: "linux", env: {
+      TBM_NO_AUTO_UPDATE: "1", TBM_NO_UPDATE_CHECK: " 1 ",
+    } }).join("\n");
+    expect(printed).toContain('Environment="TBM_NO_AUTO_UPDATE=1"');
+    expect(printed).toContain('Environment="TBM_NO_UPDATE_CHECK=1"');
+    expect(installSnippet({ ...context, platform: "linux" }).join("\n")).not.toContain("TBM_NO_");
+  });
+
   it.each(["darwin", "linux"] as const)("keeps relative roots stable after %s service startup", (platform) => {
     const printed = installSnippet({ ...context, platform, cwd: "/project", env: {
       CODEX_HOME: "./codex,../archive", AGENT_CLI_CREDENTIAL_STORE: "file",
@@ -280,6 +289,11 @@ describe("installDaemon", () => {
       expect(definition).not.toContain(fixture.scriptPath);
       expect(definition).toContain("PNPM_HOME");
       expect(definition).toContain(fixture.managerBin);
+      // pnpm 11 refuses global commands unless its bin directory is on PATH.
+      const path = platform === "darwin"
+        ? definition.split("<key>PATH</key><string>")[1]!.split("</string>")[0]!
+        : definition.match(/^Environment="PATH=(.*)"$/m)![1]!;
+      expect(path.split(":")).toContain(dirname(fixture.launcher));
       const args = platform === "darwin"
         ? [...definition.split("<key>ProgramArguments</key>")[1]!.split("</array>")[0]!
           .matchAll(/<string>(.*?)<\/string>/g)].map((match) => match[1]!)
