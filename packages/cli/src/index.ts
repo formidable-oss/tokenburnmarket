@@ -10,16 +10,25 @@ import { parseArgs } from "./args.js";
 import { connect } from "./connect.js";
 import { currentConfigPath, readConfig, resolveServerUrl } from "./config.js";
 import { describeError } from "./errors.js";
-import { daemon, installDaemon, installSnippet } from "./daemon.js";
+import { daemon, installDaemon, installSnippet, restartDaemonService } from "./daemon.js";
 import { runMcpServer } from "./mcp.js";
 import { mcpSetupLines } from "./setup.js";
 import { sync } from "./sync.js";
+import {
+  CLI_VERSION,
+  checkForUpdate,
+  currentUpdateContext,
+  update,
+  updateCachePath,
+  updateNotice,
+} from "./update.js";
 
 const USAGE = `tokenburnmarket
 
   connect [--server URL] [--name NAME]   bind this machine to your account and sync
   sync [--since N] [--dry-run] [--quiet] upload usage for the days that changed
   status                                 show what is stored on this machine
+  update [--dry-run]                     install the latest version the way this one was installed
   daemon                                 sync on the shared sync slots, in the foreground
   daemon install                         install and start a per-user sync service
   daemon install --dry-run               print the service definition, change nothing
@@ -31,13 +40,25 @@ const USAGE = `tokenburnmarket
   --since N        collect the last N days instead of the days since the last sync
   --dry-run        show what would be uploaded, upload nothing
   --quiet          print nothing unless something went wrong
+  --version        print the version
 
 The MCP server exposes sync_usage, my_stats, my_communities, list_markets and
 place_bet. place_bet quotes the trade and spends nothing unless it is called
 with confirm: true.
 
-Config lives in the platform config directory.
+Config lives in the platform config directory. The CLI checks npm for a newer
+version once a day and says so; the daemon installs it. TBM_NO_UPDATE_CHECK=1
+turns the check off, TBM_NO_AUTO_UPDATE=1 keeps the daemon to a notice.
 `;
+
+/** One line on stderr when a newer version is out, so piped output stays clean. */
+async function printUpdateNotice(): Promise<void> {
+  const notice = updateNotice(
+    await checkForUpdate({ cachePath: updateCachePath() }),
+    currentUpdateContext().method,
+  );
+  if (notice) console.error(`\n${notice}`);
+}
 
 /** What `status` prints. Never the token, never the private key. */
 function status(): void {
@@ -61,6 +82,11 @@ function status(): void {
 async function main(): Promise<number> {
   const { command, subcommand, flags, switches } = parseArgs(process.argv.slice(2));
 
+  if (switches.has("version") || command === "version") {
+    console.log(CLI_VERSION);
+    return 0;
+  }
+
   if (!command || command === "help" || switches.has("help") || switches.has("h")) {
     console.log(USAGE);
     return 0;
@@ -72,6 +98,7 @@ async function main(): Promise<number> {
         serverUrl: resolveServerUrl(flags.server, process.env),
         deviceName: flags.name,
       });
+      await printUpdateNotice();
       return 0;
     case "sync": {
       const since = flags.since === undefined ? undefined : Number.parseInt(flags.since, 10);
@@ -81,15 +108,28 @@ async function main(): Promise<number> {
       }
       // For cron lines and scripts. Failures still go to stderr through the thrown error.
       const quiet = switches.has("quiet");
-      return sync({
+      const code = await sync({
         sinceDays: since,
         dryRun: switches.has("dry-run"),
         log: quiet ? () => {} : undefined,
       });
+      if (!quiet) await printUpdateNotice();
+      return code;
     }
     case "status":
       status();
+      console.log(`Version     ${CLI_VERSION}`);
+      await printUpdateNotice();
       return 0;
+    case "update":
+      return update({
+        dryRun: switches.has("dry-run"),
+        restartDaemon: () =>
+          restartDaemonService({
+            platform: process.platform,
+            home: process.env.HOME ?? process.env.USERPROFILE ?? "~",
+          }),
+      });
     case "daemon": {
       if (subcommand === "install") {
         const context = {
