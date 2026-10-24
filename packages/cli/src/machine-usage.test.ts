@@ -14,7 +14,7 @@ const defaults: MachineUsageOptions = {
   home: "/nonexistent", env: {},
   readBase: async () => [row],
   readReceipts: () => new Map(),
-  readOpenCode: async () => ({ details: new Map([[key, { ...row, reasoningTokens: 15, receipts: new Set([hash]) }]]), incompleteSources: [] }),
+  readOpenCode: async () => ({ details: new Map([[key, { ...row, reasoningTokens: 15, receipts: new Set([hash]) }]]), incompleteSources: [], incompleteSourceCount: 0 }),
   readCursor: async () => ({ aggregates: [], receipts: new Map() }),
 };
 
@@ -36,7 +36,7 @@ describe("readMachineUsage", () => {
     const warnings: string[] = [];
     const claude = { ...row, provider: "claude" };
     const usage = await readMachineUsage({ ...defaults, readBase: async () => [row, claude],
-      readOpenCode: async () => ({ details: new Map(), incompleteSources }),
+      readOpenCode: async () => ({ details: new Map(), incompleteSources, incompleteSourceCount: incompleteSources.length }),
       readReceipts: () => new Map([[key, new Set([hash])]]), warn: (message) => warnings.push(message) });
     expect(usage.aggregates).toEqual([{ ...row, onlyIfMissing: true }, claude]);
     expect(usage.receipts.has(key)).toBe(false);
@@ -45,12 +45,33 @@ describe("readMachineUsage", () => {
     expect(warnings.join(" ")).toContain("stored usage is preserved");
   });
 
-  it("waits for matching snapshots when usage changes during collection", async () => {
-    const usage = await readMachineUsage({ ...defaults,
-      readOpenCode: async () => ({ details: new Map([[key, { ...row, outputTokens: 30, reasoningTokens: 15, receipts: new Set([hash]) }]]), incompleteSources: [] }),
+  it("falls back to missing-only ccusage totals when usage changes during collection", async () => {
+    const warnings: string[] = [];
+    const usage = await readMachineUsage({ ...defaults, warn: (message) => warnings.push(message),
+      readReceipts: () => new Map([[key, new Set([hash])]]),
+      readOpenCode: async () => ({ details: new Map([[key, { ...row, outputTokens: 30, reasoningTokens: 15, receipts: new Set([hash]) }]]), incompleteSources: [], incompleteSourceCount: 0 }),
     });
-    expect(usage.aggregates).toEqual([]);
+    expect(usage.aggregates).toEqual([{ ...row, onlyIfMissing: true }]);
     expect(usage.receipts.size).toBe(0);
+    expect(warnings).toEqual([expect.stringContaining("changed during the scan")]);
+  });
+
+  it("keeps details for unaffected days and warns once for every fallback row", async () => {
+    const warnings: string[] = [];
+    const older = Array.from({ length: 30 }, (_, i) => ({ ...row, day: `2026-09-${String(i + 1).padStart(2, "0")}` }));
+    const sources = Array.from({ length: 10 }, (_, i) => `/local/storage/message/s/m${i}.json`);
+    const usage = await readMachineUsage({ ...defaults, warn: (message) => warnings.push(message),
+      readBase: async () => [...older, row],
+      readOpenCode: async () => ({ details: new Map([[key, { ...row, reasoningTokens: 15, receipts: new Set([hash]) }]]),
+        incompleteSources: sources, incompleteSourceCount: 12 }),
+    });
+    expect(usage.aggregates.filter((day) => day.onlyIfMissing)).toHaveLength(30);
+    expect(usage.aggregates.at(-1)).toEqual({ ...row, reasoningTokens: 15 });
+    expect(usage.receipts.get(key)).toEqual(new Set([hash]));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("30 days from 2026-09-01 to 2026-09-30");
+    expect(warnings[0]).toContain(`${JSON.stringify(sources[9])} and 2 more`);
+    expect(warnings[0]).not.toContain("changed during the scan");
   });
 
   it("adds Cursor account usage and its receipts to the sync payload", async () => {

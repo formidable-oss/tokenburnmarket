@@ -24,7 +24,7 @@
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { opendir, realpath } from "node:fs/promises";
+import { opendir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { setImmediate as yieldToLoop } from "node:timers/promises";
 import type { DatabaseSync as Database } from "node:sqlite";
@@ -41,8 +41,11 @@ export interface OpenCodeDetails {
 }
 
 export interface OpenCodeReadResult {
+  /** Only days and models that no incomplete source could affect. */
   details: Map<string, OpenCodeDetails>;
+  /** Up to ten incomplete sources, for warnings. */
   incompleteSources: string[];
+  incompleteSourceCount: number;
 }
 
 export interface OpenCodeDetailsOptions {
@@ -57,6 +60,13 @@ export interface OpenCodeDetailsOptions {
 const PAGE_SIZE = 64;
 const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 const DB_NAME = /^opencode(?:-[a-zA-Z0-9_-]+)?\.db$/;
+const ALL_DAYS = "9999-12-31";
+/**
+ * OpenCode rewrites a whole legacy message file on every update and never sets file times,
+ * so a file's mtime is never before its message's creation time. A day of slack covers
+ * coarse file clocks and small clock steps.
+ */
+const MTIME_SLACK_MS = 24 * 60 * 60 * 1000;
 type Row = Record<string, unknown>;
 
 function object(value: unknown): Row {
@@ -73,6 +83,12 @@ function count(value: unknown): number {
 
 function missing(error: unknown): boolean {
   return object(error).code === "ENOENT";
+}
+
+function utcDay(ms: number): string | undefined {
+  const date = new Date(ms);
+  const day = Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : undefined;
 }
 
 function hasTable(db: Database, table: string): boolean {
@@ -167,7 +183,8 @@ async function readMessageFile(path: string, signal?: AbortSignal): Promise<stri
 /**
  * Supplement ccusage with reasoning and SHA-256 receipts of `opencode:<message id>`.
  * Compare every visible counter with the ccusage snapshot before using these details.
- * An incomplete read reports its sources and withholds supplemental counters.
+ * An incomplete source withholds every day it could affect: one day and model when the
+ * message is readable, days up to its mtime for an unreadable legacy file, and all days otherwise.
  */
 export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Promise<OpenCodeReadResult> {
   const { env, home, since, signal } = options;
@@ -180,16 +197,24 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
   const index = new Map<string, OpenCodeDetails>();
   const seen = new Set<string>();
   const incompleteSources = new Set<string>();
-  const incomplete = (path: string) => {
-    if (incompleteSources.size < 10) incompleteSources.add(path);
+  const withheldKeys = new Set<string>();
+  /** The latest UTC day withheld because an incomplete source could hold usage up to it. */
+  let withheldThrough: string | undefined;
+  /** `through` is the latest day the source can hold; omit it when unknown. */
+  const incomplete = (path: string, scope: { key: string } | { through?: string } = {}) => {
+    incompleteSources.add(path);
+    if ("key" in scope) withheldKeys.add(scope.key);
+    else if (!withheldThrough || (scope.through ?? ALL_DAYS) > withheldThrough) withheldThrough = scope.through ?? ALL_DAYS;
   };
 
-  const append = (source: string, path: string, kind: "message" | "session_message" | "legacy", row: Row = {}): string | undefined => {
+  const append = (
+    source: string, path: string, kind: "message" | "session_message" | "legacy", row: Row = {}, through?: string,
+  ): string | undefined => {
     let message: Row;
     try {
       message = object(JSON.parse(source));
     } catch {
-      incomplete(path);
+      incomplete(path, { through });
       return;
     }
     const tokens = object(message.tokens);
@@ -204,22 +229,18 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
       ? payloadCreated : kind === "session_message" && typeof row.created === "number"
         ? Math.trunc(row.created) : 0;
     const timestamp = created > 0 ? created : 0;
-    const date = new Date(timestamp);
-    if (!Number.isFinite(date.getTime())) {
-      incomplete(path);
-      return;
-    }
-    const day = date.toISOString().slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-      incomplete(path);
+    const day = utcDay(timestamp);
+    if (!day) {
+      incomplete(path, { through });
       return;
     }
     if (since && day < since) return;
+    const key = receiptKey(day, "opencode", model);
     const id = kind === "legacy" ? text(message.id) : typeof row.id === "string" ? row.id : "";
     const hash = id ? createHash("sha256").update(`opencode:${id}`).digest("hex") : undefined;
     if (hash && seen.has(hash)) return id;
     if ([tokens.input, tokens.output, tokens.reasoning, tokens.total, cache.read, cache.write]
-      .some((value) => typeof value === "number" && value > Number.MAX_SAFE_INTEGER)) incomplete(path);
+      .some((value) => typeof value === "number" && value > Number.MAX_SAFE_INTEGER)) incomplete(path, { key });
     const inputTokens = count(tokens.input);
     const cachedInputTokens = count(cache.read);
     const cacheWriteTokens = count(cache.write);
@@ -229,10 +250,9 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
     // ccusage assigns a total-only residual to visible output when output is absent.
     const residual = Math.max(0, count(tokens.total) - known);
     if (outputTokens === 0) outputTokens = residual;
-    else if (residual > 0) incomplete(path);
+    else if (residual > 0) incomplete(path, { key });
     if (inputTokens + cachedInputTokens + cacheWriteTokens + reasoningTokens + outputTokens === 0) return;
     if (hash) seen.add(hash);
-    const key = receiptKey(day, "opencode", model);
     const details = index.get(key) ?? {
       inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0,
       outputTokens: 0, reasoningTokens: 0, receipts: new Set<string>(),
@@ -243,7 +263,7 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
     details.outputTokens += outputTokens;
     details.reasoningTokens += reasoningTokens;
     if (![details.inputTokens, details.cachedInputTokens, details.cacheWriteTokens,
-      details.outputTokens, details.reasoningTokens].every(Number.isSafeInteger)) incomplete(path);
+      details.outputTokens, details.reasoningTokens].every(Number.isSafeInteger)) incomplete(path, { key });
     if (hash) details.receipts.add(hash);
     index.set(key, details);
     return id || undefined;
@@ -335,11 +355,15 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
           else if (entry.isFile() && entry.name.endsWith(".json")) {
             if (databaseIds.has(entry.name.slice(0, -5))) continue;
             const messagePath = join(path, entry.name);
+            let through: string | undefined;
             try {
-              append(await readMessageFile(messagePath, signal), messagePath, "legacy");
+              through = utcDay((await stat(messagePath)).mtimeMs + MTIME_SLACK_MS);
+              // Older files cannot hold usage in the window, so they are neither read nor reported.
+              if (since && through && through < since) continue;
+              append(await readMessageFile(messagePath, signal), messagePath, "legacy", {}, through);
             } catch {
               signal?.throwIfAborted();
-              incomplete(messagePath);
+              incomplete(messagePath, { through });
             }
           }
         }
@@ -351,8 +375,13 @@ export async function readOpenCodeDetails(options: OpenCodeDetailsOptions): Prom
     await walk(join(canonical, "storage", "message"), true);
   }
   signal?.throwIfAborted();
-  if (incompleteSources.size > 0) {
-    (options.warn ?? console.warn)(`OpenCode details are incomplete. Check these sources for unreadable data or unsupported records: ${[...incompleteSources].map((path) => JSON.stringify(path)).join(", ")}.`);
+  const named = [...incompleteSources].slice(0, 10);
+  if (named.length > 0) {
+    const more = incompleteSources.size > named.length ? ` and ${incompleteSources.size - named.length} more` : "";
+    (options.warn ?? console.warn)(`OpenCode details are incomplete. Check these sources for unreadable data or unsupported records: ${named.map((path) => JSON.stringify(path)).join(", ")}${more}.`);
   }
-  return { details: incompleteSources.size > 0 ? new Map() : index, incompleteSources: [...incompleteSources] };
+  for (const key of index.keys()) {
+    if (withheldKeys.has(key) || (withheldThrough !== undefined && key.slice(0, 10) <= withheldThrough)) index.delete(key);
+  }
+  return { details: index, incompleteSources: named, incompleteSourceCount: incompleteSources.size };
 }

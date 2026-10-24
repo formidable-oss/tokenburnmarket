@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -366,6 +366,52 @@ describe("OpenCode read limits and errors", () => {
     expect(scan.incompleteSources).toEqual([realpathSync(join(dirname(path), "truncated.json"))]);
     expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("truncated.json"));
     expect(warn.mock.calls[0][0]).not.toContain("retry");
+  });
+
+  it("skips legacy files whose mtime is before the window without reading them", async () => {
+    const path = legacy(message());
+    const broken = join(dirname(path), "broken.json");
+    writeFileSync(broken, '{"tokens":');
+    const old = new Date("2026-10-01T00:00:00Z");
+    utimesSync(broken, old, old);
+    const scan = await readOpenCodeDetails({ env: { OPENCODE_DATA_DIR: root }, home: temporary, warn, since: "2026-10-10" });
+    expect(scan.details.get(KEY)?.receipts).toEqual(new Set([ONE]));
+    expect(scan.incompleteSources).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("withholds only the days an unreadable legacy file could hold", async () => {
+    const later = "2026-10-23";
+    const laterKey = receiptKey(later, "opencode", MODEL);
+    const path = legacy(message());
+    legacy(message({ id: "msg-two", time: { created: Date.parse(`${later}T12:00:00Z`) } }), "msg-two");
+    const broken = join(dirname(path), "broken.json");
+    writeFileSync(broken, '{"tokens":');
+    const mtime = new Date(`${DAY}T12:00:00Z`);
+    utimesSync(broken, mtime, mtime);
+    const scan = await readOpenCodeDetails({ env: { OPENCODE_DATA_DIR: root }, home: temporary, warn, since: "2026-10-01" });
+    expect([...scan.details.keys()]).toEqual([laterKey]);
+    expect(scan.details.get(laterKey)?.receipts).toEqual(new Set([TWO]));
+    expect(scan.incompleteSources).toEqual([realpathSync(broken)]);
+    expect(scan.incompleteSourceCount).toBe(1);
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("withholds only the model whose readable message is incomplete", async () => {
+    legacy(message());
+    legacy(message({ id: "msg-two", modelID: "other-model", tokens: { input: 10, output: 20, total: 100 } }), "msg-two");
+    const result = await read();
+    expect([...result.keys()]).toEqual([KEY]);
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("counts every incomplete source and names the first ten", async () => {
+    const path = legacy(message());
+    for (let i = 0; i < 12; i++) writeFileSync(join(dirname(path), `broken-${i}.json`), "{");
+    const scan = await readOpenCodeDetails({ env: { OPENCODE_DATA_DIR: root }, home: temporary, warn });
+    expect(scan.incompleteSources).toHaveLength(10);
+    expect(scan.incompleteSourceCount).toBe(12);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(" and 2 more."));
   });
 
   it.each(["legacy", "database"])("limits a single %s message read", async (kind) => {

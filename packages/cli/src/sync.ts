@@ -264,7 +264,7 @@ async function syncLocked(options: SyncOptions): Promise<number> {
       : "Reading all usage on this machine. This takes a moment the first time.",
   );
   if (options.reviewHistory) {
-    log("Older rows will be replaced and quarantined for admin review. They will not count until approved.");
+    log("Older rows will be replaced and quarantined for admin review. Each affected day stops counting in full until an admin decides.");
   }
   const sourceOptions = { since: start, env, home, signal: options.signal, warn: log };
   const collected = options.readUsage ? await options.readUsage(sourceOptions) : null;

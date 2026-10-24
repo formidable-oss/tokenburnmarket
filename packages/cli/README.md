@@ -80,8 +80,9 @@ tokenburnmarket sync --since 30 --review-history
 ```
 
 This replaces rows outside the backfill window and quarantines them for admin
-review. Those rows stop counting until approved. The server must support history
-review before you use this option. Automatic sync never requests history review.
+review. Each affected day stops counting in full until an admin decides. The
+server must support history review before you use this option. Automatic sync
+never requests history review.
 
 ## Usage sources
 
@@ -98,11 +99,12 @@ Cursor read prints a warning and leaves its stored totals unchanged.
 
 The collector reads Codex archives and compressed logs. It counts reasoning once
 and restores OpenCode reasoning from the local database or legacy message files.
-OpenCode rows with mismatched snapshots wait for the next sync instead of replacing
-complete stored totals. If supplemental history is unreadable, the collector names
-the affected sources and submits ccusage totals without receipts for missing rows
-only. The server preserves existing rows, including during history review. A later
-complete read can replace a fallback row within the normal backfill window.
+If OpenCode details are unreadable for a day or change during the scan, that
+day's OpenCode rows use ccusage totals without receipts for missing rows only.
+Legacy message files older than the sync window are skipped. One warning names
+the affected days and sources. The server preserves existing rows, including
+during history review. A later complete read can replace a fallback row within
+the normal backfill window.
 Pi receipts cover the assistant messages ccusage reports.
 
 Compare reports over the same UTC dates. T3 Code can use another timezone, retain
