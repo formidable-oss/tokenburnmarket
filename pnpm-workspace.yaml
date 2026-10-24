@@ -1,3 +1,14 @@
 packages:
   - apps/*
   - packages/*
+
+# pnpm 12 fails an install on unreviewed build scripts. These ship prebuilt
+# binaries as optional dependencies, so their install scripts are not needed.
+allowBuilds:
+  esbuild: false
+  unrs-resolver: false
+
+# drizzle-kit pulls esbuild 0.18 through @esbuild-kit, which has a dev-server
+# advisory (GHSA-67mh-4wv8-2f99). The loader only calls transform APIs that 0.25 keeps.
+overrides:
+  "@esbuild-kit/core-utils>esbuild": ^0.25.12

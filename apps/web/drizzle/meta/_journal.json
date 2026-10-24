@@ -71,6 +71,13 @@
       "when": 1786996673980,
       "tag": "0009_violet_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792716020043,
+      "tag": "0010_restore_resent_days",
+      "breakpoints": true
     }
   ]
 }

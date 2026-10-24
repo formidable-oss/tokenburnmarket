@@ -184,6 +184,32 @@ describe("what a sync records", () => {
     expect(stored.lastSyncedDay).toBe("2026-08-22");
   });
 
+  it("starts --since at the backfill window once the device has synced", async () => {
+    const { path } = freshConfig({ lastSyncedDay: "2026-08-22" });
+    const server = acceptingServer();
+    const asked: (string | undefined)[] = [];
+    const lines: string[] = [];
+
+    await sync({
+      configPath: path,
+      now: () => NOW,
+      env: ENV,
+      home: tmpdir(),
+      sinceDays: 120,
+      readUsage: async ({ since } = {}) => {
+        asked.push(since);
+        return ONE_DAY;
+      },
+      fetch: server.fetch,
+      log: (line) => lines.push(line),
+    });
+
+    expect(asked).toEqual(["2026-08-20"]);
+    expect(lines).toContain(
+      "This device already synced the days before 2026-08-20, so --since starts there.",
+    );
+  });
+
   it("records nothing on a dry run", async () => {
     const { path } = freshConfig();
     const server = acceptingServer();
