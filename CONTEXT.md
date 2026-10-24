@@ -10,7 +10,7 @@ Glossary only. No implementation details.
 - **Collector** — the local program (`npx tokenburnmarket`) that reads local agent history and supported account usage, signs the aggregates, and uploads them. Also exposes an MCP server to the agent.
 - **Usage** — token counts and estimated cost per (Builder, Device, day, provider, model). The only faucet for Credits and the oracle for Markets.
 - **Verified** — see Trust Level. Means "not obviously fake", not proof.
-- **Credit** — the play currency. Minted from Usage once per closed day on a curve that flattens above a daily kink (whales earn more, not proportionally more), and topped up for a week if the day's Usage grows; a small grant on signup; spent and won on Markets; never bought or cashed out.
+- **Credit** — the play currency. Minted from Usage once per closed day on a curve that flattens above a daily kink (whales earn more, not proportionally more), and topped up while its Usage grows, until a week after it could first be minted; a small grant on signup; spent and won on Markets; never bought or cashed out.
 - **Credits Won** — over a period: what Markets paid out plus what selling shares returned, less what buying them cost. The signup grant and the daily mint are not winnings. One of the three Leaderboard metrics, next to cost and tokens.
 - **Community** — a group of Builders with its own leaderboards and Markets. Joined by invite. *Public* Communities appear in the directory; *Unlisted* ones are reachable only by URL and are not indexed. One Builder owns it; the rest are members.
 - **Invite Code** — the secret in a Community's join link. Rotating it replaces the code, so every link handed out before stops working; nobody already in is removed.

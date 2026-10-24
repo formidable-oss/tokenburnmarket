@@ -113,11 +113,11 @@ export default function DocsCreditsPage() {
           closes.
         </li>
         <li>
-          The mint runs once a day, at 00:20 UTC, over days that have closed. Late syncs are
-          expected, so a day is topped up as more usage for it arrives, for a week after it is
-          first minted. After that its credits are final: usage added to an old day later moves the
-          boards but mints nothing. A day that was never minted, such as history from a new device,
-          still mints once.
+          The mint runs once a day, at 00:20 UTC, over days that have closed. A day can be minted
+          from a day after it closes. Late syncs are expected, so for one week from then the day is
+          topped up as more usage for it arrives. After that its credits are final: usage added to
+          an old day later moves the boards but mints nothing. A day minted for the first time after
+          that week, such as history from a new device, gets that one mint and no top-ups.
         </li>
         <li>
           Re-minting only ever adds. If a day&apos;s usage grows, you get the difference; it never
