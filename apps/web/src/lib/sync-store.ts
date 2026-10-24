@@ -268,17 +268,22 @@ export const drizzleSyncStore: SyncStore & RestoreStore & ReconcileStore = {
       );
   },
 
-  async buildersWithQuarantinedDays(builderId) {
-    const rows = await db
-      .selectDistinct({ builderId: builderDays.builderId })
-      .from(builderDays)
-      .where(
-        and(
-          eq(builderDays.trustLevelMin, "quarantined"),
-          builderId === undefined ? undefined : eq(builderDays.builderId, builderId),
-        ),
-      );
-    return rows.map((row) => row.builderId);
+  async buildersWithStaleQuarantinedDays(builderId) {
+    const result = await db.execute(sql`
+      select distinct b.builder_id as "builderId"
+      from builder_days b
+      where b.trust_level_min = 'quarantined'
+        ${builderId === undefined ? sql`` : sql`and b.builder_id = ${builderId}`}
+        and not exists (
+          select 1
+          from usage_days u
+          where u.builder_id = b.builder_id
+            and u.day = b.day
+            and u.duplicate_of_device_id is null
+            and u.trust_level = 'quarantined'
+        )
+    `);
+    return (result.rows as { builderId: string }[]).map((row) => row.builderId);
   },
 
   async builderMachines(builderId) {

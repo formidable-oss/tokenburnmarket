@@ -127,9 +127,17 @@ function memoryStore(): Memory {
         .filter((row) => builderId === undefined || row.builderId === builderId)
         .map((row) => ({ ...row }));
     },
-    async buildersWithQuarantinedDays(builderId) {
+    async buildersWithStaleQuarantinedDays(builderId) {
+      const heldBack = (row: BuilderDayWrite) =>
+        [...usage.values()].some(
+          (each) =>
+            each.builderId === row.builderId &&
+            each.day === row.day &&
+            each.duplicateOfDeviceId === null &&
+            each.trustLevel === "quarantined",
+        );
       const ids = [...builderDays.values()]
-        .filter((row) => row.trustLevelMin === "quarantined")
+        .filter((row) => row.trustLevelMin === "quarantined" && !heldBack(row))
         .map((row) => row.builderId)
         .filter((id) => builderId === undefined || id === builderId);
       return [...new Set(ids)];
@@ -1113,6 +1121,27 @@ describe("restoreRetiredQuarantines", () => {
     expect(await restoreRetiredQuarantines(store, NOW)).toBe(0);
     expect(store.builderDays.get(`${BUILDER}|${OLD}`)?.trustLevelMin).toBe("verified");
   });
+  it("does not recount a Builder every night because an Admin kept a row out", async () => {
+    const store = memoryStore();
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: OLD })]), NOW);
+    const row = store.usage.get(`${DEVICE_A}|${OLD}|claude|claude-opus-5`)!;
+    row.trustLevel = "quarantined";
+    row.quarantineReasons = [{ code: "stale_backfill", message: "old" }];
+    store.keptOut.add(`${DEVICE_A}|${OLD}|claude|claude-opus-5`);
+    store.builderDays.get(`${BUILDER}|${OLD}`)!.trustLevelMin = "quarantined";
+    let reads = 0;
+    const counting: Memory = {
+      ...store,
+      async usageOfDevices(deviceIds, days) {
+        reads += 1;
+        return store.usageOfDevices(deviceIds, days);
+      },
+    };
+
+    expect(await restoreRetiredQuarantines(counting, NOW)).toBe(0);
+    expect(reads).toBe(0);
+  });
+
   it("does not let back in a row an Admin kept out while the restore ran", async () => {
     const store = memoryStore();
     await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: OLD })]), NOW);

@@ -202,8 +202,12 @@ export interface QuarantinedUsage extends MachineRow {
 export interface RestoreStore extends MachineStore, Pick<SyncStore, "builderMachines"> {
   /** Quarantined rows, of one Builder or of all, except the ones an Admin's latest decision kept out. */
   quarantinedUsage(builderId?: string): Promise<QuarantinedUsage[]>;
-  /** Builders, one or all, with a Builder-day still marked Quarantined. */
-  buildersWithQuarantinedDays(builderId?: string): Promise<string[]>;
+  /**
+   * Builders, one or all, with a Builder-day marked Quarantined although no
+   * counted row under it is. That is what a restore leaves when it stops
+   * before its recount; a day an Admin kept a row out of is not one.
+   */
+  buildersWithStaleQuarantinedDays(builderId?: string): Promise<string[]>;
 }
 
 /** What the nightly check of Builder-day totals needs. */
@@ -715,8 +719,8 @@ const BLOCKING_REASONS = new Set(["negative_counts"]);
  *
  * Every Builder this touches has all their machines counted again, which
  * applies the machine rule to the restored rows and rebuilds their days. So
- * does every Builder with a day still marked Quarantined, which repairs a run
- * that stopped between its two steps.
+ * does every Builder with a day still marked Quarantined that no counted row
+ * holds back, which repairs a run that stopped between its two steps.
  *
  * This runs before every mint rather than once in a migration, so Usage that a
  * server from before ADR 0006 quarantined during a deploy still comes back,
@@ -749,7 +753,7 @@ export async function restoreRetiredQuarantines(
 
   const builders = new Set([
     ...rows.map((row) => row.builderId),
-    ...(await store.buildersWithQuarantinedDays(builderId)),
+    ...(await store.buildersWithStaleQuarantinedDays(builderId)),
   ]);
   for (const id of builders) {
     await regroupMachines(store, id, await store.builderMachines(id), now);

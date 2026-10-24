@@ -289,4 +289,17 @@ describe.skipIf(!connected)("the Drizzle Sync store", () => {
     const stale = (await drizzleSyncStore.staleBuilderDays()).filter((row) => row.builderId === builderId);
     expect(stale.map((row) => row.day).sort()).toEqual([OLD, old2]);
   });
+
+  it("names Builders whose quarantined day no counted row holds back, and not one an Admin kept out", async () => {
+    const { builderId, device } = await seed();
+    await applySync(drizzleSyncStore, device(0), payload(device(0).id, [day({ day: OLD })]), NOW);
+    await db.update(builderDays).set({ trustLevelMin: "quarantined" }).where(eq(builderDays.builderId, builderId));
+    expect(await drizzleSyncStore.buildersWithStaleQuarantinedDays(builderId)).toEqual([builderId]);
+
+    await db
+      .update(usageDays)
+      .set({ trustLevel: "quarantined" })
+      .where(and(eq(usageDays.deviceId, device(0).id), eq(usageDays.day, OLD)));
+    expect(await drizzleSyncStore.buildersWithStaleQuarantinedDays(builderId)).toEqual([]);
+  });
 });
