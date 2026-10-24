@@ -10,7 +10,7 @@ export function agentSetupPrompt(handle?: string): string {
 
   return `Set up tokenburnmarket on this machine${account}. Work until every check below passes.
 
-1. Check \`node --version\`. Install Node 20 or newer if needed, then run \`npm install --global tokenburnmarket@latest\` with a user-owned npm prefix. Never use sudo. Run \`command -v tokenburnmarket\` and fix the prefix until it resolves outside an npx cache.
+1. Check \`node --version\`. Install Node 22.15 or newer if needed, then run \`npm install --global tokenburnmarket@latest\` with a user-owned npm prefix. Never use sudo. Run \`command -v tokenburnmarket\` and fix the prefix until it resolves outside an npx cache.
 2. Run \`tokenburnmarket connect --server ${PRODUCT_URL}\`. Show me the approval URL, code, and fingerprint, then wait for approval. Keep the device token and private key on this machine.
 3. Run \`tokenburnmarket sync\`. Then run \`tokenburnmarket daemon install --interval 15m\`; it installs and starts the service itself. Use the installed CLI path, not an npx cache path.
 4. Run \`tokenburnmarket mcp setup\`. If this agent supports MCP, merge the server into its user config. Keep existing settings and tell me if a restart is needed.
