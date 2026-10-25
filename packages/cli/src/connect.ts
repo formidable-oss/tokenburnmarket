@@ -150,8 +150,11 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
       log(`This machine was connected as @${existing.handle}. The code was approved by @${result.handle}.`);
     }
     if (options.confirm && !(await options.confirm(`Connect this machine to @${result.handle}? [y/N] `))) {
+      // The server already gave the stored key to that account, so connecting
+      // again with it would be refused. A fresh key needs the old config gone.
+      const retry = existing && sameServer ? ` To connect again, delete ${configPath} first.` : "";
       throw new Error(
-        `Not connected, and nothing was saved. If @${result.handle} is not you, someone else approved the code.`,
+        `Not connected, and nothing was saved. If @${result.handle} is not you, someone else approved the code.${retry}`,
       );
     }
 

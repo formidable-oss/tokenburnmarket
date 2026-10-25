@@ -73,8 +73,7 @@ export interface SyncOptions {
   The server runs on Vercel, which refuses a function request body over 4.5 MB.
   A first sync from a machine with years of transcripts is many times that, so
   the days go up in pages, oldest first, each under this budget. Oldest first
-  because the server moves the watermark forward after every page, and a later
-  page that reached back behind it would come back Quarantined.
+  so a refused page leaves the saved watermark before the days it held.
 */
 export const MAX_PAYLOAD_BYTES = 3_500_000;
 
@@ -306,8 +305,8 @@ async function syncLocked(options: SyncOptions): Promise<number> {
 
   const payloads: SyncPayload[] = [];
   for (const pageDaysList of pages) {
-    // sentAt is read per page: the server checks clock skew on each, and a
-    // long first sync can outlive the window a single timestamp would get.
+    // sentAt is stamped again just before each upload; this one only lets the
+    // schema check run before anything goes up.
     const payload: SyncPayload = {
       version: 1,
       deviceId: config.deviceId,
@@ -357,7 +356,9 @@ async function syncLocked(options: SyncOptions): Promise<number> {
       result = await upload(
         config.serverUrl,
         config.deviceToken,
-        payload,
+        // The server checks clock skew on every page, and a long upload can
+        // outlive the window a timestamp taken before the first page would get.
+        { ...payload, sentAt: (options.now ?? (() => new Date()))().toISOString() },
         config.privateKey,
         options.scheduled ? "scheduled" : "manual",
         fetchImpl,

@@ -369,6 +369,37 @@ describe("paging", () => {
     ]);
   });
 
+  it("stamps each part when it goes up, so a long upload stays inside the clock window", async () => {
+    const { path } = freshConfig();
+    const server = pagingServer();
+    const onePage = JSON.stringify({
+      version: 1,
+      deviceId: "5b0d0f4a-4a6c-4a5e-9f2e-0f0e6b7a1c2d",
+      sentAt: NOW.toISOString(),
+      days: [{ ...THREE_DAYS[0]!, receipts: [] }],
+    }).length;
+    // Each part takes 11 minutes, longer than the server's 10-minute skew window.
+    let clock = NOW.getTime();
+    const sentAt: string[] = [];
+    const slow = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      sentAt.push(new Date(clock).toISOString());
+      const response = await server.fetch(input, init);
+      clock += 11 * 60_000;
+      return response;
+    }) as typeof fetch;
+
+    const code = await sync({
+      configPath: path, now: () => new Date(clock), env: ENV, home: tmpdir(),
+      maxPayloadBytes: Math.floor(onePage * 1.5),
+      readUsage: async () => THREE_DAYS,
+      fetch: slow,
+      log: () => {},
+    });
+
+    expect(code).toBe(0);
+    expect(server.pages.map((page) => page.sentAt)).toEqual(sentAt);
+  });
+
   it.each([
     [400, ["2026-08-20", "2026-08-21", "2026-08-22"], 1],
     [403, ["2026-08-20"], null],

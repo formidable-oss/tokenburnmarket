@@ -102,14 +102,18 @@ export interface VerdictUpdate {
   duplicateOfDeviceId: string | null;
 }
 
+function receiptMatched(row: MachineRow): boolean {
+  return row.quarantineReasons.some((reason) => reason.code === DUPLICATE_REASON.code);
+}
+
 /**
  * Rows the machine rule may move. A row another machine's receipts already
  * cover stays a duplicate of that machine; this one cannot make it count.
  */
 function eligible(row: MachineRow, members: ReadonlySet<string>): boolean {
   if (row.duplicateOfDeviceId === null) return true;
-  if (row.quarantineReasons.some((reason) => reason.code === SAME_MACHINE_REASON.code)) return true;
-  return members.has(row.duplicateOfDeviceId);
+  if (receiptMatched(row)) return members.has(row.duplicateOfDeviceId);
+  return true;
 }
 
 /** The counted row: readings in the order they arrived, each replacing the last when it supersedes it. */
@@ -155,14 +159,21 @@ function countedState(row: MachineRow, now: Date): Omit<VerdictUpdate, "deviceId
   return { ...checkedVerdict(row, now), duplicateOfDeviceId: null };
 }
 
-function duplicateState(row: MachineRow, ownerDeviceId: string): Omit<VerdictUpdate, "deviceId" | "day" | "provider" | "model"> {
+/*
+  Receipts that matched outlive the machine grouping: two rows proven to be
+  the same messages stay one, even when the Builder later splits the machine.
+  So a row keeps the receipt reason when it had it, and gets it when the owner
+  is the receipt copy of this very row.
+*/
+function duplicateState(row: MachineRow, owner: MachineRow): Omit<VerdictUpdate, "deviceId" | "day" | "provider" | "model"> {
+  const matched = receiptMatched(row) || (receiptMatched(owner) && owner.duplicateOfDeviceId === row.deviceId);
   return {
     trustLevel: row.trustLevel === "quarantined" ? "quarantined" : "reported",
     quarantineReasons: [
       ...row.quarantineReasons.filter((reason) => !DUPLICATE_CODES.has(reason.code)),
-      SAME_MACHINE_REASON,
+      matched ? DUPLICATE_REASON : SAME_MACHINE_REASON,
     ],
-    duplicateOfDeviceId: ownerDeviceId,
+    duplicateOfDeviceId: owner.deviceId,
   };
 }
 
@@ -183,7 +194,7 @@ export function machineVerdicts(
 
   const updates: VerdictUpdate[] = [];
   for (const row of pool) {
-    const next = row === owner ? countedState(row, now) : duplicateState(row, owner.deviceId);
+    const next = row === owner ? countedState(row, now) : duplicateState(row, owner);
     const unchanged =
       next.trustLevel === row.trustLevel &&
       next.duplicateOfDeviceId === row.duplicateOfDeviceId &&

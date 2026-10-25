@@ -417,6 +417,27 @@ describe("applySync", () => {
     expect(store.usage.get(`${DEVICE_C}|${old}|claude|claude-opus-5`)?.duplicateOfDeviceId).toBeNull();
   });
 
+  it.each([
+    ["keeps an old receipt copy a copy", true, 5],
+    ["counts an old receipt copy whose owner is gone", false, 5.25],
+  ] as const)("%s when it is re-sent with a larger reading", async (_, ownerStays, cost) => {
+    const store = memoryStore();
+    const old = "2026-08-10";
+    const then = new Date("2026-08-10T20:00:00.000Z");
+    await applySync(store, device(DEVICE_A), { ...payload(DEVICE_A, [day({ day: old })]), sentAt: then.toISOString() }, then);
+    await applySync(store, device(DEVICE_B), { ...payload(DEVICE_B, [day({ day: old })]), sentAt: then.toISOString() }, then);
+    // Rows stored before fingerprints, and receipts long expired: the match cannot be made again.
+    for (const row of store.usage.values()) row.receiptFingerprint = null;
+    store.receipts.clear();
+    if (!ownerStays) store.usage.delete(`${DEVICE_A}|${old}|claude|claude-opus-5`);
+
+    // `sync --all` from a newer Collector that reads one more output token.
+    await applySync(store, device(DEVICE_B, "2026-08-17"), payload(DEVICE_B, [day({ day: old, outputTokens: 1001, costUsd: 5.25 })]), NOW);
+
+    expect(store.usage.get(`${DEVICE_B}|${old}|claude|claude-opus-5`)?.duplicateOfDeviceId).toBe(ownerStays ? DEVICE_A : null);
+    expect(store.builderDays.get(`${BUILDER}|${old}`)?.costUsd).toBe(cost);
+  });
+
   it("counts matching recent and old totals without receipts on both devices", async () => {
     const store = memoryStore();
     const days = [day({ receipts: [] }), day({ day: "2026-08-01", receipts: [] })];
@@ -925,6 +946,27 @@ describe("one machine counts once", () => {
     expect(await regroupMachines(store, BUILDER, [DEVICE_A, DEVICE_B], LATER)).toBe(1);
     expect(row(store, DEVICE_A)).toMatchObject({ duplicateOfDeviceId: null, trustLevel: "verified", quarantineReasons: [] });
     expect(store.builderDays.get(`${BUILDER}|${OLD}`)?.costUsd).toBe(11);
+  });
+
+  it("keeps a receipt copy a copy when its machine is split again", async () => {
+    const store = memoryStore();
+    await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day()]), NOW);
+    // The same messages from a second Device, read a little higher.
+    await applySync(store, device(DEVICE_B), at(LATER, DEVICE_B, [day({ outputTokens: 1001, costUsd: 6 })]), LATER);
+    expect(row(store, DEVICE_B, DAY)?.duplicateOfDeviceId).toBe(DEVICE_A);
+
+    store.machines.set(DEVICE_B, DEVICE_A);
+    await regroupMachines(store, BUILDER, [DEVICE_A], LATER);
+    expect(row(store, DEVICE_A, DAY)?.duplicateOfDeviceId).toBe(DEVICE_B);
+    expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(6);
+
+    store.machines.delete(DEVICE_B);
+    await regroupMachines(store, BUILDER, [DEVICE_A, DEVICE_B], LATER);
+    expect(row(store, DEVICE_A, DAY)).toMatchObject({
+      duplicateOfDeviceId: DEVICE_B,
+      quarantineReasons: [expect.objectContaining({ code: "duplicate_of_device" })],
+    });
+    expect(store.builderDays.get(`${BUILDER}|${DAY}`)?.costUsd).toBe(6);
   });
 
   it("does not let a quarantined copy hold back the day another copy counts for", async () => {

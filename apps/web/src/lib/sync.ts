@@ -244,6 +244,8 @@ function judgeDay(
     cutoffDay: string;
     foreign: ReceiptOwners;
     twins: readonly UsageTwin[];
+    /** This Device's stored row for the same key, when the re-send replaces it. */
+    previous?: StoredUsage;
   },
 ): Verdict {
   const check = checkPlausibility(usageDayInputFromSyncDay(row), { now: options.now });
@@ -252,7 +254,7 @@ function judgeDay(
   const duplicateOfDeviceId =
     row.day >= options.cutoffDay
       ? duplicateOwner(row.receipts, options.foreign)
-      : twinOwner(row, options.twins);
+      : (twinOwner(row, options.twins) ?? receiptMatchedOwner(row, options.previous, options.twins));
   if (duplicateOfDeviceId === null) {
     return { trustLevel: check.trustLevel, reasons, duplicateOfDeviceId: null };
   }
@@ -341,6 +343,37 @@ function twinOwner(row: SyncDay, twins: readonly UsageTwin[]): string | null {
         : other.receiptFingerprint === fingerprint),
   );
   return twin?.deviceId ?? null;
+}
+
+/**
+ * Past the receipt window a re-send cannot be matched again, so the receipt
+ * match its stored row got while the receipts existed still holds, as long as
+ * the row it copied still counts and nothing shows the receipt set changed.
+ * Without this, `sync --all` with a slightly larger reading would make an old
+ * copy count a second time.
+ */
+function receiptMatchedOwner(
+  row: SyncDay,
+  previous: StoredUsage | undefined,
+  twins: readonly UsageTwin[],
+): string | null {
+  const owner = previous?.duplicateOfDeviceId ?? null;
+  if (owner === null || !previous!.quarantineReasons.some((reason) => reason.code === DUPLICATE_REASON.code)) {
+    return null;
+  }
+  const fingerprint = receiptFingerprint(row.receipts);
+  if (fingerprint !== null && previous!.receiptFingerprint !== null && fingerprint !== previous!.receiptFingerprint) {
+    return null;
+  }
+  const counted = twins.some(
+    (other) =>
+      other.deviceId === owner &&
+      other.day === row.day &&
+      other.provider === row.provider &&
+      other.model === row.model &&
+      other.duplicateOfDeviceId === null,
+  );
+  return counted ? owner : null;
 }
 
 /**
@@ -517,7 +550,13 @@ export async function applySync(
   }
   const pastDays = [
     ...new Set(
-      judged.filter((day) => day.day < cutoffDay && day.receipts.length > 0).map((day) => day.day),
+      judged
+        .filter(
+          (day) =>
+            day.day < cutoffDay &&
+            (day.receipts.length > 0 || stored.get(usageKey(day))?.duplicateOfDeviceId != null),
+        )
+        .map((day) => day.day),
     ),
   ];
   const twins =
@@ -539,6 +578,7 @@ export async function applySync(
       cutoffDay,
       foreign: foreignByRow.get(key) ?? new Map(),
       twins,
+      previous: stored.get(key),
     });
     const write: UsageRowWrite = {
       deviceId: device.id,
