@@ -1,6 +1,6 @@
 {
   "name": "tokenburnmarket",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Connect your machine to tokenburnmarket: sync agent usage via ccusage, run the MCP server, place bets.",
   "license": "MIT",
   "type": "module",

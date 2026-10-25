@@ -5,21 +5,22 @@ Glossary only. No implementation details.
 ## Terms
 
 - **Builder** — a signed-in person (GitHub account; handle is the GitHub login). Owns one or more Devices, belongs to Communities, holds Credits.
-- **Device** — a Builder's machine running the Collector. Bound to the Builder by approving a short code in the browser; identified by a keypair generated on first connect; the source of all Usage.
+- **Device** — one connection of a Builder's Machine running the Collector. Bound to the Builder by approving a short code in the browser; identified by a keypair generated on first connect and kept when the Machine reconnects, unless the Builder revoked the Device; the source of all Usage. It may place bets only after its Builder allows it.
+- **Machine** — the computer a Device reads Usage from. Every Device starts as a Machine of its own. Devices the Builder marks as the same Machine count each day once, from the most complete copy. Different Machines always add up.
 - **Collector** — the local program (`npx tokenburnmarket`) that reads local agent history and supported account usage, signs the aggregates, and uploads them. Also exposes an MCP server to the agent.
 - **Usage** — token counts and estimated cost per (Builder, Device, day, provider, model). The only faucet for Credits and the oracle for Markets.
 - **Verified** — see Trust Level. Means "not obviously fake", not proof.
-- **Credit** — the play currency. Minted from Usage once per closed day on a curve that flattens above a daily kink (whales earn more, not proportionally more); a small grant on signup; spent and won on Markets; never bought or cashed out.
+- **Credit** — the play currency. Minted from Usage once per closed day on a curve that flattens above a daily kink (whales earn more, not proportionally more), and topped up while its Usage grows, until a week after it could first be minted; a small grant on signup; spent and won on Markets; never bought or cashed out.
 - **Credits Won** — over a period: what Markets paid out plus what selling shares returned, less what buying them cost. The signup grant and the daily mint are not winnings. One of the three Leaderboard metrics, next to cost and tokens.
 - **Community** — a group of Builders with its own leaderboards and Markets. Joined by invite. *Public* Communities appear in the directory; *Unlisted* ones are reachable only by URL and are not indexed. One Builder owns it; the rest are members.
 - **Invite Code** — the secret in a Community's join link. Rotating it replaces the code, so every link handed out before stops working; nobody already in is removed.
 - **Leaderboard** — a ranking of Builders by a metric over a period, scoped to a Community, a region, or global.
 - **Market** — a question about future Usage with a fixed resolution time and 2+ outcomes, priced by a house-backed automated market maker (always liquid; a winning share pays 1 Credit), paid in Credits, resolved automatically from Usage.
 - **Position** — a Builder's holding of outcome shares in a Market.
-- **Sync** — one signed upload from a Device: changed daily Usage rows plus the Receipt Stream for those days.
+- **Sync** — one signed upload from a Device: changed daily Usage rows plus the Receipt Stream for those days. A Sync that sends older days again adds missing ones and raises or corrects existing ones; it never lowers an older day the Machine has lost part of.
 - **Receipt Stream** — the ordered hashes of per-message identifiers behind a day's Usage (no content). Lets the server dedupe two Devices reading the same transcripts and judge whether a day's Usage is coherent. Individual receipts expire after seven days; a retained fingerprint identifies exact copies of older streams.
 - **Sync Slot** — one of the four shared windows a day (00:00, 06:00, 12:00, 18:00 UTC, fifteen minutes each) in which automatic Syncs land. A Sync a person asks for is never held to one.
-- **Trust Level** — how much a Usage row is believed: *Verified* (signed Device + Receipt Stream + passed checks), *Reported* (signed Device, no usable Receipt Stream — identifiers are unavailable or receipts outnumber the tokens they support; mints Credits at a discount and is badged on Leaderboards), *Quarantined* (failed checks; excluded from Leaderboards, Credits, and Market resolution pending review).
+- **Trust Level** — how much a Usage row is believed: *Verified* (signed Device + Receipt Stream that fits its tokens), *Reported* (signed Device, no usable Receipt Stream — identifiers are unavailable or the receipts do not fit the tokens; mints Credits at a discount and is badged on Leaderboards), *Quarantined* (held out by an Admin pending review; excluded from Leaderboards, Credits, and Market resolution). A row no real usage can produce, such as a day that has not started, is refused rather than stored. Size alone never lowers a Trust Level.
 - **Outcome** — one answer to a Market's question. Exactly one Outcome wins at resolution (or the Market is Voided).
 - **Voided** — a Market cancelled before or at resolution (e.g. oracle data unusable); all Positions refunded at cost.
 - **Hold** — a Market whose resolution waits because Usage it points at is Quarantined. It settles as soon as the review clears; if that has not happened a day later, the Market is Voided.

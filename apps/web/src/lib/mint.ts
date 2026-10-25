@@ -32,6 +32,21 @@ export function lastMintableDay(now: Date): string {
   return new Date(settled).toISOString().slice(0, 10);
 }
 
+/**
+ * How many days after a day becomes mintable it can still be topped up. Late
+ * Syncs land inside the backfill window, well within this. After that a day's
+ * Credits are final: raising old Usage later moves boards but mints nothing
+ * (ADR 0007). A day never minted still mints once, whatever its age, so a new
+ * Builder's history and restored days are paid.
+ */
+export const MINT_TOP_UP_DAYS = 7;
+
+/** The oldest already-minted day the cron still tops up at `now`. */
+export function oldestTopUpDay(now: Date): string {
+  const last = Date.parse(`${lastMintableDay(now)}T00:00:00.000Z`);
+  return new Date(last - MINT_TOP_UP_DAYS * 86_400_000).toISOString().slice(0, 10);
+}
+
 /** The ledger ref for one mint of one day. The revision is what makes a top-up distinct. */
 export function mintRef(day: string, revision: number): string {
   return `${day}:${revision}`;
@@ -70,8 +85,10 @@ export interface MintWrite {
  * A day whose Usage shrank, or whose Trust Level dropped to Quarantined after
  * it was minted, returns null: Credits already spent on a Market cannot be
  * unspent, so the correction is a future admin reversal, not a negative mint.
+ * A day minted before `oldestTopUp` is final and returns null too.
  */
-export function planMint(candidate: MintCandidate): MintWrite | null {
+export function planMint(candidate: MintCandidate, oldestTopUp: string | null = null): MintWrite | null {
+  if (oldestTopUp !== null && candidate.mintRevision > 0 && candidate.day < oldestTopUp) return null;
   const { credits, curveVersion } = mintForDay(candidate.costUsd, candidate.trustLevelMin);
   const delta = roundCredits(credits - candidate.creditsMinted);
   if (delta <= 0) return null;
@@ -88,10 +105,11 @@ export function planMint(candidate: MintCandidate): MintWrite | null {
 
 export interface MintStore {
   /**
-   * Builder-days up to and including `throughDay` that may still owe Credits.
-   * Over-fetching is fine and under-fetching is not: `planMint` is the judge.
+   * Builder-days up to and including `throughDay` that may still owe Credits:
+   * never minted, or minted on or after `oldestTopUp`. Over-fetching is fine and
+   * under-fetching is not: `planMint` is the judge.
    */
-  candidates(throughDay: string): Promise<MintCandidate[]>;
+  candidates(throughDay: string, oldestTopUp: string): Promise<MintCandidate[]>;
   /**
    * One Builder-day, whatever state it is in, or null when there is no such row.
    * The mint runs over `candidates`; this is for the admin path, which knows
@@ -125,14 +143,15 @@ export interface MintRunResult {
 /** Mint every closed Builder-day that is short of what the curve says it is worth. */
 export async function runMint(store: MintStore, now: Date): Promise<MintRunResult> {
   const throughDay = lastMintableDay(now);
-  const candidates = await store.candidates(throughDay);
+  const oldestTopUp = oldestTopUpDay(now);
+  const candidates = await store.candidates(throughDay, oldestTopUp);
 
   const touched = new Set<string>();
   let minted = 0;
   let credits = 0;
 
   for (const candidate of candidates) {
-    const write = planMint(candidate);
+    const write = planMint(candidate, oldestTopUp);
     if (!write) continue;
     const inserted = await store.recordMint(write);
     if (!inserted) continue;
@@ -147,7 +166,8 @@ export async function runMint(store: MintStore, now: Date): Promise<MintRunResul
 
 /**
  * Mint one Builder-day now, for a day whose Usage just changed under it: an
- * Admin clearing a Quarantined row is the only caller today.
+ * Admin clearing a Quarantined row is the only caller today. An Admin's
+ * decision mints whatever the day's age, so the top-up window does not apply.
  *
  * Same three rules as the cron, so it can be called as often as anyone likes:
  * a day that has not closed and settled is left to the cron, the curve decides

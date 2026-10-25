@@ -4,8 +4,8 @@
   handed over. Pure lifecycle rules live in lib/connect-codes; this module is
   the database half.
 */
-import { createHash, randomBytes } from "node:crypto";
-import { and, eq, isNotNull, lt } from "drizzle-orm";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { and, eq, isNotNull, isNull, lt, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { builders, deviceConnectCodes, devices } from "@/db/schema";
@@ -118,33 +118,75 @@ export async function claimConnectCode(raw: string, now = new Date()): Promise<C
   };
 }
 
+/** What an approval did: bound the Device, found the code spent, or found its key on another account. */
+export type ApprovalOutcome = "approved" | "expired" | "taken";
+
 /**
  * Bind the pending key to this Builder: create the Device, mint its token, and
  * park the token on the code row for the Collector to collect once.
  * Approving the same public key twice reuses the Device row, so reconnecting a
- * machine does not litter /settings with duplicates.
+ * machine keeps one Device and counts its history once. The Collector keeps its
+ * key when it reconnects for exactly this reason.
+ *
+ * A revoked key is a machine its Builder gave up, often a sold laptop whose
+ * config a new one copied. That Device is retired with the Usage it uploaded,
+ * so nothing synced later can replace its rows, and this approval gets a new
+ * Device with no history yet. A key that another Builder's Device still uses is
+ * `taken`: anyone can see a code on a screen, and approving it must not take a
+ * working Device away from its owner. The owner revokes it first.
+ *
+ * A ticked `canTrade` lets the Device place bets (ADR 0007). An unticked box
+ * keeps what a reconnected Device already had; Settings is where it is taken
+ * away.
  */
-export async function approveConnectCode(raw: string, builderId: string, now = new Date()) {
+export async function approveConnectCode(
+  raw: string,
+  builderId: string,
+  options: { canTrade?: boolean; now?: Date } = {},
+): Promise<ApprovalOutcome> {
+  const now = options.now ?? new Date();
+  const canTrade = options.canTrade ?? false;
   const row = await readConnectCode(raw);
-  if (!row || connectCodeState(row, now) !== "pending") return false;
+  if (!row || connectCodeState(row, now) !== "pending") return "expired";
+
+  await db
+    .update(devices)
+    .set({ publicKey: `${row.devicePubkey} retired ${randomUUID()}`, revokedAt: now })
+    .where(and(eq(devices.publicKey, row.devicePubkey), isNotNull(devices.revokedAt)));
 
   const [device] = await db
     .insert(devices)
-    .values({ builderId, name: row.deviceName, publicKey: row.devicePubkey })
+    .values({ builderId, name: row.deviceName, publicKey: row.devicePubkey, canTrade })
     .onConflictDoUpdate({
       target: devices.publicKey,
-      // A re-approval also un-revokes: the Builder just said yes to this machine again.
-      set: { builderId, name: row.deviceName, revokedAt: null },
+      set: canTrade ? { name: row.deviceName, canTrade: true } : { name: row.deviceName },
+      // The key is another Builder's working Device, or a revoke landed
+      // between the two statements. Then nothing comes back and this approval
+      // fails, rather than handing out a token for a Device it should not get.
+      setWhere: and(eq(devices.builderId, builderId), isNull(devices.revokedAt)),
     })
     .returning({ id: devices.id });
-  if (!device) return false;
+  if (!device) {
+    const [owner] = await db
+      .select({ id: devices.id })
+      .from(devices)
+      .where(
+        and(
+          eq(devices.publicKey, row.devicePubkey),
+          ne(devices.builderId, builderId),
+          isNull(devices.revokedAt),
+        ),
+      )
+      .limit(1);
+    return owner ? "taken" : "expired";
+  }
 
   const deviceToken = await issueDeviceToken(device.id);
   await db
     .update(deviceConnectCodes)
     .set({ builderId, deviceId: device.id, deviceToken, approvedAt: now })
     .where(eq(deviceConnectCodes.code, row.code));
-  return true;
+  return "approved";
 }
 
 /** Reject: the row goes away, so the Collector sees exactly what it sees for an expired code. */

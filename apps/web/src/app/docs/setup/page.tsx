@@ -57,11 +57,12 @@ export default function DocsSetupPage() {
             Approval starts the first sync. A large history can take about 30 seconds.
           </p>
           <p className="mt-3 text-[0.95rem] text-muted">
-            Reconnecting replaces the local device. Revoke the old one in{" "}
+            Reconnecting a machine keeps its device. If you connected one machine more than once
+            before, mark those devices as the same machine in{" "}
             <Link href="/settings" className="text-primary-text hover:underline">
               settings
             </Link>
-            . Separate devices that read the same transcripts are counted once.
+            . Each day then counts once for that machine.
           </p>
         </div>
       </details>
@@ -75,6 +76,7 @@ export default function DocsSetupPage() {
       <div className="mt-4 grid max-w-[34rem] gap-2">
         <CommandLine command="tokenburnmarket sync" />
         <CommandLine command="tokenburnmarket sync --since 7" />
+        <CommandLine command="tokenburnmarket sync --all" />
         <CommandLine command="tokenburnmarket sync --dry-run" />
         <CommandLine command="tokenburnmarket status" />
       </div>
@@ -85,7 +87,15 @@ export default function DocsSetupPage() {
         </div>
         <div className="flex gap-4">
           <dt className="type-data w-28 shrink-0 text-foreground">--since 7</dt>
-          <dd>The last seven days, but no further back than two days before the last synced day.</dd>
+          <dd>The last seven days.</dd>
+        </div>
+        <div className="flex gap-4">
+          <dt className="type-data w-28 shrink-0 text-foreground">--all</dt>
+          <dd>
+            Every day this machine still has. Missing days are added, and a day already counted
+            goes up or is corrected. An older day never goes down because old transcripts were
+            deleted.
+          </dd>
         </div>
         <div className="flex gap-4">
           <dt className="type-data w-28 shrink-0 text-foreground">--dry-run</dt>
@@ -100,6 +110,27 @@ export default function DocsSetupPage() {
           <dd>Handle, device, server, and the last day synced from this machine.</dd>
         </div>
       </dl>
+
+      <div className="signal-rail my-10" aria-hidden />
+
+      <h2 className="type-heading">Fix your history</h2>
+      <p className="mt-3 text-[0.95rem] text-muted">
+        After an update, or if your numbers look low, send your whole history once on every machine
+        you use. Then let the daemon keep it current. <code className="type-data">update</code>{" "}
+        installs the latest version with the package manager you used the first time.
+      </p>
+      <div className="mt-4 grid max-w-[34rem] gap-2">
+        <CommandLine command="tokenburnmarket update" />
+        <CommandLine command="tokenburnmarket sync --all" />
+        <CommandLine command="tokenburnmarket daemon install" />
+      </div>
+      <p className="mt-3 text-[0.95rem] text-muted">
+        If you connected one machine more than once, open{" "}
+        <Link href="/settings" className="text-primary-text hover:underline">
+          settings
+        </Link>{" "}
+        and set its devices to the same machine.
+      </p>
 
       <div className="signal-rail my-10" aria-hidden />
 
@@ -176,6 +207,14 @@ export default function DocsSetupPage() {
           markets
         </Link>{" "}
         for what happens when the price moves between the quote and the fill.
+      </p>
+      <p className="mt-3 text-[0.95rem] text-muted">
+        A new device can only quote. To let your agent place bets, tick the box when you approve
+        the device, or allow bets for it in{" "}
+        <Link href="/settings" className="text-primary-text hover:underline">
+          settings
+        </Link>
+        .
       </p>
 
       <div className="signal-rail my-10" aria-hidden />

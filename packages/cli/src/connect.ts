@@ -76,6 +76,11 @@ export interface ConnectOptions {
   pollIntervalMs?: number;
   /** Injected in tests. The first sync, run the moment the device is approved. */
   runSync?: (config: DeviceConfig, log: (line: string) => void) => Promise<number>;
+  /**
+   * Asks a person yes or no. Given when someone is at the terminal; an agent
+   * running `connect` gets no question.
+   */
+  confirm?: (question: string) => Promise<boolean>;
 }
 
 export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
@@ -90,14 +95,27 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
     ((_config: DeviceConfig, syncLog: (line: string) => void) =>
       sync({ configPath, brief: true, log: syncLog }));
 
+  /*
+    Reconnecting keeps this machine's key, so the server keeps the same Device
+    and the machine's history counts once. A new key would be a new Device that
+    uploads the same history again (ADR 0006).
+  */
   const existing = readConfig(configPath);
+  const sameServer = existing !== null && existing.serverUrl === options.serverUrl;
   if (existing) {
     log(`This machine is already connected as @${existing.handle}.`);
-    log("Connecting again replaces the stored device. Revoke the old one in settings.");
+    log(
+      sameServer
+        ? "Approve the code to reconnect the same device."
+        : "Connecting to another server replaces the stored device.",
+    );
     log("");
   }
 
-  const keys = await generateDeviceKeyPair();
+  const keys =
+    existing && sameServer
+      ? { publicKey: existing.publicKey, privateKey: existing.privateKey }
+      : await generateDeviceKeyPair();
   const started = await postJson<StartResponse>(fetchImpl, `${options.serverUrl}/api/connect/start`, {
     publicKey: keys.publicKey,
     deviceName,
@@ -126,6 +144,23 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
       throw new Error("That code was rejected or ran out. Run connect again for a fresh one.");
     }
 
+    // Anyone signed in can approve a code they can see, so say whose account
+    // this is before anything is saved, and ask when a person is there.
+    if (existing && existing.handle !== result.handle) {
+      log(`This machine was connected as @${existing.handle}. The code was approved by @${result.handle}.`);
+    }
+    if (options.confirm && !(await options.confirm(`Connect this machine to @${result.handle}? [y/N] `))) {
+      // The server already gave the stored key to that account, so connecting
+      // again with it would be refused. A fresh key needs the old config gone.
+      const retry = existing && sameServer ? ` To connect again, delete ${configPath} first.` : "";
+      throw new Error(
+        `Not connected, and nothing was saved. If @${result.handle} is not you, someone else approved the code.${retry}`,
+      );
+    }
+
+    // The same Device keeps its watermark, so the first sync covers only
+    // the days since the last one instead of the whole history again.
+    const sameDevice = existing !== null && sameServer && existing.deviceId === result.deviceId;
     const config: DeviceConfig = {
       serverUrl: options.serverUrl,
       deviceId: result.deviceId,
@@ -135,6 +170,7 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
       publicKey: keys.publicKey,
       privateKey: keys.privateKey,
       connectedAt: new Date(now()).toISOString(),
+      ...(sameDevice ? { lastSyncedDay: existing.lastSyncedDay, lastSyncedAt: existing.lastSyncedAt } : {}),
     };
     writeConfig(config, configPath);
 

@@ -2,7 +2,6 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PLAUSIBILITY_LIMITS,
-  type PlausibilityContext,
   type UsageDayInput,
   checkPlausibility,
 } from "./plausibility";
@@ -26,8 +25,7 @@ function ordinaryDay(overrides: Partial<UsageDayInput> = {}): UsageDayInput {
   };
 }
 
-const codes = (row: UsageDayInput, context: PlausibilityContext = { now: NOW }) =>
-  checkPlausibility(row, context).reasons.map((r) => r.code);
+const codes = (row: UsageDayInput) => checkPlausibility(row, { now: NOW }).reasons.map((r) => r.code);
 
 describe("checkPlausibility", () => {
   it("verifies an ordinary day with a Receipt Stream", () => {
@@ -42,34 +40,16 @@ describe("checkPlausibility", () => {
     expect(result.reasons.map((r) => r.code)).toEqual(["no_receipt_stream"]);
   });
 
-  it("quarantines an impossible output rate", () => {
-    const row = ordinaryDay({ outputTokens: 500_000_000, cachedInputTokens: 900_000_000 });
-    expect(codes(row)).toContain("output_rate_ceiling");
-    expect(checkPlausibility(row, { now: NOW }).trustLevel).toBe("quarantined");
-  });
-
-  it("quarantines output that dwarfs the input behind it", () => {
-    const row = ordinaryDay({
-      inputTokens: 100,
-      cachedInputTokens: 0,
-      cacheWriteTokens: 0,
-      outputTokens: 100_000,
-    });
-    expect(codes(row)).toContain("output_input_ratio");
-  });
-
-  it("quarantines output with no input at all", () => {
-    const row = ordinaryDay({ inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0 });
-    expect(codes(row)).toContain("output_input_ratio");
-  });
-
-  it("quarantines cache reads out of proportion with cache writes", () => {
-    const row = ordinaryDay({ cacheWriteTokens: 100, cachedInputTokens: 100_000_000 });
-    expect(codes(row)).toContain("cache_ratio");
-  });
-
-  it("quarantines a daily cost above any known plan tier", () => {
-    expect(codes(ordinaryDay({ costUsd: 50_000 }))).toContain("daily_cost_ceiling");
+  // API loops and parallel agents make all of these real. None of them is impossible.
+  it.each([
+    ["a high output rate", { outputTokens: 500_000_000, cachedInputTokens: 900_000_000, receiptCount: 10_000 }],
+    ["output far above input", { inputTokens: 100, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 100_000, receiptCount: 100 }],
+    ["output with no input recorded", { inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0 }],
+    ["cache reads far above cache writes", { cacheWriteTokens: 100, cachedInputTokens: 100_000_000 }],
+    ["a very expensive day", { costUsd: 50_000, cachedInputTokens: 30_000_000_000, outputTokens: 10_000_000, receiptCount: 1_000 }],
+  ] as const)("counts %s in full", (_, change) => {
+    const result = checkPlausibility(ordinaryDay(change), { now: NOW });
+    expect(result).toEqual({ trustLevel: "verified", reasons: [] });
   });
 
   it("quarantines a day that has not started", () => {
@@ -77,47 +57,43 @@ describe("checkPlausibility", () => {
     expect(codes(ordinaryDay({ day: "not-a-day" }))).toContain("future_day");
   });
 
+  it("quarantines a cost no model's price can reach for these tokens", () => {
+    const result = checkPlausibility(ordinaryDay({ costUsd: 9_000_000 }), { now: NOW });
+    expect(result.trustLevel).toBe("quarantined");
+    expect(result.reasons).toEqual([
+      expect.objectContaining({ code: "cost_above_any_price", limit: 2000 }),
+    ]);
+    expect(codes(ordinaryDay({ inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 0, costUsd: 1 })))
+      .toEqual(["cost_above_any_price"]);
+    // The dearest real price, $600 per million output tokens, passes.
+    expect(codes(ordinaryDay({ inputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0, outputTokens: 1_000_000, costUsd: 600, receiptCount: 100 })))
+      .toEqual([]);
+  });
+
   it("quarantines negative counts", () => {
     expect(codes(ordinaryDay({ outputTokens: -1 }))).toEqual(["negative_counts"]);
     expect(codes(ordinaryDay({ costUsd: Number.NaN }))).toEqual(["negative_counts"]);
   });
 
-  it("keeps the Device watermark monotone outside the backfill window", () => {
-    const row = ordinaryDay({ day: "2026-08-10" });
-    expect(codes(row, { now: NOW })).toEqual([]);
-    expect(
-      checkPlausibility(row, { now: NOW, deviceWatermarkDay: "2026-08-11" }).reasons.map(
-        (r) => r.code,
-      ),
-    ).toEqual([]);
-    expect(
-      checkPlausibility(row, { now: NOW, deviceWatermarkDay: "2026-08-16" }).reasons.map(
-        (r) => r.code,
-      ),
-    ).toContain("stale_backfill");
+  it("judges an old day like any other", () => {
+    expect(checkPlausibility(ordinaryDay({ day: "2025-01-10" }), { now: NOW })).toEqual({
+      trustLevel: "verified",
+      reasons: [],
+    });
   });
 
-  it("quarantines a Receipt Stream claiming more tokens than its messages can carry", () => {
-    const row = ordinaryDay({ receiptCount: 1 });
-    expect(codes(row)).toContain("receipt_stream_incoherent");
-    expect(checkPlausibility(row, { now: NOW }).trustLevel).toBe("quarantined");
+  it("reports, and does not quarantine, a Receipt Stream claiming more tokens than its messages can carry", () => {
+    const result = checkPlausibility(ordinaryDay({ receiptCount: 1 }), { now: NOW });
+    expect(result.trustLevel).toBe("reported");
+    expect(result.reasons).toEqual([
+      expect.objectContaining({ code: "receipt_stream_incoherent", observed: 240_000, limit: 200_000 }),
+    ]);
   });
 
   it("reports, and does not quarantine, a Receipt Stream thinner than its tokens", () => {
     const result = checkPlausibility(ordinaryDay({ receiptCount: 5_000_000 }), { now: NOW });
     expect(result.trustLevel).toBe("reported");
     expect(result.reasons.map((r) => r.code)).toEqual(["receipt_stream_thin"]);
-  });
-
-  it("still quarantines a thin stream when another check fails, and keeps both reasons", () => {
-    const result = checkPlausibility(
-      ordinaryDay({ receiptCount: 5_000_000, costUsd: 9_000 }),
-      { now: NOW },
-    );
-    expect(result.trustLevel).toBe("quarantined");
-    expect(result.reasons.map((r) => r.code)).toEqual(
-      expect.arrayContaining(["daily_cost_ceiling", "receipt_stream_thin"]),
-    );
   });
 
   // The shape that prompted this split: a collector under-reported one model's
@@ -150,20 +126,6 @@ describe("checkPlausibility", () => {
     ]);
   });
 
-  it("takes ceilings from the caller", () => {
-    const row = ordinaryDay({ costUsd: 500 });
-    expect(codes(row)).toEqual([]);
-    expect(codes(row, { now: NOW, limits: { maxDailyCostUsdByProvider: { anthropic: 100 } } })).toContain(
-      "daily_cost_ceiling",
-    );
-  });
-
-  it("matches a model ceiling by prefix", () => {
-    const row = ordinaryDay({ model: "claude-haiku-4-5-20251001", outputTokens: 100_000_000 });
-    // The haiku prefix raises the rate ceiling, so this only trips the ratio checks.
-    expect(codes(row)).not.toContain("output_rate_ceiling");
-  });
-
   it("only ever returns one of the three Trust Levels, and explains every non-Verified verdict", () => {
     const nonNegative = fc.integer({ min: 0, max: 5_000_000_000 });
     fc.assert(
@@ -188,15 +150,23 @@ describe("checkPlausibility", () => {
           } else {
             expect(result.reasons.length).toBeGreaterThan(0);
           }
+          // Only a day that has not started, or is not a day at all, or a cost
+          // beyond any price for its tokens, is held back.
+          const processed =
+            row.inputTokens + row.cachedInputTokens + row.cacheWriteTokens + row.outputTokens + row.reasoningTokens;
+          const impossible =
+            row.day === "2027-01-01" || row.day === "oops" || row.costUsd > (processed / 1_000_000) * 2000;
+          expect(result.trustLevel === "quarantined").toBe(impossible);
         },
       ),
     );
   });
 
-  it("ships loose defaults so a real day is never quarantined by accident", () => {
-    expect(DEFAULT_PLAUSIBILITY_LIMITS.backfillWindowDays).toBe(2);
-    expect(checkPlausibility(ordinaryDay({ costUsd: 300 }), { now: NOW }).trustLevel).toBe(
-      "verified",
-    );
+  it("ships bounds that real usage stays inside", () => {
+    expect(DEFAULT_PLAUSIBILITY_LIMITS).toEqual({
+      maxCostUsdPerMillionTokens: 2000,
+      maxOutputTokensPerReceipt: 200_000,
+      minOutputTokensPerReceipt: 1,
+    });
   });
 });

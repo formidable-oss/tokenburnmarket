@@ -1,7 +1,7 @@
 // @tokenburnmarket/core: pure domain logic shared by the web app and the Collector.
 //
 // Contract: mint curve (ADR 0004), LMSR market maker (ADR 0002), plausibility
-// checks and Trust Levels (ADR 0003), Sync payload schema and Ed25519 signing.
+// checks and Trust Levels (ADR 0003, ADR 0006), Sync payload schema and Ed25519 signing.
 // Nothing here touches the network, the filesystem, or the database, and the
 // only runtime dependency is zod. Runs unchanged in Node and in the browser.
 export const CORE_VERSION = "0.1.0";
@@ -47,7 +47,7 @@ export {
 } from "./lmsr";
 export type { LmsrQuote, TradeSide } from "./lmsr";
 
-// Plausibility checks (ADR 0003)
+// Plausibility checks (ADR 0003, ADR 0006)
 export {
   DEFAULT_PLAUSIBILITY_LIMITS,
   checkPlausibility,
@@ -77,6 +77,7 @@ export type { DeviceKeyPair } from "./signing";
 
 // Sync payload
 export {
+  BACKFILL_WINDOW_DAYS,
   MAX_RECEIPTS_PER_DAY,
   MAX_SYNC_DAYS,
   ReceiptHashSchema,

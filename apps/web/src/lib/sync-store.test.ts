@@ -1,17 +1,19 @@
 /*
   The Sync store against a real Postgres. sync.test.ts proves the rules against
   maps; this proves the SQL under them: the batched foreign-receipt lookup keeps
-  each row's receipts under its own model, and the stored figures and bytea
-  fingerprints read back in the shape the rules compare. Runs against
-  DATABASE_URL when there is one and skips itself when there is not.
+  each row's receipts under its own model, the stored figures and bytea
+  fingerprints read back in the shape the rules compare, an Admin's latest
+  decision is read per row, and machine verdicts land on the rows they name.
+  Runs against DATABASE_URL when there is one and skips itself when there is not.
 */
 import { readFileSync } from "node:fs";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { SyncDay, SyncPayload } from "@tokenburnmarket/core";
 import { db } from "@/db";
-import { builderDays, builders, devices, usageDays } from "@/db/schema";
-import { applySync } from "./sync";
+import { builderDays, builders, devices, quarantineReviews, usageDays } from "@/db/schema";
+import { devicesWithUsage } from "./device-queries";
+import { applySync, regroupMachines, restoreRetiredQuarantines } from "./sync";
 import { drizzleSyncStore } from "./sync-store";
 
 /** .env.local is where a developer keeps the dev database; vitest does not read it. */
@@ -55,14 +57,8 @@ function day(overrides: Partial<SyncDay> = {}): SyncDay {
   };
 }
 
-function payload(deviceId: string, days: SyncDay[], reviewHistory = false): SyncPayload {
-  return {
-    version: 1,
-    deviceId,
-    sentAt: NOW.toISOString(),
-    days,
-    ...(reviewHistory ? { reviewHistory: true as const } : {}),
-  };
+function payload(deviceId: string, days: SyncDay[]): SyncPayload {
+  return { version: 1, deviceId, sentAt: NOW.toISOString(), days };
 }
 
 async function cleanup() {
@@ -78,13 +74,13 @@ async function seed() {
   const ids = await db
     .insert(devices)
     .values(["a", "b", "c"].map((name) => ({ builderId: builder!.id, name, publicKey: `${PREFIX}${name}` })))
-    .returning({ id: devices.id });
+    .returning({ id: devices.id, machineId: devices.machineId });
   const device = (index: number, watermarkDay: string | null = null) => ({
     id: ids[index]!.id,
     builderId: builder!.id,
     watermarkDay,
   });
-  return { builderId: builder!.id, device };
+  return { builderId: builder!.id, device, machineOf: (index: number) => ids[index]!.machineId };
 }
 
 async function usageRow(deviceId: string, rowDay: string, model = "claude-opus-5") {
@@ -149,19 +145,161 @@ describe.skipIf(!connected)("the Drizzle Sync store", () => {
     expect(await rolledCost(builderId, OLD)).toBeCloseTo(10.246912, 6);
   });
 
-  it("keeps unchanged old rows during a history review and reviews changed ones", async () => {
-    const { device } = await seed();
+  it("raises and corrects old rows, and never lowers them", async () => {
+    const { builderId, device } = await seed();
     const old2 = "2019-04-02";
     await applySync(drizzleSyncStore, device(0), payload(device(0).id, [
       day({ day: OLD }), day({ day: old2 }), day(),
     ]), NOW);
-    const review = await applySync(drizzleSyncStore, device(0, DAY), payload(device(0).id, [
-      day({ day: OLD, receipts: [...stream(10)].reverse() }),
-      day({ day: old2, costUsd: 6 }),
+    const again = await applySync(drizzleSyncStore, device(0, DAY), payload(device(0).id, [
+      day({ day: OLD, costUsd: 6 }),
+      day({ day: old2, receipts: stream(4), outputTokens: 10, costUsd: 1 }),
       day(),
-    ], true), NOW);
-    expect(review.days.map((row) => row.trustLevel)).toEqual(["verified", "quarantined", "verified"]);
-    expect((await usageRow(device(0).id, OLD))?.trustLevel).toBe("verified");
-    expect((await usageRow(device(0).id, old2))).toMatchObject({ trustLevel: "quarantined", costUsd: 6 });
+    ]), NOW);
+    expect(again.days.map((row) => row.trustLevel)).toEqual(["verified", "verified", "verified"]);
+    expect(await usageRow(device(0).id, OLD)).toMatchObject({ trustLevel: "verified", costUsd: 6 });
+    expect(await usageRow(device(0).id, old2)).toMatchObject({ costUsd: 5.123456, receiptCount: 10 });
+    expect(await rolledCost(builderId, OLD)).toBe(6);
+  });
+
+  it("leaves a row an Admin kept out, and only while that is the row's latest decision", async () => {
+    const { builderId, device } = await seed();
+    const old2 = "2019-04-02";
+    await applySync(drizzleSyncStore, device(0), payload(device(0).id, [day({ day: OLD }), day({ day: old2 })]), NOW);
+    await db.update(usageDays).set({ trustLevel: "quarantined" }).where(eq(usageDays.deviceId, device(0).id));
+    const review = { deviceId: device(0).id, day: OLD, provider: "claude", model: "claude-opus-5", reviewerId: builderId };
+    await db.insert(quarantineReviews).values({ ...review, decision: "reported", createdAt: new Date("2019-04-16T08:00:00Z") });
+    await db.insert(quarantineReviews).values({ ...review, decision: "keep", createdAt: new Date("2019-04-16T09:00:00Z") });
+    // A later decision on another row must not stand in for this one's.
+    await db.insert(quarantineReviews).values({ ...review, day: old2, decision: "verified", createdAt: new Date("2019-04-16T09:30:00Z") });
+
+    const stored = await drizzleSyncStore.storedUsage(device(0).id, [OLD, old2]);
+    expect(stored.find((row) => row.day === OLD)).toMatchObject({ keptOut: true, duplicateOfDeviceId: null });
+    expect(stored.find((row) => row.day === old2)).toMatchObject({ keptOut: false });
+    expect(stored[0]!.checkedAt).toBeInstanceOf(Date);
+    expect((await drizzleSyncStore.quarantinedUsage()).filter((row) => row.builderId === builderId).map((row) => row.day))
+      .toEqual([old2]);
+    await applySync(drizzleSyncStore, device(0, DAY), payload(device(0).id, [day({ day: OLD, costUsd: 9 })]), NOW);
+    expect(await usageRow(device(0).id, OLD)).toMatchObject({ trustLevel: "quarantined", costUsd: 5.123456 });
+
+    await db.insert(quarantineReviews).values({ ...review, decision: "verified", createdAt: new Date("2019-04-16T10:00:00Z") });
+    expect((await drizzleSyncStore.storedUsage(device(0).id, [OLD]))[0]?.keptOut).toBe(false);
+  });
+
+  it("counts one machine once across its devices, and twice once they split", async () => {
+    const { builderId, device, machineOf } = await seed();
+    const machine = machineOf(0);
+    await db.update(devices).set({ machineId: machine }).where(eq(devices.id, device(1).id));
+    expect(new Set(await drizzleSyncStore.machineMembers(builderId, machine))).toEqual(
+      new Set([device(0).id, device(1).id]),
+    );
+
+    await applySync(drizzleSyncStore, device(0), payload(device(0).id, [day({ day: OLD })]), NOW);
+    const later = new Date(NOW.getTime() + 3_600_000);
+    expect(await drizzleSyncStore.machineOf(device(1).id)).toBe(machine);
+    await applySync(
+      drizzleSyncStore,
+      device(1),
+      { ...payload(device(1).id, [day({ day: OLD, receipts: stream(10, "b"), costUsd: 6 })]), sentAt: later.toISOString() },
+      later,
+    );
+    expect(await usageRow(device(0).id, OLD)).toMatchObject({
+      duplicateOfDeviceId: device(1).id,
+      trustLevel: "reported",
+      quarantineReasons: [expect.objectContaining({ code: "same_machine" })],
+    });
+    expect(await usageRow(device(1).id, OLD)).toMatchObject({ duplicateOfDeviceId: null, trustLevel: "verified" });
+    expect(await rolledCost(builderId, OLD)).toBe(6);
+
+    const own = "00000000-0000-4000-8000-000000000001";
+    await db.update(devices).set({ machineId: own }).where(eq(devices.id, device(1).id));
+    expect(await regroupMachines(drizzleSyncStore, builderId, [machine, own], later)).toBe(1);
+    expect(await usageRow(device(0).id, OLD)).toMatchObject({
+      duplicateOfDeviceId: null, trustLevel: "verified", quarantineReasons: [],
+    });
+    expect(await rolledCost(builderId, OLD)).toBeCloseTo(11.123456, 6);
+
+    const summary = await devicesWithUsage(builderId);
+    expect(summary.map((row) => [row.name, row.firstDay, row.lastDay, row.countedCostUsd])).toEqual([
+      ["a", OLD, OLD, 5.123456],
+      ["b", OLD, OLD, 6],
+      ["c", null, null, 0],
+    ]);
+  });
+
+  it("puts back rows that only retired checks quarantined, and keeps what an Admin kept out", async () => {
+    const { builderId, device } = await seed();
+    await applySync(drizzleSyncStore, device(0), payload(device(0).id, [day({ day: OLD }), day()]), NOW);
+    await db
+      .update(usageDays)
+      .set({ trustLevel: "quarantined", quarantineReasons: [{ code: "stale_backfill", message: "old" }] })
+      .where(and(eq(usageDays.deviceId, device(0).id), eq(usageDays.day, OLD)));
+    await db
+      .update(usageDays)
+      .set({ trustLevel: "quarantined", quarantineReasons: [{ code: "stale_backfill", message: "old" }] })
+      .where(and(eq(usageDays.deviceId, device(0).id), eq(usageDays.day, DAY)));
+    await db.insert(quarantineReviews).values({
+      deviceId: device(0).id, day: DAY, provider: "claude", model: "claude-opus-5", decision: "keep", reviewerId: builderId,
+    });
+    await db.update(builderDays).set({ trustLevelMin: "quarantined", costUsd: 0 }).where(eq(builderDays.builderId, builderId));
+
+    // Scoped to this Builder, at the real time, so other rows in the database stay as they are.
+    expect(await restoreRetiredQuarantines(drizzleSyncStore, new Date(), builderId)).toBe(1);
+    expect(await usageRow(device(0).id, OLD)).toMatchObject({ trustLevel: "verified", quarantineReasons: [] });
+    expect(await usageRow(device(0).id, DAY)).toMatchObject({ trustLevel: "quarantined" });
+    expect(await rolledCost(builderId, OLD)).toBe(5.123456);
+  });
+
+  it("never writes over a row an Admin kept out, nor lets it back in", async () => {
+    const { builderId, device } = await seed();
+    await applySync(drizzleSyncStore, device(0), payload(device(0).id, [day({ day: OLD })]), NOW);
+    const key = and(eq(usageDays.deviceId, device(0).id), eq(usageDays.day, OLD));
+    await db.update(usageDays).set({ trustLevel: "quarantined" }).where(key);
+    await db.insert(quarantineReviews).values({
+      deviceId: device(0).id, day: OLD, provider: "claude", model: "claude-opus-5", decision: "keep", reviewerId: builderId,
+    });
+
+    await drizzleSyncStore.putUsageRows([{
+      deviceId: device(0).id, builderId, day: OLD, provider: "claude", model: "claude-opus-5",
+      inputTokens: 1, cachedInputTokens: 1, cacheWriteTokens: 1, outputTokens: 1, reasoningTokens: 0, costUsd: 99,
+      trustLevel: "verified", quarantineReasons: [], receiptCount: 1, receiptFingerprint: null,
+      duplicateOfDeviceId: null, checkedAt: NOW,
+    }]);
+    await drizzleSyncStore.putVerdicts([{
+      deviceId: device(0).id, day: OLD, provider: "claude", model: "claude-opus-5",
+      trustLevel: "verified", quarantineReasons: [], duplicateOfDeviceId: null,
+    }]);
+    expect(await usageRow(device(0).id, OLD)).toMatchObject({ trustLevel: "quarantined", costUsd: 5.123456 });
+
+    // Staying out is still allowed: a kept-out row can become another row's copy.
+    await drizzleSyncStore.putVerdicts([{
+      deviceId: device(0).id, day: OLD, provider: "claude", model: "claude-opus-5",
+      trustLevel: "quarantined", quarantineReasons: [{ code: "same_machine", message: "copy" }], duplicateOfDeviceId: device(1).id,
+    }]);
+    expect((await usageRow(device(0).id, OLD))?.duplicateOfDeviceId).toBe(device(1).id);
+  });
+
+  it("finds Builder-days whose totals do not match their counted rows", async () => {
+    const { builderId, device } = await seed();
+    const old2 = "2019-04-02";
+    await applySync(drizzleSyncStore, device(0), payload(device(0).id, [day({ day: OLD }), day({ day: old2 }), day()]), NOW);
+    await db.update(builderDays).set({ costUsd: 1 }).where(and(eq(builderDays.builderId, builderId), eq(builderDays.day, OLD)));
+    await db.delete(builderDays).where(and(eq(builderDays.builderId, builderId), eq(builderDays.day, old2)));
+
+    const stale = (await drizzleSyncStore.staleBuilderDays()).filter((row) => row.builderId === builderId);
+    expect(stale.map((row) => row.day).sort()).toEqual([OLD, old2]);
+  });
+
+  it("names Builders whose quarantined day no counted row holds back, and not one an Admin kept out", async () => {
+    const { builderId, device } = await seed();
+    await applySync(drizzleSyncStore, device(0), payload(device(0).id, [day({ day: OLD })]), NOW);
+    await db.update(builderDays).set({ trustLevelMin: "quarantined" }).where(eq(builderDays.builderId, builderId));
+    expect(await drizzleSyncStore.buildersWithStaleQuarantinedDays(builderId)).toEqual([builderId]);
+
+    await db
+      .update(usageDays)
+      .set({ trustLevel: "quarantined" })
+      .where(and(eq(usageDays.deviceId, device(0).id), eq(usageDays.day, OLD)));
+    expect(await drizzleSyncStore.buildersWithStaleQuarantinedDays(builderId)).toEqual([]);
   });
 });

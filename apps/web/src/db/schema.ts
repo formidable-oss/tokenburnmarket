@@ -143,6 +143,18 @@ export const devices = pgTable("devices", {
   */
   lastSyncedDay: date("last_synced_day"),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  /*
+    The machine this Device reads. Every Device starts as a machine of its own.
+    A Builder who connected one machine more than once gives those Devices the
+    same value, and each day then counts once for it (ADR 0006).
+  */
+  machineId: uuid("machine_id").notNull().defaultRandom(),
+  /*
+    Whether this Device's token may place bets. A connect code someone else
+    started can be approved by mistake, so a new Device cannot trade until the
+    Builder says so on the approval page or in settings (ADR 0007).
+  */
+  canTrade: boolean("can_trade").notNull().default(false),
 });
 
 export type Device = typeof devices.$inferSelect;
@@ -179,7 +191,7 @@ export type DeviceConnectCode = typeof deviceConnectCodes.$inferSelect;
 */
 export const trustLevel = pgEnum("trust_level", ["verified", "reported", "quarantined"]);
 
-/** One reason a row is not plainly Verified. Codes come from core, plus `duplicate_of_device`. */
+/** One reason a row is not plainly Verified. Codes come from core, plus `duplicate_of_device` and `same_machine`. */
 export interface UsageReason {
   code: string;
   message: string;

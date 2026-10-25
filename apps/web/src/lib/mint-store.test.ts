@@ -13,7 +13,7 @@ function render(throughDay: string) {
   return new QueryBuilder()
     .select()
     .from(builderDays)
-    .where(mintCandidateFilter(throughDay))
+    .where(mintCandidateFilter(throughDay, "2026-08-08"))
     .toSQL();
 }
 
@@ -25,6 +25,8 @@ describe("mintCandidateFilter", () => {
     expect(condition).toContain(`"builder_days"."day" <= $1`);
     expect(params[0]).toBe("2026-08-15");
     // Every `or` sits inside a group of its own, so nothing escapes the `and`.
-    expect(condition).toMatch(/\(("builder_days"\."mint_version") is distinct from \$2 or [^()]*\)/);
+    expect(condition).toMatch(/\("builder_days"\."mint_version" is distinct from \$\d or [^()]*\)/);
+    // The top-up window is its own group as well.
+    expect(condition).toMatch(/\("builder_days"\."mint_revision" = \$\d or "builder_days"\."day" >= \$\d\)/);
   });
 });

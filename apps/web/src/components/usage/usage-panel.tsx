@@ -284,8 +284,8 @@ export function UsagePanel({
             </table>
           </div>
           <p className="mt-3 max-w-[52ch] text-[0.85rem] text-subtle">
-            These days failed a plausibility check, so they stay out of leaderboards and credits
-            until someone reviews them.
+            An admin kept these rows out. They stay out of leaderboards and credits until an admin
+            approves them.
           </p>
         </div>
       ) : null}

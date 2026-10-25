@@ -78,6 +78,13 @@
       "when": 1792716020043,
       "tag": "0010_restore_resent_days",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792875044256,
+      "tag": "0011_device_machines_and_trading",
+      "breakpoints": true
     }
   ]
 }

@@ -82,6 +82,15 @@ export default async function ConnectPage({ params, searchParams }: PageProps<"/
     return <Dead title="Rejected." message="Nothing was bound. The command on that machine will stop with an error." />;
   }
 
+  if (done === "taken") {
+    return (
+      <Dead
+        title="This device is on another account."
+        message="Its key belongs to a device that still works for someone else, so nothing was bound. Its owner can revoke it in settings. Or delete the tokenburnmarket config on that machine and run connect again."
+      />
+    );
+  }
+
   if (!code) {
     return <Dead title="Not a code." message="Connect codes look like ABCD-2345. Check the one your terminal printed." />;
   }
@@ -114,15 +123,27 @@ export default async function ConnectPage({ params, searchParams }: PageProps<"/
 
       <p className="mt-6 text-[0.85rem] text-subtle">
         The same fingerprint is printed on the machine that asked. If it does not match, reject.
+        Approve only a code you started in your own terminal: the device uploads usage to your
+        account.
       </p>
 
       <div className="signal-rail my-7" aria-hidden />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <form action={approveDevice}>
-          <input type="hidden" name="code" value={row.code} />
-          <Button type="submit">Approve</Button>
-        </form>
+      <form id="approve" action={approveDevice}>
+        <input type="hidden" name="code" value={row.code} />
+        <label className="flex items-start gap-3 text-[0.9rem] text-muted">
+          <input type="checkbox" name="trade" className="mt-1 size-4 accent-(--primary)" />
+          <span>
+            Let this device place bets with my credits. Agents use this to trade through the MCP
+            server. You can change it in settings.
+          </span>
+        </label>
+      </form>
+
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <Button type="submit" form="approve">
+          Approve
+        </Button>
         <form action={rejectDevice}>
           <input type="hidden" name="code" value={row.code} />
           <Button type="submit" variant="secondary">

@@ -88,6 +88,18 @@ export async function POST(request: Request) {
     return Response.json({ placed: false, quote: priced });
   }
 
+  // A quote is harmless. Spending needs a Device the Builder let trade, because
+  // a connect code can be approved for a machine they do not own (ADR 0007).
+  if (!caller.canTrade) {
+    return Response.json(
+      {
+        error: "trading_off",
+        message: "This device cannot place bets. Turn on trading for it in Settings on the site.",
+      },
+      { status: 403 },
+    );
+  }
+
   const result = await executeTrade(caller.builderId, marketId, {
     outcomeId,
     side,

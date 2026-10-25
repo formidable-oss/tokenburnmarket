@@ -1,6 +1,6 @@
 # ADR 0005 — Sync Slots and Receipt retention, so the database sleeps
 
-Status: accepted · 2026-10-21
+Status: accepted · 2026-10-21 · history review superseded by ADR 0006
 
 ## Context
 Neon bills compute for every minute the database is awake and suspends it after five idle minutes. In October 2026 it was awake 91% of the time at 1 CU, about $48 of a month's bill for 21 Builders. Nothing was heavy; something talked to it every few minutes: the resolution cron every ten minutes, each MCP server syncing at session start (ten-minute throttle) and each daemon every fifteen, cache entries expiring every one to five minutes. Receipts were 830 MB of the 960 MB stored. The budget is $3 a month.

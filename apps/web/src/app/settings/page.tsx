@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { CreditsPanel } from "@/components/credits/credits-panel";
 import { AgentSetup } from "@/components/setup/agent-setup";
 import { recentCreditEntries } from "@/lib/credit-queries";
-import { activeDevicesFor } from "@/lib/device-auth";
+import { OWN_MACHINE, devicesWithUsage, machinePeer, type DeviceSummary } from "@/lib/device-queries";
 import { agentSetupPrompt } from "@/lib/setup-prompt";
-import { revokeDevice, signOutAction } from "./actions";
+import { revokeDevice, setDeviceMachine, setDeviceTrading, signOutAction } from "./actions";
 import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
@@ -25,14 +25,25 @@ const syncedAt = new Intl.DateTimeFormat("en-GB", {
   timeStyle: "short",
 });
 
+const connectedOn = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", dateStyle: "medium" });
+
+const money = (usd: number) =>
+  usd.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+
+/** Names repeat when one machine was connected twice, so the date tells them apart. */
+function deviceLabel(device: DeviceSummary): string {
+  return `${device.name}, connected ${connectedOn.format(device.createdAt)}`;
+}
+
 export default async function SettingsPage() {
   const builder = await currentBuilder();
   if (!builder) redirect("/signin?next=/settings");
 
   const [devices, creditEntries] = await Promise.all([
-    activeDevicesFor(builder.id),
+    devicesWithUsage(builder.id),
     recentCreditEntries(builder.id),
   ]);
+  const active = devices.filter((device) => !device.revokedAt);
 
   return (
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
@@ -42,7 +53,7 @@ export default async function SettingsPage() {
         GitHub owns your handle and avatar. Set your country and X handle here.
       </p>
 
-      {devices.length === 0 ? (
+      {active.length === 0 ? (
         <div className="mt-8">
           <AgentSetup prompt={agentSetupPrompt(builder.handle)} />
         </div>
@@ -82,8 +93,16 @@ export default async function SettingsPage() {
       <h2 className="type-label">devices</h2>
       <p className="mt-3 max-w-[52ch] text-[0.95rem] text-muted">
         Every machine that uploads usage signs it with a key you approved. Revoking one stops it on
-        its next request and keeps the usage it already sent.
+        its next request and keeps the usage it already sent. Connecting it again makes a new
+        device.
       </p>
+      {devices.length > 1 ? (
+        <p className="mt-3 max-w-[52ch] text-[0.95rem] text-muted">
+          Connected one machine more than once? Set its devices to the same machine. Each day then
+          counts once for that machine, from the most complete copy. Different machines always add
+          up.
+        </p>
+      ) : null}
 
       {devices.length === 0 ? (
         <p className="mt-6 text-[0.95rem] text-muted">
@@ -91,31 +110,77 @@ export default async function SettingsPage() {
         </p>
       ) : (
         <ul className="mt-6 rounded-(--radius-panel) border border-border bg-surface">
-          {devices.map((device, index) => (
-            <li
-              key={device.id}
-              className={`flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4 ${
-                index > 0 ? "border-t border-border-faint" : ""
-              }`}
-            >
-              <span className="type-data min-w-[12rem] flex-1 text-[0.95rem] text-foreground">
-                {device.name}
-              </span>
-              <span className="type-data text-[0.82rem] text-muted">
-                {device.lastSyncAt ? (
-                  <>last sync {syncedAt.format(device.lastSyncAt)} UTC</>
-                ) : (
-                  <Badge tone="neutral">never synced</Badge>
+          {devices.map((device, index) => {
+            const peer = machinePeer(device, devices);
+            const others = devices.filter((other) => other.id !== device.id);
+            return (
+              <li
+                key={device.id}
+                className={`flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4 ${
+                  index > 0 ? "border-t border-border-faint" : ""
+                }`}
+              >
+                <div className="min-w-[14rem] flex-1">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="type-data text-[0.95rem] text-foreground">{device.name}</span>
+                    {device.revokedAt ? <Badge tone="neutral">revoked</Badge> : null}
+                    {device.lastSyncAt ? null : <Badge tone="neutral">never synced</Badge>}
+                    {!device.revokedAt && device.canTrade ? <Badge tone="neutral">can place bets</Badge> : null}
+                  </p>
+                  <p className="type-data mt-1 text-[0.82rem] text-muted">
+                    connected {connectedOn.format(device.createdAt)}
+                    {device.lastSyncAt ? <> · last sync {syncedAt.format(device.lastSyncAt)} UTC</> : null}
+                  </p>
+                  {device.firstDay && device.lastDay ? (
+                    <p className="type-data mt-1 text-[0.82rem] text-muted">
+                      usage {device.firstDay} to {device.lastDay} · {money(device.countedCostUsd)} counted
+                    </p>
+                  ) : null}
+                </div>
+                {others.length > 0 ? (
+                  <form action={setDeviceMachine} className="flex items-center gap-2">
+                    <input type="hidden" name="deviceId" value={device.id} />
+                    <label className="sr-only" htmlFor={`machine-${device.id}`}>
+                      Machine for {deviceLabel(device)}
+                    </label>
+                    <select
+                      id={`machine-${device.id}`}
+                      name="machine"
+                      defaultValue={peer?.id ?? OWN_MACHINE}
+                      className="type-data h-10 max-w-[22rem] rounded-(--radius-control) border border-border bg-surface-sunken px-3 text-sm text-foreground"
+                    >
+                      <option value={OWN_MACHINE}>Its own machine</option>
+                      {others.map((other) => (
+                        <option key={other.id} value={other.id}>
+                          Same machine as {deviceLabel(other)}
+                        </option>
+                      ))}
+                    </select>
+                    <Button type="submit" variant="secondary">
+                      Save
+                    </Button>
+                  </form>
+                ) : null}
+                {device.revokedAt ? null : (
+                  <form action={setDeviceTrading}>
+                    <input type="hidden" name="deviceId" value={device.id} />
+                    <input type="hidden" name="canTrade" value={device.canTrade ? "off" : "on"} />
+                    <Button type="submit" variant="ghost">
+                      {device.canTrade ? "Stop bets" : "Allow bets"}
+                    </Button>
+                  </form>
                 )}
-              </span>
-              <form action={revokeDevice}>
-                <input type="hidden" name="deviceId" value={device.id} />
-                <Button type="submit" variant="ghost">
-                  Revoke
-                </Button>
-              </form>
-            </li>
-          ))}
+                {device.revokedAt ? null : (
+                  <form action={revokeDevice}>
+                    <input type="hidden" name="deviceId" value={device.id} />
+                    <Button type="submit" variant="ghost">
+                      Revoke
+                    </Button>
+                  </form>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
