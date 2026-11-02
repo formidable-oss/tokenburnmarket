@@ -19,6 +19,36 @@ const defaults: MachineUsageOptions = {
 };
 
 describe("readMachineUsage", () => {
+  it("passes Codex session models to the receipt reader when a Codex row exists", async () => {
+    const codex = { ...row, provider: "codex", model: "gpt-5.6-luna" };
+    const sessionModels = new Map([["rollout-alias", [codex.model]]]);
+    let received: Parameters<NonNullable<MachineUsageOptions["readReceipts"]>> | undefined;
+    let calls = 0;
+    await readMachineUsage({ ...defaults, since: "2026-10-21", readBase: async () => [codex],
+      readCodexSessionModels: async (options) => {
+        calls += 1;
+        expect(options).toMatchObject({ home: defaults.home, since: "2026-10-21" });
+        expect(options?.signal).toBeInstanceOf(AbortSignal);
+        return sessionModels;
+      },
+      readReceipts: (...args) => { received = args; return new Map(); },
+    });
+    expect(calls).toBe(1);
+    expect(received?.[2]).toBe("2026-10-21");
+    expect(received?.[3]?.codexSessionModels).toBe(sessionModels);
+  });
+
+  it("does not read Codex session models when no Codex row exists", async () => {
+    let calls = 0;
+    let received: Parameters<NonNullable<MachineUsageOptions["readReceipts"]>>[3];
+    await readMachineUsage({ ...defaults,
+      readCodexSessionModels: async () => { calls += 1; return new Map(); },
+      readReceipts: (_env, _home, _since, options) => { received = options; return new Map(); },
+    });
+    expect(calls).toBe(0);
+    expect(received?.codexSessionModels).toEqual(new Map());
+  });
+
   it("restores per-model OpenCode reasoning without changing cost", async () => {
     const usage = await readMachineUsage(defaults);
     const days = buildSyncDays(usage.aggregates, usage.receipts, { now: new Date("2026-10-23T00:00:00Z") });

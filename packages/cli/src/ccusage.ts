@@ -2,9 +2,10 @@
   ccusage reads local usage for supported agents and estimates token cost.
   This module converts its reports to disjoint token counts.
 
-  Two calls, because no single report has everything:
+  Three calls, because no single report has everything:
     `daily --by-agent`  every detected agent, per model, with cost
     `codex daily`       reasoning tokens, which the unified report drops
+    `codex session`     priced models for receipts whose rollouts only record an alias
 
   ccusage runs as a pinned CLI because its adapters are not a JavaScript API.
   `npx` keeps the Collector's own install small. Point
@@ -147,6 +148,18 @@ export function parseCodexReasoning(json: unknown): Map<string, number> {
   return out;
 }
 
+/** Match rollout basenames to the model names ccusage prices in its daily report. */
+export function parseCodexSessionModels(json: unknown): Map<string, string[]> {
+  const sessions = isRecord(json) && Array.isArray(json.sessions) ? json.sessions : [];
+  const out = new Map<string, string[]>();
+  for (const entry of sessions) {
+    if (!isRecord(entry) || typeof entry.sessionFile !== "string" || !entry.sessionFile ||
+      !isRecord(entry.models)) continue;
+    out.set(entry.sessionFile, [...new Set(Object.keys(entry.models))].sort());
+  }
+  return out;
+}
+
 export interface CcusageOptions {
   /** Oldest UTC day to ask for, `YYYY-MM-DD`. Omitted means everything on this machine. */
   since?: string;
@@ -168,6 +181,21 @@ async function spawnCcusage(env: NodeJS.ProcessEnv, args: string[], signal?: Abo
     return await runCollector(command!, [...base, ...args, "--config", config], env, signal);
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+}
+
+/** Session models let alias-only rollouts attach receipts to the priced Usage row. */
+export async function readCodexSessionModels(options: CcusageOptions = {}): Promise<Map<string, string[]>> {
+  const env = usageEnvironment(options.env ?? process.env, options.home ?? homedir());
+  const exec = options.exec ?? ((args: string[]) => spawnCcusage(env, args, options.signal));
+  const window = options.since ? ["--since", options.since.replace(/-/g, "")] : [];
+  const common = ["--json", "--timezone", "UTC", ...window];
+  try {
+    return parseCodexSessionModels(JSON.parse(await exec(["codex", "session", ...common])));
+  } catch {
+    options.signal?.throwIfAborted();
+    options.warn?.("Codex session models are unavailable. Rollouts that record only a model alias stay Reported.");
+    return new Map();
   }
 }
 
