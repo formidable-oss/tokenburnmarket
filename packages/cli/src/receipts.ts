@@ -187,6 +187,21 @@ export function readClaudeStreams(roots: readonly string[], sinceDay?: string): 
   return index;
 }
 
+/** ccusage identifies sessions by rollout basename without the archive extension. */
+export function codexSessionFile(path: string): string {
+  return basename(path).replace(/\.jsonl(?:\.zst)?$/, "");
+}
+
+/**
+ * Codex Desktop's auto-review subagent writes only the alias `codex-auto-review`,
+ * but ccusage prices the session under the real model. A Receipt only counts if
+ * it lands on the key its Usage row was filed under. The one-model rule avoids
+ * guessing when a session switched models.
+ */
+export function pricedModel(rolloutModel: string, priced?: readonly string[]): string {
+  return priced?.length === 1 && !priced.includes(rolloutModel) ? priced[0]! : rolloutModel;
+}
+
 /**
  * Codex: sha256(`session_id:ordinal:timestamp`) per `token_count` event.
  *
@@ -194,7 +209,11 @@ export function readClaudeStreams(roots: readonly string[], sinceDay?: string): 
  * Rollout files are append only, so the same event keeps the same ordinal on
  * every run and on every machine that reads the file.
  */
-export function readCodexStreams(roots: readonly string[], sinceDay?: string): ReceiptIndex {
+export function readCodexStreams(
+  roots: readonly string[],
+  sinceDay?: string,
+  options: { sessionModels?: ReadonlyMap<string, readonly string[]> } = {},
+): ReceiptIndex {
   const index: ReceiptIndex = new Map();
 
   for (const root of roots) {
@@ -205,6 +224,7 @@ export function readCodexStreams(roots: readonly string[], sinceDay?: string): R
       ...transcriptFiles(join(root, "archived_sessions"), sinceDay),
     ];
     for (const file of files) {
+      const priced = options.sessionModels?.get(codexSessionFile(file));
       let sessionId = "";
       let model = "";
       let ordinal = 0;
@@ -256,11 +276,11 @@ export function readCodexStreams(roots: readonly string[], sinceDay?: string): R
         if (!day) continue;
         if (sinceDay && day < sinceDay) continue;
 
-        add(index, day, "codex", model, sha256(`${sessionId}:${position}:${entry.timestamp}`));
+        add(index, day, "codex", pricedModel(model, priced), sha256(`${sessionId}:${position}:${entry.timestamp}`));
       }
       for (const responseId of compactions) {
         const request = requests.get(responseId);
-        if (request) add(index, request.day, "codex", request.model,
+        if (request) add(index, request.day, "codex", pricedModel(request.model, priced),
           sha256(JSON.stringify(["codex-response", request.sessionId, responseId])));
       }
     }
@@ -394,10 +414,11 @@ export function readReceiptStreams(
   env: NodeJS.ProcessEnv,
   home: string,
   sinceDay?: string,
+  options: { codexSessionModels?: ReadonlyMap<string, readonly string[]> } = {},
 ): ReceiptIndex {
   const index = readClaudeStreams(claudeRoots(env, home), sinceDay);
   const rest = [
-    readCodexStreams(codexRoots(env, home), sinceDay),
+    readCodexStreams(codexRoots(env, home), sinceDay, { sessionModels: options.codexSessionModels }),
     readGrokStreams(grokRoots(env, home), sinceDay),
     readPiStreams(usageRoots(usageEnvironment(env, home).PI_AGENT_DIR, home, [join(home, ".pi", "agent", "sessions")]), sinceDay),
   ];
