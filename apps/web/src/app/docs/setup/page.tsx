@@ -71,7 +71,8 @@ export default function DocsSetupPage() {
           </p>
           <p className="mt-3 text-[0.95rem] text-muted">
             Connection uploads all available history on a new computer. Wait for the first upload
-            to finish before continuing. If it fails, retry with the sync command shown by the CLI.
+            to finish before continuing. If the upload fails, run{" "}
+            <span className="type-data">tokenburnmarket sync</span>.
           </p>
 
           <h2 className="type-label mt-8">3. enable automatic sync and check it</h2>
@@ -83,7 +84,7 @@ export default function DocsSetupPage() {
             The daemon installs and starts a background service. It runs independently of your
             coding agent at {SYNC_SLOT_TIMES} while this computer is running. Check that the install
             reports success and that status shows your handle, this device, and a last sync time.
-            The install output shows the log path for checking sync errors.
+            On macOS, the install output shows the log path for checking sync errors.
           </p>
           <p className="mt-3 text-[0.95rem] text-muted">
             Reconnecting a machine keeps its device. If you connected one machine more than once
