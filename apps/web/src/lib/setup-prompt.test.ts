@@ -9,8 +9,10 @@ describe("agentSetupPrompt", () => {
     expect(prompt).toContain("npm install --global tokenburnmarket@latest");
     expect(prompt).toContain("command -v tokenburnmarket");
     expect(prompt).toContain("tokenburnmarket connect");
-    expect(prompt).toContain("tokenburnmarket sync");
-    expect(prompt).toContain("daemon install --interval 15m");
+    expect(prompt).toContain("confirm the account in the terminal");
+    expect(prompt).toContain("tokenburnmarket daemon install");
+    expect(prompt).not.toContain("--interval");
+    expect(prompt).toContain("00:00, 06:00, 12:00 and 18:00 UTC");
     expect(prompt).toContain("installs and starts the service itself");
     expect(prompt).toContain("tokenburnmarket mcp setup");
     expect(prompt).toContain('"Last sync" have values');

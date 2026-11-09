@@ -76,7 +76,7 @@ export default async function Home() {
           </p>
 
           <div className="rise mt-9 max-w-[30rem]" style={{ "--i": 3 } as React.CSSProperties}>
-            <Button as={Link} href="/signin">
+            <Button as={Link} href="/docs/setup">
               Get the setup prompt
             </Button>
             <p className="mt-3 text-[0.82rem] text-subtle">

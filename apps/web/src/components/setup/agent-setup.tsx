@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { SYNC_SLOT_HOURS } from "@tokenburnmarket/core";
 import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
 
@@ -58,8 +59,8 @@ export function AgentSetup({
             Give this prompt to your agent.
           </h2>
           <p className="mt-4 max-w-[38ch] text-[0.95rem] text-muted">
-            It installs the collector, uploads your usage, and keeps it synced every 15 minutes.
-            You approve one browser prompt.
+            It installs the collector and uploads your usage after you approve this computer.
+            The daemon then syncs every {SYNC_SLOT_HOURS} hours while the computer is running.
           </p>
           <Button type="button" onClick={copy} className="mt-6 w-full sm:w-auto">
             {copied ? "Copied" : "Copy prompt"}
@@ -82,7 +83,10 @@ export function AgentSetup({
             Set up manually instead
           </summary>
           <div className="mt-4 max-w-[34rem]">
-            <CommandLine command="npx -y tokenburnmarket@latest connect" />
+            <CommandLine command="npm install --global tokenburnmarket@latest" />
+            <div className="mt-2">
+              <CommandLine command="tokenburnmarket connect" />
+            </div>
             <p className="mt-3 text-[0.85rem] text-muted">
               Prefer the terminal? Connect once here, then add monitoring and MCP from the guide.{" "}
               <Link href={manualHref} className="text-primary-text hover:underline">

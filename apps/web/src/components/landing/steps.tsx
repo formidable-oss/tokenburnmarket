@@ -2,12 +2,14 @@
   Three steps, asymmetric: the number is the visual anchor, copy stays short.
   Numerals use the pixel face; body copy never does.
 */
+import { SYNC_SLOT_HOURS } from "@tokenburnmarket/core";
+
 const steps = [
   {
     n: "01",
     title: "Connect",
     body: "Paste one prompt into your coding agent. Approve the device in your browser.",
-    detail: "install · first upload · 15-minute sync",
+    detail: `install · first upload · ${SYNC_SLOT_HOURS}-hour sync`,
   },
   {
     n: "02",

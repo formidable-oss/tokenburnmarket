@@ -20,7 +20,10 @@ test("landing renders with the stats strip", async ({ page }) => {
     await expect(stats.getByText(label, { exact: true })).toBeVisible();
   }
 
-  await expect(page.getByRole("link", { name: "Get the setup prompt" })).toBeVisible();
+  const setup = page.getByRole("link", { name: "Get the setup prompt", exact: true });
+  await expect(setup).toHaveAttribute("href", "/docs/setup");
+  await setup.click();
+  await expect(page).toHaveURL(/\/docs\/setup$/);
 });
 
 test("the world leaderboard renders", async ({ page }) => {
@@ -33,7 +36,7 @@ test("the world leaderboard renders", async ({ page }) => {
 
 const docsPages = [
   { path: "/docs", heading: "How this works." },
-  { path: "/docs/setup", heading: "Paste this into your agent." },
+  { path: "/docs/setup", heading: "Connect a computer." },
   { path: "/docs/verification", heading: "Verified means signed and plausible." },
   { path: "/docs/markets", heading: "A question, a clock, and a price." },
   { path: "/docs/credits", heading: "Whales earn more, not proportionally more." },
@@ -63,7 +66,7 @@ test("the sign-in page renders without starting OAuth", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Sign in/ })).toBeVisible();
 });
 
-test("the setup prompt copies and manual setup stays optional", async ({ context, page }) => {
+test("setup offers a copied agent prompt and a complete manual connection flow", async ({ context, page }) => {
   await page.goto("/docs/setup");
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: new URL(page.url()).origin,
@@ -78,11 +81,20 @@ test("the setup prompt copies and manual setup stays optional", async ({ context
 
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   expect(prompt).toContain("tokenburnmarket connect");
-  expect(prompt).toContain("daemon install --interval 15m");
+  expect(prompt).toContain("tokenburnmarket daemon install");
+  expect(prompt).not.toContain("--interval");
+  expect(prompt).toContain("00:00, 06:00, 12:00 and 18:00 UTC");
   expect(prompt).toContain("Finish only when");
 
   const manual = page.locator("details#manual");
-  await expect(manual).not.toHaveAttribute("open");
-  await manual.locator("summary").click();
   await expect(manual).toHaveAttribute("open", "");
+  await expect(manual.locator("code")).toHaveText([
+    "node --version",
+    "npm install --global tokenburnmarket@latest",
+    "tokenburnmarket connect",
+    "tokenburnmarket daemon install",
+    "tokenburnmarket status",
+  ]);
+  await expect(manual).toContainText("confirm the account in the terminal");
+  await expect(page.locator("#update")).toContainText("tokenburnmarket sync --all");
 });

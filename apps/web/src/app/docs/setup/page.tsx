@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
 import { AgentSetup } from "@/components/setup/agent-setup";
 import { CommandLine } from "@/components/ui/command-line";
 import { agentSetupPrompt } from "@/lib/setup-prompt";
@@ -22,11 +23,19 @@ export default function DocsSetupPage() {
   return (
     <article>
       <p className="type-label">docs / setup</p>
-      <h1 className="type-heading mt-3">Paste this into your agent.</h1>
+      <h1 className="type-heading mt-3">Connect a computer.</h1>
+      <p className="mt-4 text-[1.05rem] text-muted">
+        Set up each computer once. Signing in to the website does not connect it.
+        Run the setup on the computer whose usage you want to track.
+      </p>
       <p className="mt-4 text-[1.05rem] text-muted">
         We upload token counts, cost, and hashed message IDs. Prompts and paths stay on your
         machine.
       </p>
+      <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-primary-text">
+        <Link href="#manual" className="hover:underline">New computer: manual setup</Link>
+        <Link href="#update" className="hover:underline">Already connected: update and sync</Link>
+      </div>
 
       <div className="mt-8">
         <AgentSetup prompt={agentSetupPrompt()} showManual={false} />
@@ -34,27 +43,47 @@ export default function DocsSetupPage() {
 
       <div className="signal-rail my-10" aria-hidden />
 
-      <details id="manual" className="rounded-(--radius-panel) border border-border bg-surface p-5 sm:p-6">
+      <details id="manual" open className="scroll-mt-20 rounded-(--radius-panel) border border-border bg-surface p-5 sm:p-6">
         <summary className="type-heading cursor-pointer">Manual setup</summary>
         <div className="mt-6">
-          <h2 className="type-label">connect</h2>
+          <h2 className="type-label">1. install the CLI</h2>
           <p className="mt-3 text-[0.95rem] text-muted">
-            Sign in first, then run this on the machine you code on.
+            Requires Node.js 22.15 or newer. Check your version, then install the CLI.
           </p>
           <div className="mt-4 grid max-w-[38rem] gap-2">
+            <CommandLine command="node --version" />
             <CommandLine command="npm install --global tokenburnmarket@latest" />
-            <CommandLine command="tokenburnmarket connect" />
           </div>
           <p className="mt-4 text-[0.95rem] text-muted">
-            The CLI prints an approval URL, fingerprint, and 10-minute code. Match the browser
-            fingerprint to the terminal, then approve. The private key stays on your machine.
+            Use a user-owned npm prefix. Do not use sudo. Verify that{" "}
+            <span className="type-data">command -v tokenburnmarket</span> resolves and that the
+            prefix&apos;s bin directory is on your PATH.
+          </p>
+
+          <h2 className="type-label mt-8">2. connect and approve this computer</h2>
+          <div className="mt-4 max-w-[38rem]">
+            <CommandLine command="tokenburnmarket connect" />
+          </div>
+          <p className="mt-3 text-[0.95rem] text-muted">
+            Open the approval URL printed in the terminal and sign in with GitHub if asked. Match
+            the browser fingerprint to the terminal, approve, then confirm the account in the terminal
+            if asked. The code lasts ten minutes. The private key stays on this computer.
           </p>
           <p className="mt-3 text-[0.95rem] text-muted">
-            Verify <span className="type-data">command -v tokenburnmarket</span> first. If it does
-            not resolve, use a user-owned npm prefix whose bin directory is already on your PATH.
+            Connection uploads all available history on a new computer. Wait for the first upload
+            to finish before continuing. If it fails, retry with the sync command shown by the CLI.
           </p>
+
+          <h2 className="type-label mt-8">3. enable automatic sync and check it</h2>
+          <div className="mt-4 grid max-w-[38rem] gap-2">
+            <CommandLine command="tokenburnmarket daemon install" />
+            <CommandLine command="tokenburnmarket status" />
+          </div>
           <p className="mt-3 text-[0.95rem] text-muted">
-            Approval starts the first sync. A large history can take about 30 seconds.
+            The daemon installs and starts a background service. It runs independently of your
+            coding agent at {SYNC_SLOT_TIMES} while this computer is running. Check that the install
+            reports success and that status shows your handle, this device, and a last sync time.
+            The install output shows the log path for checking sync errors.
           </p>
           <p className="mt-3 text-[0.95rem] text-muted">
             Reconnecting a machine keeps its device. If you connected one machine more than once
@@ -66,6 +95,30 @@ export default function DocsSetupPage() {
           </p>
         </div>
       </details>
+
+      <div className="signal-rail my-10" aria-hidden />
+
+      <section id="update" className="scroll-mt-20">
+        <h2 className="type-heading">Already connected? Update and sync.</h2>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          Run these on every computer you already connected. Installing the latest CLI also works
+          with versions that do not have the update command. Send your whole history once after
+          updating, then let the daemon keep it current.
+        </p>
+        <div className="mt-4 grid max-w-[38rem] gap-2">
+          <CommandLine command="npm install --global tokenburnmarket@latest" />
+          <CommandLine command="tokenburnmarket sync --all" />
+          <CommandLine command="tokenburnmarket daemon install" />
+          <CommandLine command="tokenburnmarket status" />
+        </div>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          If sync says &quot;Not connected&quot;, complete{" "}
+          <Link href="#manual" className="text-primary-text hover:underline">the connection steps above</Link>
+          {" "}first, then retry. Recent versions also support{" "}
+          <code className="type-data">tokenburnmarket update</code>, which uses the package manager
+          you installed with. Restart agent sessions that use MCP after updating.
+        </p>
+      </section>
 
       <div className="signal-rail my-10" aria-hidden />
 
@@ -115,15 +168,10 @@ export default function DocsSetupPage() {
 
       <h2 className="type-heading">Fix your history</h2>
       <p className="mt-3 text-[0.95rem] text-muted">
-        After an update, or if your numbers look low, send your whole history once on every machine
-        you use. Then let the daemon keep it current. <code className="type-data">update</code>{" "}
-        installs the latest version with the package manager you used the first time.
+        If your numbers look low, follow{" "}
+        <Link href="#update" className="text-primary-text hover:underline">the update and sync steps above</Link>
+        {" "}on every computer you use.
       </p>
-      <div className="mt-4 grid max-w-[34rem] gap-2">
-        <CommandLine command="tokenburnmarket update" />
-        <CommandLine command="tokenburnmarket sync --all" />
-        <CommandLine command="tokenburnmarket daemon install" />
-      </div>
       <p className="mt-3 text-[0.95rem] text-muted">
         If you connected one machine more than once, open{" "}
         <Link href="/settings" className="text-primary-text hover:underline">
@@ -134,10 +182,11 @@ export default function DocsSetupPage() {
 
       <div className="signal-rail my-10" aria-hidden />
 
-      <h2 className="type-heading">Keep it synced</h2>
+      <h2 className="type-heading">Optional: add MCP to your agent</h2>
       <p className="mt-3 text-[0.95rem] text-muted">
-        Add the MCP server to Claude Code or Codex. It syncs when your agent starts and adds the
-        trading tools below.
+        Add the MCP server to Claude Code or Codex for the tools below. While the agent session is
+        running, MCP syncs on the same schedule as the daemon: {SYNC_SLOT_TIMES}.
+        The daemon keeps syncing when your agent is closed.
       </p>
       <div className="mt-4 max-w-[38rem]">
         <CommandLine command="claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp" />
@@ -149,18 +198,18 @@ export default function DocsSetupPage() {
         {codexConfig}
       </pre>
       <p className="mt-5 text-[0.95rem] text-muted">
-        A startup sync skips work if another sync ran in the past ten minutes. This keeps two open
-        agents from reading the same transcripts twice.{" "}
-        <span className="type-data">npx tokenburnmarket mcp setup</span> prints both of these again
-        when the terminal has scrolled away.
+        Run <span className="type-data">tokenburnmarket sync</span> or ask your agent to call{" "}
+        <span className="type-data">sync_usage</span> to upload now, outside the automatic schedule.
+        {" "}<span className="type-data">tokenburnmarket mcp setup</span> prints both configurations.
       </p>
 
-      <h3 className="type-label mt-8">no agent on this machine</h3>
+      <h3 className="type-label mt-8">background service</h3>
       <p className="mt-3 text-[0.95rem] text-muted">
-        Run the daemon. Its lock file allows one copy per machine.
+        If you followed the setup above, the daemon is already installed. Its lock file allows
+        one copy per computer.
       </p>
       <div className="mt-4 grid max-w-[30rem] gap-2">
-        <CommandLine command="tokenburnmarket daemon install --interval 15m" />
+        <CommandLine command="tokenburnmarket daemon install" />
         <CommandLine command="tokenburnmarket daemon install --dry-run" />
       </div>
       <p className="mt-4 text-[0.95rem] text-muted">
