@@ -96,5 +96,18 @@ test("setup offers a copied agent prompt and a complete manual connection flow",
     "tokenburnmarket status",
   ]);
   await expect(manual).toContainText("confirm the account in the terminal");
-  await expect(page.locator("#update")).toContainText("tokenburnmarket sync --all");
+  const update = page.locator("#update");
+  await expect(update.locator("code")).toHaveText([
+    "npm install --global tokenburnmarket@latest",
+    "tokenburnmarket sync --all",
+    "tokenburnmarket daemon install",
+    "systemctl --user restart tokenburnmarket",
+    "schtasks /End /TN tokenburnmarket",
+    "schtasks /Run /TN tokenburnmarket",
+    "tokenburnmarket status",
+    "tokenburnmarket update",
+  ]);
+  for (const platform of [/macOS/i, /Linux \(systemd\)/i, /Windows \(Task Scheduler\)/i]) {
+    await expect(update.getByRole("heading", { name: platform })).toBeVisible();
+  }
 });

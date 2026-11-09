@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 };
 
 /*
-  Every command and every config block on this page is what packages/cli prints.
-  If the CLI changes what it says, change it here in the same PR.
+  Setup commands and MCP configuration follow packages/cli.
+  Service restart commands match the names installed by the CLI.
 */
 const codexConfig = `[mcp_servers.tokenburnmarket]
 command = "npx"
@@ -109,6 +109,51 @@ export default function DocsSetupPage() {
           <CommandLine command="npm install --global tokenburnmarket@latest" />
           <CommandLine command="tokenburnmarket sync --all" />
           <CommandLine command="tokenburnmarket daemon install" />
+        </div>
+        <p className="mt-4 text-[0.95rem] text-muted">
+          Installing the latest CLI does not replace a daemon process that is already running.
+          After installing the service above, follow the restart steps for your operating system
+          so the daemon loads the updated collector.
+        </p>
+        <div className="mt-5 space-y-6">
+          <div>
+            <h3 className="type-label">macOS</h3>
+            <p className="mt-3 text-[0.95rem] text-muted">
+              The daemon install command above reloads the LaunchAgent, so it already restarts
+              the daemon.
+            </p>
+          </div>
+          <div>
+            <h3 className="type-label">Linux (systemd)</h3>
+            <p className="mt-3 text-[0.95rem] text-muted">
+              Restart the user service. This also starts it if it is stopped.
+            </p>
+            <div className="mt-3 max-w-[38rem]">
+              <CommandLine command="systemctl --user restart tokenburnmarket" />
+            </div>
+          </div>
+          <div>
+            <h3 className="type-label">Windows (Task Scheduler)</h3>
+            <p className="mt-3 text-[0.95rem] text-muted">
+              If the tokenburnmarket task is running, stop it first:
+            </p>
+            <div className="mt-3 max-w-[38rem]">
+              <CommandLine command="schtasks /End /TN tokenburnmarket" />
+            </div>
+            <p className="mt-3 text-[0.95rem] text-muted">
+              Wait until Task Scheduler no longer shows the task as Running, then start it below.
+              If it was already stopped, run only the start command. Resolve any stop error
+              before continuing.
+            </p>
+            <div className="mt-3 max-w-[38rem]">
+              <CommandLine command="schtasks /Run /TN tokenburnmarket" />
+            </div>
+          </div>
+        </div>
+        <p className="mt-5 text-[0.95rem] text-muted">
+          After the restart succeeds, check the connected account and last sync:
+        </p>
+        <div className="mt-3 max-w-[38rem]">
           <CommandLine command="tokenburnmarket status" />
         </div>
         <p className="mt-3 text-[0.95rem] text-muted">
