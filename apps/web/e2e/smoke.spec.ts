@@ -66,6 +66,31 @@ test("the sign-in page renders without starting OAuth", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Sign in/ })).toBeVisible();
 });
 
+test("long setup commands stay readable and copy in full on mobile", async ({ context, page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/docs/setup");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
+
+  const text = "claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp";
+  const command = page.locator("code").getByText(text, { exact: true });
+  await command.scrollIntoViewIfNeeded();
+  const lines = await command.evaluate((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return new Set(Array.from(range.getClientRects(), (rect) => rect.top)).size;
+  });
+  expect(lines).toBe(1);
+
+  await command.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => command.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+
+  await command.locator("..").getByRole("button", { name: "copy", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+});
+
 test("setup offers a copied agent prompt and a complete manual connection flow", async ({ context, page }) => {
   await page.goto("/docs/setup");
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
