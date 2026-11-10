@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
 import { AgentSetup } from "@/components/setup/agent-setup";
+import { ManualSetup } from "@/components/setup/manual-setup";
 import { CommandLine } from "@/components/ui/command-line";
 import { agentSetupPrompt } from "@/lib/setup-prompt";
 
@@ -33,7 +34,7 @@ export default function DocsSetupPage() {
         machine.
       </p>
       <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-primary-text">
-        <Link href="#manual" className="hover:underline">New computer: manual setup</Link>
+        <a href="#manual" className="hover:underline">New computer: manual setup</a>
         <Link href="#update" className="hover:underline">Already connected: update and sync</Link>
       </div>
 
@@ -43,59 +44,64 @@ export default function DocsSetupPage() {
 
       <div className="signal-rail my-10" aria-hidden />
 
-      <details id="manual" open className="scroll-mt-20 rounded-(--radius-panel) border border-border bg-surface p-5 sm:p-6">
-        <summary className="type-heading cursor-pointer">Manual setup</summary>
-        <div className="mt-6">
-          <h2 className="type-label">1. install the CLI</h2>
-          <p className="mt-3 text-[0.95rem] text-muted">
-            Requires Node.js 22.15 or newer. Check your version, then install the CLI.
-          </p>
-          <div className="mt-4 grid max-w-[38rem] gap-2">
-            <CommandLine command="node --version" />
-            <CommandLine command="npm install --global tokenburnmarket@latest" />
-          </div>
-          <p className="mt-4 text-[0.95rem] text-muted">
-            Use a user-owned npm prefix. Do not use sudo. Verify that{" "}
-            <span className="type-data">command -v tokenburnmarket</span> resolves and that the
-            prefix&apos;s bin directory is on your PATH.
-          </p>
-
-          <h2 className="type-label mt-8">2. connect and approve this computer</h2>
-          <div className="mt-4 max-w-[38rem]">
-            <CommandLine command="tokenburnmarket connect" />
-          </div>
-          <p className="mt-3 text-[0.95rem] text-muted">
-            Open the approval URL printed in the terminal and sign in with GitHub if asked. Match
-            the browser fingerprint to the terminal, approve, then confirm the account in the terminal
-            if asked. The code lasts ten minutes. The private key stays on this computer.
-          </p>
-          <p className="mt-3 text-[0.95rem] text-muted">
-            Connection uploads all available history on a new computer. Wait for the first upload
-            to finish before continuing. If the upload fails, run{" "}
-            <span className="type-data">tokenburnmarket sync</span>.
-          </p>
-
-          <h2 className="type-label mt-8">3. enable automatic sync and check it</h2>
-          <div className="mt-4 grid max-w-[38rem] gap-2">
-            <CommandLine command="tokenburnmarket daemon install" />
-            <CommandLine command="tokenburnmarket status" />
-          </div>
-          <p className="mt-3 text-[0.95rem] text-muted">
-            The daemon installs and starts a background service. It runs independently of your
-            coding agent at {SYNC_SLOT_TIMES} while this computer is running. Check that the install
-            reports success and that status shows your handle, this device, and a last sync time.
-            On macOS, the install output shows the log path for checking sync errors.
-          </p>
-          <p className="mt-3 text-[0.95rem] text-muted">
-            Reconnecting a machine keeps its device. If you connected one machine more than once
-            before, mark those devices as the same machine in{" "}
-            <Link href="/settings" className="text-primary-text hover:underline">
-              settings
-            </Link>
-            . Each day then counts once for that machine.
-          </p>
+      <ManualSetup>
+        <h2 className="type-label">1. install the CLI</h2>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          Requires Node.js 22.15 or newer. Check your version, then install the CLI.
+        </p>
+        <div className="mt-4 grid max-w-[38rem] gap-2">
+          <CommandLine command="node --version" />
+          <CommandLine command="npm install --global tokenburnmarket@latest" />
         </div>
-      </details>
+        <p className="mt-4 text-[0.95rem] text-muted">
+          Use a user-owned npm prefix. Do not use sudo. Verify the installed command with{" "}
+          <span className="type-data">command -v tokenburnmarket</span> on macOS/Linux or{" "}
+          <span className="type-data">Get-Command tokenburnmarket</span> in PowerShell.
+          Make sure the global executable directory is on your PATH and the command resolves
+          outside an npx cache.
+        </p>
+
+        <h2 className="type-label mt-8">2. connect and approve this computer</h2>
+        <div className="mt-4 max-w-[38rem]">
+          <CommandLine command="tokenburnmarket connect" />
+        </div>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          Open the approval URL printed in the terminal and sign in with GitHub if asked. Match
+          the browser fingerprint to the terminal, approve, then confirm the account in the terminal
+          if asked. The code lasts ten minutes. The private key stays on this computer.
+        </p>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          Connection uploads all available history on a new computer. Wait for the first upload
+          to finish before continuing. If the upload fails, run{" "}
+          <span className="type-data">tokenburnmarket sync</span>.
+        </p>
+
+        <h2 className="type-label mt-8">3. enable automatic sync and check it</h2>
+        <div className="mt-4 grid max-w-[38rem] gap-2">
+          <CommandLine command="tokenburnmarket daemon install" />
+          <CommandLine command="tokenburnmarket status" />
+        </div>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          The daemon installs and starts a background service. It runs independently of your
+          coding agent at {SYNC_SLOT_TIMES} while this computer is running. Check that the install
+          reports success and that status shows your handle, this device, and a last sync time.
+          On macOS, the install output shows the log path for checking sync errors.
+        </p>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          If this computer has no eligible history and sync reports &quot;Nothing to sync.&quot;,
+          &quot;Synced to&quot; and &quot;Last sync&quot; may show &quot;never&quot;. The computer
+          is connected; the first upload awaits usage. Check that the service is running
+          without errors. The daemon will pick up usage on its next scheduled sync.
+        </p>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          Reconnecting a machine keeps its device. If you connected one machine more than once
+          before, mark those devices as the same machine in{" "}
+          <Link href="/settings" className="text-primary-text hover:underline">
+            settings
+          </Link>
+          . Each day then counts once for that machine.
+        </p>
+      </ManualSetup>
 
       <div className="signal-rail my-10" aria-hidden />
 
@@ -111,10 +117,12 @@ export default function DocsSetupPage() {
           use that manager to install the latest CLI instead, or run{" "}
           <code className="type-data">tokenburnmarket update</code> if your version supports it.
           Check the version below to confirm the CLI on your PATH is current before syncing.
+          Compare it with the published version reported by npm.
         </p>
         <div className="mt-4 grid max-w-[38rem] gap-2">
           <CommandLine command="npm install --global tokenburnmarket@latest" />
           <CommandLine command="tokenburnmarket --version" />
+          <CommandLine command="npm view tokenburnmarket version" />
           <CommandLine command="tokenburnmarket sync --all" />
           <CommandLine command="tokenburnmarket daemon install" />
         </div>
@@ -166,70 +174,21 @@ export default function DocsSetupPage() {
         </div>
         <p className="mt-3 text-[0.95rem] text-muted">
           If sync says &quot;Not connected&quot;, complete{" "}
-          <Link href="#manual" className="text-primary-text hover:underline">the connection steps above</Link>
+          <a href="#manual" className="text-primary-text hover:underline">the connection steps above</a>
           {" "}first, then retry. Restart agent sessions that use MCP after updating.
         </p>
+        <h3 className="type-label mt-8">fix your history</h3>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          If your numbers look low, repeat these steps on every computer you use.
+        </p>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          If you connected one machine more than once, open{" "}
+          <Link href="/settings" className="text-primary-text hover:underline">
+            settings
+          </Link>{" "}
+          and set its devices to the same machine.
+        </p>
       </section>
-
-      <div className="signal-rail my-10" aria-hidden />
-
-      <h2 className="type-heading">Sync</h2>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        A sync uploads changed daily totals and receipt hashes.
-      </p>
-      <div className="mt-4 grid max-w-[34rem] gap-2">
-        <CommandLine command="tokenburnmarket sync" />
-        <CommandLine command="tokenburnmarket sync --since 7" />
-        <CommandLine command="tokenburnmarket sync --all" />
-        <CommandLine command="tokenburnmarket sync --dry-run" />
-        <CommandLine command="tokenburnmarket status" />
-      </div>
-      <dl className="mt-6 grid gap-3 text-[0.95rem] text-muted">
-        <div className="flex gap-4">
-          <dt className="type-data w-28 shrink-0 text-foreground">sync</dt>
-          <dd>The days since the last sync.</dd>
-        </div>
-        <div className="flex gap-4">
-          <dt className="type-data w-28 shrink-0 text-foreground">--since 7</dt>
-          <dd>The last seven days.</dd>
-        </div>
-        <div className="flex gap-4">
-          <dt className="type-data w-28 shrink-0 text-foreground">--all</dt>
-          <dd>
-            Every day this machine still has. Missing days are added, and a day already counted
-            goes up or is corrected. An older day never goes down because old transcripts were
-            deleted.
-          </dd>
-        </div>
-        <div className="flex gap-4">
-          <dt className="type-data w-28 shrink-0 text-foreground">--dry-run</dt>
-          <dd>Prints what would go up and sends nothing.</dd>
-        </div>
-        <div className="flex gap-4">
-          <dt className="type-data w-28 shrink-0 text-foreground">--quiet</dt>
-          <dd>Prints nothing unless something went wrong. For cron lines and scripts.</dd>
-        </div>
-        <div className="flex gap-4">
-          <dt className="type-data w-28 shrink-0 text-foreground">status</dt>
-          <dd>Handle, device, server, and the last day synced from this machine.</dd>
-        </div>
-      </dl>
-
-      <div className="signal-rail my-10" aria-hidden />
-
-      <h2 className="type-heading">Fix your history</h2>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        If your numbers look low, follow{" "}
-        <Link href="#update" className="text-primary-text hover:underline">the update and sync steps above</Link>
-        {" "}on every computer you use.
-      </p>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        If you connected one machine more than once, open{" "}
-        <Link href="/settings" className="text-primary-text hover:underline">
-          settings
-        </Link>{" "}
-        and set its devices to the same machine.
-      </p>
 
       <div className="signal-rail my-10" aria-hidden />
 
@@ -254,24 +213,7 @@ export default function DocsSetupPage() {
         {" "}<span className="type-data">tokenburnmarket mcp setup</span> prints both configurations.
       </p>
 
-      <h3 className="type-label mt-8">background service</h3>
-      <p className="mt-3 text-[0.95rem] text-muted">
-        If you followed the setup above, the daemon is already installed. Its lock file allows
-        one copy per computer.
-      </p>
-      <div className="mt-4 grid max-w-[30rem] gap-2">
-        <CommandLine command="tokenburnmarket daemon install" />
-        <CommandLine command="tokenburnmarket daemon install --dry-run" />
-      </div>
-      <p className="mt-4 text-[0.95rem] text-muted">
-        <span className="type-data">daemon install</span> creates and starts the per-user
-        LaunchAgent, systemd service, or Windows scheduled task. The dry run previews the service
-        definition and changes nothing.
-      </p>
-
-      <div className="signal-rail my-10" aria-hidden />
-
-      <h2 className="type-heading">MCP tools</h2>
+      <h3 className="type-label mt-8">MCP tools</h3>
       <table className="mt-6 w-full border-collapse text-left text-[0.92rem]">
         <thead>
           <tr className="border-b border-border">
@@ -319,13 +261,68 @@ export default function DocsSetupPage() {
 
       <div className="signal-rail my-10" aria-hidden />
 
+      <h2 className="type-heading">Sync and service reference</h2>
+      <p className="mt-3 text-[0.95rem] text-muted">
+        Setup is complete once this computer is connected and its background service is running.
+        Use these commands when you need to inspect or sync usage manually. A sync uploads changed
+        daily totals and receipt hashes.
+      </p>
+      <dl className="mt-4 grid max-w-[38rem] gap-5 text-[0.95rem] text-muted">
+        <div>
+          <dt><CommandLine command="tokenburnmarket sync" /></dt>
+          <dd className="mt-2">The days since the last sync.</dd>
+        </div>
+        <div>
+          <dt><CommandLine command="tokenburnmarket sync --since 7" /></dt>
+          <dd className="mt-2">The last seven days.</dd>
+        </div>
+        <div>
+          <dt><CommandLine command="tokenburnmarket sync --all" /></dt>
+          <dd className="mt-2">
+            Every day this machine still has. Missing days are added, and a day already counted
+            goes up or is corrected. An older day never goes down because old transcripts were
+            deleted.
+          </dd>
+        </div>
+        <div>
+          <dt><CommandLine command="tokenburnmarket sync --dry-run" /></dt>
+          <dd className="mt-2">Prints what would go up and sends nothing.</dd>
+        </div>
+        <div>
+          <dt><CommandLine command="tokenburnmarket sync --quiet" /></dt>
+          <dd className="mt-2">Prints nothing unless something went wrong. For cron lines and scripts.</dd>
+        </div>
+        <div>
+          <dt><CommandLine command="tokenburnmarket status" /></dt>
+          <dd className="mt-2">Handle, device, server, and the last day synced from this machine.</dd>
+        </div>
+      </dl>
+
+      <h3 className="type-label mt-8">background service</h3>
+      <p className="mt-3 text-[0.95rem] text-muted">
+        If you followed the setup above, the daemon is already installed. Its lock file allows
+        one copy per computer.
+      </p>
+      <div className="mt-4 grid max-w-[30rem] gap-2">
+        <CommandLine command="tokenburnmarket daemon install" />
+        <CommandLine command="tokenburnmarket daemon install --dry-run" />
+      </div>
+      <p className="mt-4 text-[0.95rem] text-muted">
+        <span className="type-data">daemon install</span> creates and starts the per-user
+        LaunchAgent, systemd service, or Windows scheduled task. The dry run previews the service
+        definition and changes nothing.
+      </p>
+
+      <div className="signal-rail my-10" aria-hidden />
+
       <h2 className="type-heading">Where things are stored</h2>
       <p className="mt-3 text-[0.95rem] text-muted">
         Config lives in the platform config directory:{" "}
         <span className="type-data">~/Library/Application Support/tokenburnmarket</span> on macOS,{" "}
         <span className="type-data">%APPDATA%\tokenburnmarket</span> on Windows,{" "}
-        <span className="type-data">$XDG_CONFIG_HOME/tokenburnmarket</span> elsewhere. It holds a
-        device token and a private key, and is written owner-only.
+        <span className="type-data">$XDG_CONFIG_HOME/tokenburnmarket</span> on Linux, falling back
+        to <span className="type-data">~/.config/tokenburnmarket</span> when XDG_CONFIG_HOME is unset
+        or relative. It holds a device token and a private key, and is written owner-only.
       </p>
       <p className="mt-3 text-[0.95rem] text-muted">
         <span className="type-data">TBM_SERVER</span> points the collector at another server, the

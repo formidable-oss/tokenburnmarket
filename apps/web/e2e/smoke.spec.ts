@@ -111,8 +111,13 @@ test("setup offers a copied agent prompt and a complete manual connection flow",
   expect(prompt).not.toContain("--interval");
   expect(prompt).toContain("00:00, 06:00, 12:00 and 18:00 UTC");
   expect(prompt).toContain("Finish only when");
+  expect(prompt).toContain('no eligible history and sync reports "Nothing to sync."');
+  expect(prompt).toContain("MCP is optional.");
+  expect(prompt).not.toContain("tokenburnmarket mcp setup");
 
-  const manual = page.locator("details#manual");
+  const manual = page.locator("details");
+  await expect(manual).not.toHaveAttribute("open");
+  await page.getByRole("link", { name: "New computer: manual setup", exact: true }).click();
   await expect(manual).toHaveAttribute("open", "");
   await expect(manual.locator("code")).toHaveText([
     "node --version",
@@ -122,6 +127,9 @@ test("setup offers a copied agent prompt and a complete manual connection flow",
     "tokenburnmarket status",
   ]);
   await expect(manual).toContainText("confirm the account in the terminal");
+  await expect(manual).toContainText("Get-Command tokenburnmarket");
+  await expect(manual).toContainText("If this computer has no eligible history");
+  await expect(manual).toContainText('may show "never"');
   const update = page.locator("#update");
   await expect(update).toContainText("The install command below assumes npm.");
   await expect(update).toContainText("use that manager to install the latest CLI");
@@ -130,6 +138,7 @@ test("setup offers a copied agent prompt and a complete manual connection flow",
     "tokenburnmarket update",
     "npm install --global tokenburnmarket@latest",
     "tokenburnmarket --version",
+    "npm view tokenburnmarket version",
     "tokenburnmarket sync --all",
     "tokenburnmarket daemon install",
     "systemctl --user restart tokenburnmarket",
@@ -140,4 +149,40 @@ test("setup offers a copied agent prompt and a complete manual connection flow",
   for (const platform of [/macOS/i, /Linux \(systemd\)/i, /Windows \(Task Scheduler\)/i]) {
     await expect(update.getByRole("heading", { name: platform })).toBeVisible();
   }
+});
+
+test("manual setup opens from direct and recovery links after being closed", async ({ page }) => {
+  await page.goto("/docs/setup#manual");
+  const manual = page.locator("details");
+  const summary = manual.locator("summary");
+  const install = page.getByRole("heading", { name: "1. install the CLI", exact: true });
+  await expect(manual).toHaveAttribute("open", "");
+  await expect(install).toBeInViewport();
+
+  await summary.click();
+  await expect(manual).not.toHaveAttribute("open");
+  await page.getByRole("link", { name: "the connection steps above", exact: true }).click();
+  await expect(manual).toHaveAttribute("open", "");
+  await expect(install).toBeInViewport();
+
+  await summary.click();
+  await page.getByRole("link", { name: "New computer: manual setup", exact: true }).click();
+  await expect(manual).toHaveAttribute("open", "");
+  await expect(install).toBeInViewport();
+
+  await page.goto("/signin");
+  await page.goBack();
+  await expect(manual).toHaveAttribute("open", "");
+  await expect(install).toBeInViewport();
+
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await expect(manual).not.toHaveAttribute("open");
+  await page.keyboard.press("Space");
+  await expect(manual).toHaveAttribute("open", "");
+
+  await page.goto("/docs/verification");
+  await page.goto("/docs/setup#update");
+  await expect(manual).not.toHaveAttribute("open");
+  await expect(page.getByRole("heading", { name: "Already connected? Update and sync.", exact: true })).toBeInViewport();
 });

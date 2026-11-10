@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { SYNC_SLOT_HOURS } from "@tokenburnmarket/core";
 import { Button } from "@/components/ui/button";
 import { CommandLine } from "@/components/ui/command-line";
@@ -88,10 +87,11 @@ export function AgentSetup({
               <CommandLine command="tokenburnmarket connect" />
             </div>
             <p className="mt-3 text-[0.85rem] text-muted">
-              Prefer the terminal? Connect once here, then add monitoring and MCP from the guide.{" "}
-              <Link href={manualHref} className="text-primary-text hover:underline">
+              Prefer the terminal? Connect once here, then enable automatic sync from the guide.
+              MCP is optional.{" "}
+              <a href={manualHref} className="text-primary-text hover:underline">
                 Open the guide
-              </Link>
+              </a>
               .
             </p>
           </div>

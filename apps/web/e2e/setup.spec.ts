@@ -27,6 +27,12 @@ test.afterAll(async () => {
 });
 
 test("signed-in setup stays discoverable through connection and revocation", async ({ page, request }) => {
+  const browserErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" || message.type() === "warning") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+
   await test.step("an account without devices can open setup from Settings", async () => {
     await page.goto("/settings");
     await expect(page).toHaveURL(/\/signin\?next=/);
@@ -37,6 +43,13 @@ test("signed-in setup stays discoverable through connection and revocation", asy
     await expect(page.getByRole("heading", { level: 2, name: /^(devices|credits)$/ })).toHaveText([
       "devices", "credits",
     ]);
+    await page.getByText("Set up manually instead", { exact: true }).click();
+    await page.getByRole("link", { name: "Open the guide", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/setup#manual$/);
+    await expect(page.locator("details")).toHaveAttribute("open", "");
+    await expect(page.getByRole("heading", { name: "1. install the CLI", exact: true })).toBeInViewport();
+
+    await page.goto("/settings");
     const connect = page.getByRole("link", { name: "Connect a computer", exact: true });
     await expect(connect).toHaveAttribute("href", "/docs/setup");
     await expect(page.getByRole("link", { name: "Connect another computer", exact: true })).toHaveCount(0);
@@ -89,4 +102,5 @@ test("signed-in setup stays discoverable through connection and revocation", asy
     await expect(page.getByRole("link", { name: "Connect a computer", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Connect another computer", exact: true })).toHaveCount(0);
   });
+  expect(browserErrors).toEqual([]);
 });

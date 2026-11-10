@@ -12,13 +12,12 @@ export function agentSetupPrompt(handle?: string): string {
 
   return `Set up tokenburnmarket on this machine${account}. Complete every check.
 
-1. Check \`node --version\`. Install Node 22.15 or newer if needed. Run \`npm install --global tokenburnmarket@latest\` with a user-owned npm prefix. Never use sudo. Run \`command -v tokenburnmarket\` and fix the prefix until it resolves outside an npx cache.
+1. Check \`node --version\`. Install Node 22.15 or newer if needed. Run \`npm install --global tokenburnmarket@latest\` with a user-owned npm prefix. Never use sudo. Verify PATH with \`command -v tokenburnmarket\` (macOS/Linux) or \`Get-Command tokenburnmarket\` (PowerShell). Fix the prefix until it resolves outside an npx cache.
 2. Run \`tokenburnmarket connect --server ${PRODUCT_URL}\`. Show the approval URL, code, and fingerprint. Wait for browser approval and confirm the account in the terminal if asked. Connection uploads usage. If upload fails, retry with \`tokenburnmarket sync\`, not connect.
 3. Run \`tokenburnmarket daemon install\`; it installs and starts the service itself. Automatic sync runs at ${SYNC_SLOT_TIMES} while this computer runs. Use the installed CLI path.
-4. Run \`tokenburnmarket mcp setup\`. If this agent supports MCP, merge the server into its user config. Preserve settings and report any required restart.
-5. Run \`tokenburnmarket status\`. Finish only when "Synced to" and "Last sync" have values, the service is running, and its latest log has no errors. Call \`my_stats\` through MCP if available. Fix any failed check.
+4. Run \`tokenburnmarket status\`. Finish only when the account is connected, the service is running, and its latest log has no errors. If there is no eligible history and sync reports "Nothing to sync.", "Synced to" and "Last sync" may remain "never"; report that the first upload awaits usage. Otherwise require both sync values. Fix any failed check.
 
-Report handle, device, last sync, service status, and MCP status. Omit secrets.
+Report handle, device, last sync, and service status. Omit secrets. MCP is optional. Offer it after setup; change agent config only if I ask.
 
 Privacy boundary: upload token totals, cost, and hashed message IDs only. Keep prompts, paths, tokens, and private keys local.`;
 }
