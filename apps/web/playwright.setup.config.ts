@@ -8,6 +8,7 @@ import smokeConfig from "./playwright.config";
   pnpm --filter @tokenburnmarket/web e2e:setup
   Requires a migrated test database in DATABASE_URL or .env.local. This starts
   its own development server so the existing local sign-in can be exercised.
+  Stop any existing apps/web `pnpm dev` server first, even on another port.
   Each run owns one temporary account; the test removes it and its devices.
   The public smoke suite stays safe to run against a deployment.
 */
