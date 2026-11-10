@@ -10,6 +10,7 @@ describe("agentSetupPrompt", () => {
     expect(prompt).toContain("command -v tokenburnmarket");
     expect(prompt).toContain("tokenburnmarket connect");
     expect(prompt).toContain("confirm the account in the terminal");
+    expect(prompt).toContain("If upload fails, retry with `tokenburnmarket sync`, not connect.");
     expect(prompt).toContain("tokenburnmarket daemon install");
     expect(prompt).not.toContain("--interval");
     expect(prompt).toContain("00:00, 06:00, 12:00 and 18:00 UTC");

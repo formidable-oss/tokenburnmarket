@@ -106,8 +106,15 @@ export default function DocsSetupPage() {
           with versions that do not have the update command. Send your whole history once after
           updating, then let the daemon keep it current.
         </p>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          The install command below assumes npm. If you installed with another package manager,
+          use that manager to install the latest CLI instead, or run{" "}
+          <code className="type-data">tokenburnmarket update</code> if your version supports it.
+          Check the version below to confirm the CLI on your PATH is current before syncing.
+        </p>
         <div className="mt-4 grid max-w-[38rem] gap-2">
           <CommandLine command="npm install --global tokenburnmarket@latest" />
+          <CommandLine command="tokenburnmarket --version" />
           <CommandLine command="tokenburnmarket sync --all" />
           <CommandLine command="tokenburnmarket daemon install" />
         </div>
@@ -160,9 +167,7 @@ export default function DocsSetupPage() {
         <p className="mt-3 text-[0.95rem] text-muted">
           If sync says &quot;Not connected&quot;, complete{" "}
           <Link href="#manual" className="text-primary-text hover:underline">the connection steps above</Link>
-          {" "}first, then retry. Recent versions also support{" "}
-          <code className="type-data">tokenburnmarket update</code>, which uses the package manager
-          you installed with. Restart agent sessions that use MCP after updating.
+          {" "}first, then retry. Restart agent sessions that use MCP after updating.
         </p>
       </section>
 

@@ -81,6 +81,7 @@ test("setup offers a copied agent prompt and a complete manual connection flow",
 
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   expect(prompt).toContain("tokenburnmarket connect");
+  expect(prompt).toContain("If upload fails, retry with `tokenburnmarket sync`, not connect.");
   expect(prompt).toContain("tokenburnmarket daemon install");
   expect(prompt).not.toContain("--interval");
   expect(prompt).toContain("00:00, 06:00, 12:00 and 18:00 UTC");
@@ -97,15 +98,19 @@ test("setup offers a copied agent prompt and a complete manual connection flow",
   ]);
   await expect(manual).toContainText("confirm the account in the terminal");
   const update = page.locator("#update");
+  await expect(update).toContainText("The install command below assumes npm.");
+  await expect(update).toContainText("use that manager to install the latest CLI");
+  await expect(update).toContainText("Check the version below to confirm the CLI on your PATH is current before syncing.");
   await expect(update.locator("code")).toHaveText([
+    "tokenburnmarket update",
     "npm install --global tokenburnmarket@latest",
+    "tokenburnmarket --version",
     "tokenburnmarket sync --all",
     "tokenburnmarket daemon install",
     "systemctl --user restart tokenburnmarket",
     "schtasks /End /TN tokenburnmarket",
     "schtasks /Run /TN tokenburnmarket",
     "tokenburnmarket status",
-    "tokenburnmarket update",
   ]);
   for (const platform of [/macOS/i, /Linux \(systemd\)/i, /Windows \(Task Scheduler\)/i]) {
     await expect(update.getByRole("heading", { name: platform })).toBeVisible();
