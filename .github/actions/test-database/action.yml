@@ -1,8 +1,8 @@
 name: test database
 description: >
   A throwaway PostgreSQL 16 behind a local Neon proxy, so the app's Neon HTTP
-  and WebSocket drivers reach it unchanged. Sets DATABASE_URL,
-  NODE_EXTRA_CA_CERTS and NODE_OPTIONS for later steps and applies migrations.
+  and WebSocket drivers reach it unchanged. Sets DATABASE_URL and
+  NODE_EXTRA_CA_CERTS for later steps and applies migrations.
   Run it after pnpm install.
 
 # The proxy needs TLS, and the Neon drivers derive their endpoints from the
@@ -64,7 +64,6 @@ runs:
         {
           echo "DATABASE_URL=$url"
           echo "NODE_EXTRA_CA_CERTS=$dir/server.pem"
-          echo "NODE_OPTIONS=--dns-result-order=ipv4first"
         } >> "$GITHUB_ENV"
 
     - name: Apply migrations
