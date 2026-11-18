@@ -7,6 +7,12 @@ import { builders, deviceConnectCodes } from "../src/db/schema";
 let handle: string;
 let code: string | undefined;
 
+/* A 1x1 transparent PNG. Development sign-in points the avatar at github.com/<handle>.png. */
+const AVATAR_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "base64",
+);
+
 test.beforeAll(async ({}, workerInfo) => {
   const setupHandle = workerInfo.config.metadata.setupHandle;
   if (typeof setupHandle !== "string" || !/^tbm-setup-e2e-[a-f0-9]{12}$/.test(setupHandle)) {
@@ -32,6 +38,10 @@ test("signed-in setup stays discoverable through connection and revocation", asy
     if (message.type() === "error" || message.type() === "warning") browserErrors.push(message.text());
   });
   page.on("pageerror", (error) => browserErrors.push(error.message));
+  // The generated handle has no GitHub account; keep the run off the network.
+  await page.route("https://github.com/*.png", (route) =>
+    route.fulfill({ contentType: "image/png", body: AVATAR_PNG }),
+  );
 
   await test.step("an account without devices can open setup from Settings", async () => {
     await page.goto("/settings");
