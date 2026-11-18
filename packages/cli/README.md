@@ -125,8 +125,11 @@ of that account history. Credentials go only to Cursor and are never uploaded to
 Token Burn Market. Sign in to the Cursor CLI to enable this source. A failed
 Cursor read prints a warning and leaves its stored totals unchanged.
 
-The collector reads Codex archives and compressed logs. It counts reasoning once
-and restores OpenCode reasoning from the local database or legacy message files.
+The collector reads Codex archives and compressed logs. Codex rollouts that record
+only a model alias, such as the auto-review subagent's `codex-auto-review`, take the
+model ccusage priced that session under, read from `ccusage codex session`.
+It counts reasoning once and restores OpenCode reasoning from the local database
+or legacy message files.
 If OpenCode details are unreadable for a day or change during the scan, that
 day's OpenCode rows use ccusage totals without receipts for missing rows only.
 Legacy message files older than the sync window are skipped. One warning names

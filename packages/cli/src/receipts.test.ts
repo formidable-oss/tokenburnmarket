@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   claudeRoots,
   codexRoots,
+  codexSessionFile,
   grokRoots,
   readClaudeStreams,
   readCodexStreams,
@@ -92,6 +93,56 @@ describe("readClaudeStreams", () => {
 });
 
 describe("readCodexStreams", () => {
+  it("files receipts under the model ccusage priced when the rollout only records an alias", () => {
+    withTranscript("sessions/2026/11/02/rollout-alias.jsonl", [
+      { type: "session_meta", payload: { id: "alias-session" } },
+      { type: "turn_context", payload: { model: "codex-auto-review" } },
+      { type: "event_msg", timestamp: "2026-11-02T14:38:18Z", payload: { type: "token_count" } },
+      { type: "event_msg", timestamp: "2026-11-02T14:38:19Z", payload: { type: "token_count" } },
+      { type: "token_usage_record", timestamp: "2026-11-02T14:38:20Z", payload: {
+        response_id: "r1", usage: { input_tokens: 300, output_tokens: 20 },
+      } },
+      { type: "compacted", payload: { compaction_response_id: "r1" } },
+    ], (root) => {
+      const sessionModels = new Map([["rollout-alias", ["gpt-5.6-luna"]]]);
+      const streams = readCodexStreams([root], undefined, { sessionModels });
+      const key = receiptKey("2026-11-02", "codex", "gpt-5.6-luna");
+      expect([...streams.keys()]).toEqual([key]);
+      expect(streams.get(key)?.size).toBe(3);
+      expect(streams.has(receiptKey("2026-11-02", "codex", "codex-auto-review"))).toBe(false);
+      expect(streams.get(key)).toContain("eab0cd04eaeff3eef6b71eb1e3cdd7a03bf50e1a64f83dcd62cf4971521c7da5");
+      expect(readReceiptStreams({ CODEX_HOME: root }, "/nonexistent", undefined, {
+        codexSessionModels: sessionModels,
+      })).toEqual(streams);
+    });
+  });
+
+  it.each([
+    { name: "keeps the rollout model when ccusage priced that session under several models", models: ["gpt-5.6-luna", "gpt-5.6-sol"] },
+    { name: "keeps the rollout model when the session is unknown to ccusage", models: undefined },
+    { name: "keeps the model when ccusage priced it under the same name", models: ["codex-auto-review"] },
+    { name: "keeps the rollout model when ccusage priced no models for the session", models: [] },
+  ])("$name", ({ models }) => {
+    withTranscript("sessions/rollout-alias.jsonl", [
+      { type: "session_meta", payload: { id: "alias-session", model: "codex-auto-review" } },
+      { type: "event_msg", timestamp: "2026-11-02T14:38:18Z", payload: { type: "token_count" } },
+      { type: "token_usage_record", timestamp: "2026-11-02T14:38:20Z", payload: {
+        response_id: "r1", usage: { input_tokens: 300, output_tokens: 20 },
+      } },
+      { type: "compacted", payload: { compaction_response_id: "r1" } },
+    ], (root) => {
+      const sessionModels = new Map(models === undefined ? [] : [["rollout-alias", models]]);
+      const streams = readCodexStreams([root], undefined, { sessionModels });
+      const key = receiptKey("2026-11-02", "codex", "codex-auto-review");
+      expect([...streams.keys()]).toEqual([key]);
+      expect(streams.get(key)?.size).toBe(2);
+    });
+  });
+
+  it.each(["jsonl", "jsonl.zst"])("strips the .%s extension from the rollout basename", (extension) => {
+    expect(codexSessionFile(`sessions/2026/11/02/rollout-alias.${extension}`)).toBe("rollout-alias");
+  });
+
   it.each([true, false])("matches compactions in either order and uses the request model, marker first: %s", (markerFirst) => {
     const request = { type: "token_usage_record", timestamp: "2026-08-16T12:00:00Z", payload: {
       response_id: "matched", model: "gpt-other", usage: { input_tokens: 300, output_tokens: 20 },
