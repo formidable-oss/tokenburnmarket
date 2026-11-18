@@ -38,16 +38,30 @@ to the same machine.
 ## Keep it synced
 
 ```
+tokenburnmarket daemon install
+tokenburnmarket daemon install --dry-run
+```
+
+`daemon install` creates and starts the per-user LaunchAgent, systemd service,
+or Windows scheduled task. The daemon syncs on the shared sync slots, 00:00,
+06:00, 12:00 and 18:00 UTC, while the computer runs, whether or not an agent is
+open. Every machine syncs in the same few minutes so the database behind the
+site only wakes four times a day, which is what keeps it cheap to run. Boards
+therefore move every six hours; run `sync` to count today now.
+
+The daemon is a foreground loop, one per machine, held by a lock file. The dry
+run previews the service definition and changes nothing. It refuses to persist
+an executable from a temporary npx cache.
+
+## Add MCP (optional)
+
+```
 claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp
 ```
 
-That is the whole of it for Claude Code. While the agent runs, the MCP server
-syncs itself on the shared sync slots, 00:00, 06:00, 12:00 and 18:00 UTC, and
-gives the agent the trading tools below. Every machine syncs in the same few
-minutes so the database behind the site only wakes four times a day, which is
-what keeps it cheap to run. Boards therefore move every six
-hours; run `sync` or ask the agent to call `sync_usage` to count today now. Codex gets the same from
-`~/.codex/config.toml`:
+This gives Claude Code the trading tools below. While the agent runs, the MCP
+server also syncs on the same slots, and the agent can call `sync_usage` to
+count today now. Codex gets the same from `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.tokenburnmarket]
@@ -55,17 +69,7 @@ command = "npx"
 args = ["-y", "tokenburnmarket", "mcp"]
 ```
 
-On a machine that never opens an agent, run a daemon instead. It is a
-foreground loop, one per machine, held by a lock file.
-
-```
-tokenburnmarket daemon install
-tokenburnmarket daemon install --dry-run
-```
-
-The daemon syncs on the same slots. `daemon install` creates and starts the
-per-user LaunchAgent, systemd service, or Windows scheduled task. The dry run previews the service definition and
-changes nothing. It refuses to persist an executable from a temporary npx cache.
+`tokenburnmarket mcp setup` prints both again.
 
 ## Sync by hand
 

@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
 import { readConfig, writeConfig, type DeviceConfig } from "./config";
 import { connect } from "./connect";
 
@@ -129,6 +130,17 @@ describe("connect", () => {
     expect(text).not.toContain("hook");
   });
 
+  it("leads with the background service and offers MCP as optional", async () => {
+    const { result, lines } = run();
+    await result;
+
+    const text = lines.join("\n");
+    expect(text).toContain(SYNC_SLOT_TIMES);
+    expect(text.indexOf("tokenburnmarket daemon install")).toBeLessThan(text.indexOf("claude mcp add"));
+    expect(text).toContain("Optional:");
+    expect(text).not.toContain("every session");
+  });
+
   it("is still connected when the first sync fails", async () => {
     const { result, lines, configPath } = run({
       runSync: async () => {
@@ -142,5 +154,6 @@ describe("connect", () => {
     expect(text).toContain("getaddrinfo ENOTFOUND example.test");
     expect(text).toContain("tokenburnmarket sync");
     expect(text).toContain("claude mcp add tokenburnmarket");
+    expect(text).not.toContain("first upload is complete");
   });
 });

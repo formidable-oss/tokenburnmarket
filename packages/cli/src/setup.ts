@@ -1,26 +1,33 @@
 /*
-  The lines someone reads after `connect`, and again from `mcp setup` once the
-  terminal has scrolled away.
+  The lines someone reads after `connect`, and the agent configuration that
+  `mcp setup` prints again once the terminal has scrolled away.
 
-  The MCP server syncs itself every time an agent starts it, so for anyone who
-  uses Claude Code or Codex, adding it is the whole of "keep it synced". The
-  daemon is for the machine that never opens an agent.
+  The daemon is what keeps a machine synced: it runs on the sync slots whether
+  or not an agent is open. The MCP server is optional. It gives an agent the
+  trading tools, and syncs on the same slots only while that agent runs.
 */
+import { SYNC_SLOT_TIMES } from "@tokenburnmarket/core";
 
-/** Ready to paste: Claude Code, then the Codex config file, then the no-agent fallback. */
+/** What to do after connecting: install the daemon, then optionally add MCP. */
+export function afterConnectLines(): string[] {
+  return [
+    `Keep it synced. Install the background service; it syncs at ${SYNC_SLOT_TIMES} while this computer runs:`,
+    "  tokenburnmarket daemon install",
+    "",
+    "Optional: add the MCP server to give your agent the trading tools.",
+    ...mcpSetupLines(),
+  ];
+}
+
+/** Ready to paste: Claude Code, then the Codex config file. */
 export function mcpSetupLines(): string[] {
   return [
-    "The first upload is complete. Automatic sync is not active until you add MCP or the daemon:",
-    "",
-    "Keep it synced. Add the MCP server and it syncs itself every session:",
+    "Claude Code:",
     "  claude mcp add tokenburnmarket -- npx -y tokenburnmarket mcp",
     "",
     "Codex, in ~/.codex/config.toml:",
     "  [mcp_servers.tokenburnmarket]",
     '  command = "npx"',
     '  args = ["-y", "tokenburnmarket", "mcp"]',
-    "",
-    "No agent? Sync on a timer instead:",
-    "  tokenburnmarket daemon install",
   ];
 }
