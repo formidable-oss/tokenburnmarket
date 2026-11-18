@@ -4,13 +4,9 @@ import smokeConfig from "./playwright.config";
 
 /*
   DATABASE_URL=<migrated test database> pnpm --filter @tokenburnmarket/web e2e:setup
-  The test database must be named on the command line, never read from
-  .env.local, so a run cannot write to an everyday development or production
-  database by accident. This starts its own development server, which uses the
-  same DATABASE_URL, so the existing local sign-in can be exercised.
-  Stop any existing apps/web `pnpm dev` server first, even on another port.
-  Each run owns one temporary account; the test removes it and its devices.
-  The public smoke suite stays safe to run against a deployment.
+  The database is never read from .env.local, so a run cannot write to an
+  everyday database by accident. Starts its own development server for the
+  local sign-in; stop any apps/web dev server first, even on another port.
 */
 if (!process.env.DATABASE_URL) {
   throw new Error("e2e:setup requires DATABASE_URL=<migrated test database> on the command line.");

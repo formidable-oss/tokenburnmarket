@@ -13,8 +13,8 @@ export const metadata: Metadata = {
 };
 
 /*
-  Setup commands and MCP configuration follow packages/cli.
-  Service restart commands match the names installed by the CLI.
+  Every command here matches packages/cli: what it prints, or the service
+  names it installs. If the CLI changes, change this page in the same PR.
 */
 const codexConfig = `[mcp_servers.tokenburnmarket]
 command = "npx"
