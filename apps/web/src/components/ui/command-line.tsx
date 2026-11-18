@@ -30,19 +30,20 @@ export function CommandLine({
   return (
     <div className="flex h-11 min-w-0 items-stretch overflow-hidden rounded-(--radius-control) border border-border-strong bg-surface-sunken">
       {prompt ? (
-        <span aria-hidden className="type-data flex items-center pl-3.5 text-subtle select-none">
+        <span aria-hidden className="type-data flex shrink-0 items-center pl-3.5 text-subtle select-none">
           {prompt}
         </span>
       ) : null}
       <code
-        className={`type-data flex min-w-0 flex-1 items-center overflow-x-auto px-2.5 text-[0.92rem] text-foreground ${prompt ? "" : "pl-3.5"}`}
+        tabIndex={0}
+        className={`type-data flex min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap px-2.5 text-[0.92rem] text-foreground ${prompt ? "" : "pl-3.5"}`}
       >
         {command}
       </code>
       <button
         type="button"
         onClick={copy}
-        className="type-label border-l border-border-strong px-3 text-[0.66rem] text-muted transition-colors hover:bg-primary-subtle hover:text-primary-text"
+        className="type-label shrink-0 border-l border-border-strong px-3 text-[0.66rem] text-muted transition-colors hover:bg-primary-subtle hover:text-primary-text"
         aria-live="polite"
       >
         {copied ? "copied" : "copy"}

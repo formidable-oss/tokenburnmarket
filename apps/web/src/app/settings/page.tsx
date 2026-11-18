@@ -14,7 +14,7 @@ import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
   title: "Settings",
-  description: "Set your country and X handle, or sign out.",
+  description: "Connect computers, manage devices, and set your country and X handle.",
   robots: { index: false, follow: false },
 };
 
@@ -50,7 +50,7 @@ export default async function SettingsPage() {
       <p className="type-label">settings</p>
       <h1 className="type-heading mt-3">@{builder.handle}</h1>
       <p className="mt-3 max-w-[46ch] text-[0.95rem] text-muted">
-        GitHub owns your handle and avatar. Set your country and X handle here.
+        Connect computers and manage their usage sync. Set your country and X handle here.
       </p>
 
       {active.length === 0 ? (
@@ -86,11 +86,12 @@ export default async function SettingsPage() {
 
       <div className="signal-rail my-10" aria-hidden />
 
-      <CreditsPanel balance={builder.creditBalance} entries={creditEntries} />
-
-      <div className="signal-rail my-10" aria-hidden />
-
-      <h2 className="type-label">devices</h2>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="type-label">devices</h2>
+        <Button as={Link} href="/docs/setup" variant="secondary">
+          {active.length > 0 ? "Connect another computer" : "Connect a computer"}
+        </Button>
+      </div>
       <p className="mt-3 max-w-[52ch] text-[0.95rem] text-muted">
         Every machine that uploads usage signs it with a key you approved. Revoking one stops it on
         its next request and keeps the usage it already sent. Connecting it again makes a new
@@ -183,6 +184,10 @@ export default async function SettingsPage() {
           })}
         </ul>
       )}
+
+      <div className="signal-rail my-10" aria-hidden />
+
+      <CreditsPanel balance={builder.creditBalance} entries={creditEntries} />
     </section>
   );
 }
