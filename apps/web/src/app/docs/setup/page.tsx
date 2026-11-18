@@ -35,7 +35,7 @@ export default function DocsSetupPage() {
       </p>
       <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm text-primary-text">
         <a href="#manual" className="hover:underline">New computer: manual setup</a>
-        <Link href="#update" className="hover:underline">Already connected: update and sync</Link>
+        <a href="#update" className="hover:underline">Already connected: update and sync</a>
       </div>
 
       <div className="mt-8">
@@ -108,68 +108,48 @@ export default function DocsSetupPage() {
       <section id="update" className="scroll-mt-20">
         <h2 className="type-heading">Already connected? Update and sync.</h2>
         <p className="mt-3 text-[0.95rem] text-muted">
-          Run these on every computer you already connected. Installing the latest CLI also works
-          with versions that do not have the update command. Send your whole history once after
-          updating, then let the daemon keep it current.
+          Run these on every computer you already connected. Update installs the latest version
+          with the package manager you used the first time, and restarts the daemon on macOS and
+          Linux.
         </p>
+        <div className="mt-4 max-w-[38rem]">
+          <CommandLine command="tokenburnmarket update" />
+        </div>
+
+        <h3 className="type-label mt-8">if update does not run</h3>
         <p className="mt-3 text-[0.95rem] text-muted">
-          The install command below assumes npm. If you installed with another package manager,
-          use that manager to install the latest CLI instead, or run{" "}
-          <code className="type-data">tokenburnmarket update</code> if your version supports it.
-          Check the version below to confirm the CLI on your PATH is current before syncing.
-          Compare it with the published version reported by npm.
+          If <span className="type-data">update</span> is an unknown command or says it cannot
+          update itself, install the latest CLI with the package manager you used the first time,
+          shown here for npm. Then reinstall the service so it runs the new version. On macOS
+          that also restarts it.
         </p>
         <div className="mt-4 grid max-w-[38rem] gap-2">
           <CommandLine command="npm install --global tokenburnmarket@latest" />
-          <CommandLine command="tokenburnmarket --version" />
-          <CommandLine command="npm view tokenburnmarket version" />
-          <CommandLine command="tokenburnmarket sync --all" />
           <CommandLine command="tokenburnmarket daemon install" />
         </div>
-        <p className="mt-4 text-[0.95rem] text-muted">
-          Installing the latest CLI does not replace a daemon process that is already running.
-          After installing the service above, follow the restart steps for your operating system
-          so the daemon loads the updated collector.
-        </p>
-        <div className="mt-5 space-y-6">
-          <div>
-            <h3 className="type-label">macOS</h3>
-            <p className="mt-3 text-[0.95rem] text-muted">
-              The daemon install command above reloads the LaunchAgent, so it already restarts
-              the daemon.
-            </p>
-          </div>
-          <div>
-            <h3 className="type-label">Linux (systemd)</h3>
-            <p className="mt-3 text-[0.95rem] text-muted">
-              Restart the user service. This also starts it if it is stopped.
-            </p>
-            <div className="mt-3 max-w-[38rem]">
-              <CommandLine command="systemctl --user restart tokenburnmarket" />
-            </div>
-          </div>
-          <div>
-            <h3 className="type-label">Windows (Task Scheduler)</h3>
-            <p className="mt-3 text-[0.95rem] text-muted">
-              If the tokenburnmarket task is running, stop it first:
-            </p>
-            <div className="mt-3 max-w-[38rem]">
-              <CommandLine command="schtasks /End /TN tokenburnmarket" />
-            </div>
-            <p className="mt-3 text-[0.95rem] text-muted">
-              Wait until Task Scheduler no longer shows the task as Running, then start it below.
-              If it was already stopped, run only the start command. Resolve any stop error
-              before continuing.
-            </p>
-            <div className="mt-3 max-w-[38rem]">
-              <CommandLine command="schtasks /Run /TN tokenburnmarket" />
-            </div>
-          </div>
-        </div>
-        <p className="mt-5 text-[0.95rem] text-muted">
-          After the restart succeeds, check the connected account and last sync:
-        </p>
+        <p className="mt-3 text-[0.95rem] text-muted">On Linux, restart the user service.</p>
         <div className="mt-3 max-w-[38rem]">
+          <CommandLine command="systemctl --user restart tokenburnmarket" />
+        </div>
+
+        <h3 className="type-label mt-8">windows</h3>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          Neither path restarts the scheduled task. Stop it, wait until Task Scheduler no longer
+          shows it as Running, then start it. If it was not running, only start it.
+        </p>
+        <div className="mt-4 grid max-w-[38rem] gap-2">
+          <CommandLine command="schtasks /End /TN tokenburnmarket" />
+          <CommandLine command="schtasks /Run /TN tokenburnmarket" />
+        </div>
+
+        <h3 className="type-label mt-8">sync and check</h3>
+        <p className="mt-3 text-[0.95rem] text-muted">
+          Send your whole history once, then let the daemon keep it current.{" "}
+          <span className="type-data">status</span> shows the version and says when a newer one
+          is available.
+        </p>
+        <div className="mt-4 grid max-w-[38rem] gap-2">
+          <CommandLine command="tokenburnmarket sync --all" />
           <CommandLine command="tokenburnmarket status" />
         </div>
         <p className="mt-3 text-[0.95rem] text-muted">
@@ -179,7 +159,8 @@ export default function DocsSetupPage() {
         </p>
         <h3 className="type-label mt-8">fix your history</h3>
         <p className="mt-3 text-[0.95rem] text-muted">
-          If your numbers look low, repeat these steps on every computer you use.
+          If your numbers look low, run <span className="type-data">tokenburnmarket sync --all</span>{" "}
+          again on every computer you use.
         </p>
         <p className="mt-3 text-[0.95rem] text-muted">
           If you connected one machine more than once, open{" "}
