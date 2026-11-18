@@ -1,19 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
-import { config as loadEnv } from "dotenv";
 import smokeConfig from "./playwright.config";
 
 /*
-  pnpm --filter @tokenburnmarket/web e2e:setup
-  Requires a migrated test database in DATABASE_URL or .env.local. This starts
-  its own development server so the existing local sign-in can be exercised.
+  DATABASE_URL=<migrated test database> pnpm --filter @tokenburnmarket/web e2e:setup
+  The test database must be named on the command line, never read from
+  .env.local, so a run cannot write to an everyday development or production
+  database by accident. This starts its own development server, which uses the
+  same DATABASE_URL, so the existing local sign-in can be exercised.
   Stop any existing apps/web `pnpm dev` server first, even on another port.
   Each run owns one temporary account; the test removes it and its devices.
   The public smoke suite stays safe to run against a deployment.
 */
-loadEnv({ path: join(__dirname, ".env.local"), quiet: true });
-if (!process.env.DATABASE_URL) throw new Error("e2e:setup requires a migrated test DATABASE_URL.");
+if (!process.env.DATABASE_URL) {
+  throw new Error("e2e:setup requires DATABASE_URL=<migrated test database> on the command line.");
+}
 
 const baseURL = "http://127.0.0.1:3102";
 const handle = `tbm-setup-e2e-${randomUUID().replaceAll("-", "").slice(0, 12)}`;
