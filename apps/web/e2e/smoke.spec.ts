@@ -134,8 +134,10 @@ test("setup offers a copied agent prompt and a complete manual connection flow",
   await expect(update).toContainText("restarts the daemon on macOS and Linux");
   await expect(update).toContainText("If update is an unknown command or says it cannot update itself");
   await expect(update).toContainText("Neither path restarts the scheduled task.");
+  await expect(update).toContainText("A computer set up with MCP only does not have one yet");
   await expect(update.locator("code")).toHaveText([
     "tokenburnmarket update",
+    "tokenburnmarket daemon install",
     "npm install --global tokenburnmarket@latest",
     "tokenburnmarket daemon install",
     "systemctl --user restart tokenburnmarket",

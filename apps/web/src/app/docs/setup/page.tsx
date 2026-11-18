@@ -110,10 +110,12 @@ export default function DocsSetupPage() {
         <p className="mt-3 text-[0.95rem] text-muted">
           Run these on every computer you already connected. Update installs the latest version
           with the package manager you used the first time, and restarts the daemon on macOS and
-          Linux.
+          Linux. Then install the background service. A computer set up with MCP only does not
+          have one yet, and running it again on one that does is safe.
         </p>
-        <div className="mt-4 max-w-[38rem]">
+        <div className="mt-4 grid max-w-[38rem] gap-2">
           <CommandLine command="tokenburnmarket update" />
+          <CommandLine command="tokenburnmarket daemon install" />
         </div>
 
         <h3 className="type-label mt-8">if update does not run</h3>
