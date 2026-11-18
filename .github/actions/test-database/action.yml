@@ -1,0 +1,71 @@
+name: test database
+description: >
+  A throwaway PostgreSQL 16 behind a local Neon proxy, so the app's Neon HTTP
+  and WebSocket drivers reach it unchanged. Sets DATABASE_URL and
+  NODE_EXTRA_CA_CERTS for later steps and applies migrations.
+  Run it after pnpm install.
+
+# The proxy needs TLS, and the Neon drivers derive their endpoints from the
+# database host name. A certificate for *.localtest.me made per run, trusted
+# through NODE_EXTRA_CA_CERTS, keeps the drivers on their default settings.
+# The proxy image is pinned by digest: https://github.com/TimoWilhelm/local-neon-http-proxy
+#
+# Both containers share the runner's network. Through a published port, every
+# Neon HTTP query took about 200 ms on GitHub's runners and database tests ran
+# past their 5 s timeout; on the host network a query takes about 30 ms.
+runs:
+  using: composite
+  steps:
+    - name: Start PostgreSQL and the Neon proxy
+      shell: bash
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/test-database"
+        mkdir -p "$dir"
+        cp "$GITHUB_ACTION_PATH/Caddyfile" "$dir/Caddyfile"
+        openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+          -subj "/CN=*.localtest.me" -addext "subjectAltName=DNS:*.localtest.me" \
+          -keyout "$dir/server.key" -out "$dir/server.pem" 2>/dev/null
+        echo "127.0.0.1 db.localtest.me api.localtest.me" | sudo tee -a /etc/hosts >/dev/null
+
+        docker run -d --name test-postgres --network host \
+          -e POSTGRES_USER=tbm -e POSTGRES_PASSWORD=tbm -e POSTGRES_DB=tokenburnmarket \
+          --health-cmd "pg_isready -h 127.0.0.1 -p 55432 -U tbm -d tokenburnmarket" --health-interval 1s \
+          postgres:16 -c port=55432 -c listen_addresses=127.0.0.1 >/dev/null
+        for _ in $(seq 60); do
+          [ "$(docker inspect -f '{{.State.Health.Status}}' test-postgres)" = healthy ] && break
+          sleep 1
+        done
+        [ "$(docker inspect -f '{{.State.Health.Status}}' test-postgres)" = healthy ] \
+          || { docker logs test-postgres; echo "PostgreSQL did not become healthy."; exit 1; }
+
+        docker run -d --name test-neon-proxy --network host \
+          -e PG_CONNECTION_STRING=postgres://tbm:tbm@127.0.0.1:55432/tokenburnmarket \
+          -e RUST_LOG=warn \
+          -v "$dir/server.pem:/app/server.pem:ro" \
+          -v "$dir/server.key:/app/server.key:ro" \
+          -v "$dir/Caddyfile:/app/Caddyfile:ro" \
+          ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a \
+          >/dev/null
+
+        url="postgres://tbm:tbm@db.localtest.me:55432/tokenburnmarket?sslmode=disable"
+        # Ready once a query goes through the proxy over HTTP, the path the app uses most.
+        for _ in $(seq 60); do
+          curl -sf --cacert "$dir/server.pem" https://db.localtest.me/sql \
+            -H "Neon-Connection-String: $url" -H "Content-Type: application/json" \
+            -d '{"query":"select 1","params":[]}' >/dev/null && break
+          sleep 1
+        done
+        curl -sf --cacert "$dir/server.pem" https://db.localtest.me/sql \
+          -H "Neon-Connection-String: $url" -H "Content-Type: application/json" \
+          -d '{"query":"select 1","params":[]}' >/dev/null \
+          || { docker logs test-neon-proxy; echo "The Neon proxy did not answer a query."; exit 1; }
+
+        {
+          echo "DATABASE_URL=$url"
+          echo "NODE_EXTRA_CA_CERTS=$dir/server.pem"
+        } >> "$GITHUB_ENV"
+
+    - name: Apply migrations
+      shell: bash
+      run: pnpm --filter @tokenburnmarket/web db:migrate
