@@ -65,7 +65,7 @@ export default async function CommunityLeaderboardPage({
       />
 
       <p className="mt-6 max-w-[56ch] text-[0.85rem] text-subtle">
-        Reported means the agent gives us no message identifiers to check against. Quarantined days
+        The percent next to a name is the share of their cost that is verified. The rest is reported: the agent gives us no message identifiers to check against. Quarantined days
         are left out entirely.
       </p>
     </section>

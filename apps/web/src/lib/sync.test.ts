@@ -182,7 +182,7 @@ function memoryStore(): Memory {
         const has = builderDays.get(id);
         const counted = [...usage.values()].some((row) => `${row.builderId}|${row.day}` === id && row.duplicateOfDeviceId === null);
         if (!counted && !has) continue;
-        if (!has || has.costUsd !== want.costUsd || has.totalTokens !== want.totalTokens || has.trustLevelMin !== want.trustLevelMin) {
+        if (!has || has.costUsd !== want.costUsd || has.verifiedCostUsd !== want.verifiedCostUsd || has.totalTokens !== want.totalTokens || has.trustLevelMin !== want.trustLevelMin) {
           stale.push({ builderId: want.builderId, day: want.day });
         }
       }
@@ -568,6 +568,7 @@ describe("applySync", () => {
       expect(result.nextWatermark).toBe(DAY);
       expect(store.builderDays.get(`${BUILDER}|${DAY}`)).toMatchObject({
         costUsd: 416.2,
+        verifiedCostUsd: 415.37,
         totalTokens: 451_004,
         trustLevelMin: "reported",
       });
@@ -1081,7 +1082,7 @@ describe("one machine counts once", () => {
     store.machines.set(DEVICE_B, DEVICE_A);
     await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: OLD })]), NOW);
     await applySync(store, device(DEVICE_B), at(LATER, DEVICE_B, [day({ day: OLD, receipts: stream(10, "b"), costUsd: 6 })]), LATER);
-    store.builderDays.set(`${BUILDER}|${OLD}`, { builderId: BUILDER, day: OLD, costUsd: 11, totalTokens: 0, trustLevelMin: "verified" });
+    store.builderDays.set(`${BUILDER}|${OLD}`, { builderId: BUILDER, day: OLD, costUsd: 11, verifiedCostUsd: 11, totalTokens: 0, trustLevelMin: "verified" });
 
     expect(await regroupMachines(store, BUILDER, [DEVICE_A], LATER)).toBe(0);
     expect(store.builderDays.get(`${BUILDER}|${OLD}`)?.costUsd).toBe(6);
@@ -1158,7 +1159,7 @@ describe("restoreRetiredQuarantines", () => {
     const row = store.usage.get(`${DEVICE_A}|${OLD}|claude|claude-opus-5`)!;
     row.trustLevel = "verified";
     row.quarantineReasons = [];
-    store.builderDays.set(`${BUILDER}|${OLD}`, { builderId: BUILDER, day: OLD, costUsd: 5, totalTokens: 226_000, trustLevelMin: "quarantined" });
+    store.builderDays.set(`${BUILDER}|${OLD}`, { builderId: BUILDER, day: OLD, costUsd: 5, verifiedCostUsd: 0, totalTokens: 226_000, trustLevelMin: "quarantined" });
 
     expect(await restoreRetiredQuarantines(store, NOW)).toBe(0);
     expect(store.builderDays.get(`${BUILDER}|${OLD}`)?.trustLevelMin).toBe("verified");
@@ -1207,7 +1208,7 @@ describe("reconcileBuilderDays", () => {
   it("rebuilds days whose totals a stopped write left behind, and only those", async () => {
     const store = memoryStore();
     await applySync(store, device(DEVICE_A), payload(DEVICE_A, [day({ day: "2026-08-01" }), day({ day: "2026-08-02" }), day()]), NOW);
-    store.builderDays.set(`${BUILDER}|2026-08-01`, { builderId: BUILDER, day: "2026-08-01", costUsd: 1, totalTokens: 1, trustLevelMin: "quarantined" });
+    store.builderDays.set(`${BUILDER}|2026-08-01`, { builderId: BUILDER, day: "2026-08-01", costUsd: 1, verifiedCostUsd: 0, totalTokens: 1, trustLevelMin: "quarantined" });
     store.builderDays.delete(`${BUILDER}|2026-08-02`);
 
     expect(await reconcileBuilderDays(store)).toBe(2);

@@ -112,10 +112,24 @@ export interface BoardEntry {
   handle: string;
   avatarUrl: string | null;
   costUsd: number;
+  /** The part of `costUsd` that came from Verified Usage. */
+  verifiedCostUsd: number;
   totalTokens: number;
   creditsWon: number;
   /** True when any counted day in the Season was Reported rather than Verified. */
   reported: boolean;
+}
+
+/**
+ * How much of a Builder's cost in the Season is Verified, as a whole percent,
+ * or null when all of it is. Rounded down so a sliver of Reported Usage never
+ * reads as 100%.
+ */
+export function verifiedPercent(entry: Pick<BoardEntry, "costUsd" | "verifiedCostUsd" | "reported">): number | null {
+  if (!entry.reported) return null;
+  if (entry.costUsd <= 0) return 0;
+  const percent = Math.floor((entry.verifiedCostUsd / entry.costUsd) * 100);
+  return percent >= 100 ? null : Math.max(0, percent);
 }
 
 export interface BoardRow extends BoardEntry {

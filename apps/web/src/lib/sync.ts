@@ -149,6 +149,7 @@ export interface BuilderDayWrite {
   builderId: string;
   day: string;
   costUsd: number;
+  verifiedCostUsd: number;
   totalTokens: number;
   trustLevelMin: TrustLevel;
 }
@@ -389,6 +390,9 @@ export function rollupBuilderDays(
   return days.map((day) => {
     const counted = rows.filter((row) => row.day === day && row.duplicateOfDeviceId === null);
     const costUsd = counted.reduce((sum, row) => sum + row.costUsd, 0);
+    const verifiedCostUsd = counted
+      .filter((row) => row.trustLevel === "verified")
+      .reduce((sum, row) => sum + row.costUsd, 0);
     const totalTokens = counted.reduce(
       (sum, row) =>
         sum +
@@ -404,6 +408,7 @@ export function rollupBuilderDays(
       day,
       // Cost is stored to six decimals; rounding here keeps the sum stable across re-syncs.
       costUsd: Math.round(costUsd * 1e6) / 1e6,
+      verifiedCostUsd: Math.round(verifiedCostUsd * 1e6) / 1e6,
       totalTokens,
       trustLevelMin: weakestTrustLevel(counted.map((row) => row.trustLevel)),
     };

@@ -331,6 +331,7 @@ export const drizzleSyncStore: SyncStore & RestoreStore & ReconcileStore = {
       from (
         select builder_id, day,
           round(sum(cost_usd), 6) as cost_usd,
+          round(coalesce(sum(cost_usd) filter (where trust_level = 'verified'), 0), 6) as verified_cost_usd,
           sum(input_tokens + cached_input_tokens + cache_write_tokens + output_tokens + reasoning_tokens) as total_tokens,
           max(trust_level) as trust_level_min
         from usage_days
@@ -340,10 +341,11 @@ export const drizzleSyncStore: SyncStore & RestoreStore & ReconcileStore = {
       full join builder_days b on b.builder_id = c.builder_id and b.day = c.day
       where b.builder_id is null
         or (c.builder_id is null
-          and (b.cost_usd <> 0 or b.total_tokens <> 0 or b.trust_level_min <> 'reported'))
+          and (b.cost_usd <> 0 or b.verified_cost_usd <> 0 or b.total_tokens <> 0
+            or b.trust_level_min <> 'reported'))
         or (c.builder_id is not null
-          and (b.cost_usd <> c.cost_usd or b.total_tokens <> c.total_tokens
-            or b.trust_level_min <> c.trust_level_min))
+          and (b.cost_usd <> c.cost_usd or b.verified_cost_usd <> c.verified_cost_usd
+            or b.total_tokens <> c.total_tokens or b.trust_level_min <> c.trust_level_min))
     `);
     return (result.rows as { builderId: string; day: string }[]).map((row) => ({
       builderId: row.builderId,
@@ -379,6 +381,7 @@ export const drizzleSyncStore: SyncStore & RestoreStore & ReconcileStore = {
         target: [builderDays.builderId, builderDays.day],
         set: {
           costUsd: sql`excluded.cost_usd`,
+          verifiedCostUsd: sql`excluded.verified_cost_usd`,
           totalTokens: sql`excluded.total_tokens`,
           trustLevelMin: sql`excluded.trust_level_min`,
           updatedAt: sql`excluded.updated_at`,
