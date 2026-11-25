@@ -31,6 +31,10 @@ jobs:
 
       - run: pnpm --filter @tokenburnmarket/web e2e
 
+      # The signed-in journey uses development sign-in, so it starts its own dev
+      # server and owns one throwaway account in the test database.
+      - run: pnpm --filter @tokenburnmarket/web e2e:setup
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

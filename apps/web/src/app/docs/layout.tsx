@@ -6,12 +6,12 @@ import { DocsNav } from "./nav";
 */
 export default function DocsLayout({ children }: LayoutProps<"/docs">) {
   return (
-    <div className="mx-auto grid min-w-0 max-w-[1200px] gap-10 px-4 pb-24 pt-12 sm:px-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-16 lg:px-12 lg:pt-16">
+    <div className="mx-auto grid min-w-0 max-w-[1200px] gap-6 px-4 pb-24 pt-6 sm:px-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-16 lg:px-12 lg:pt-16">
       <aside className="min-w-0 lg:sticky lg:top-20 lg:self-start">
-        <p className="type-label mb-4">docs</p>
+        <p className="type-label mb-4 hidden lg:block">docs</p>
         <DocsNav />
-        <div className="signal-rail my-6" aria-hidden />
-        <p className="text-[0.82rem] text-subtle">
+        <div className="signal-rail my-6 hidden lg:block" aria-hidden />
+        <p className="mt-3 text-[0.82rem] text-subtle lg:mt-0">
           Something wrong here?{" "}
           <a
             className="hover:text-foreground"
