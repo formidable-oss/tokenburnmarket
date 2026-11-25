@@ -79,6 +79,7 @@ async function seed() {
           builderId: byHandle.get(`${PREFIX}${fixture.handle}`)!,
           day: day.day,
           costUsd: day.cost,
+          verifiedCostUsd: day.trust === "verified" ? day.cost : 0,
           totalTokens: day.tokens,
           trustLevelMin: day.trust,
         })),
@@ -158,7 +159,10 @@ describe.skipIf(!connected)("leaderboard ranking against SQL", () => {
     );
     const byHandle = new Map(entries.map((entry) => [entry.handle, entry]));
     expect(byHandle.get(`${PREFIX}two`)?.reported).toBe(true);
+    expect(byHandle.get(`${PREFIX}two`)?.verifiedCostUsd).toBeCloseTo(300.25);
     expect(byHandle.get(`${PREFIX}one`)?.reported).toBe(false);
+    // Quarantined days are out of the verified share as well as the total.
+    expect(byHandle.get(`${PREFIX}three`)?.verifiedCostUsd).toBeCloseTo(90);
     // The only day outside the week belongs to `four`, so they are off the board.
     expect(byHandle.has(`${PREFIX}four`)).toBe(false);
     // Credits won is zero everywhere until Markets exist.

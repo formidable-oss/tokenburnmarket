@@ -292,6 +292,10 @@ export const builderDays = pgTable(
       .references(() => builders.id, { onDelete: "cascade" }),
     day: date("day").notNull(),
     costUsd: numeric("cost_usd", { precision: 14, scale: 6, mode: "number" }).notNull().default(0),
+    /** The part of `cost_usd` from Verified rows, so a board can say how much of a Builder's burn is verified. */
+    verifiedCostUsd: numeric("verified_cost_usd", { precision: 14, scale: 6, mode: "number" })
+      .notNull()
+      .default(0),
     totalTokens: bigint("total_tokens", { mode: "number" }).notNull().default(0),
     trustLevelMin: trustLevel("trust_level_min").notNull(),
     creditsMinted: credits("credits_minted").notNull().default(0),

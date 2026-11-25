@@ -8,7 +8,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { METRIC_LABELS, type BoardRow, type Metric } from "@/lib/leaderboard";
+import { METRIC_LABELS, verifiedPercent, type BoardRow, type Metric } from "@/lib/leaderboard";
 
 const money = (usd: number) =>
   usd.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -35,6 +35,13 @@ function rankChangeLabel(change: number | null): string {
   if (change === null) return "new";
   if (change === 0) return "same";
   return `${change > 0 ? "+" : "-"}${Math.abs(change)}`;
+}
+
+/** Only shown when some of the Builder's cost is Reported; fully verified needs no badge. */
+function VerifiedBadge({ row }: { row: BoardRow }) {
+  const percent = verifiedPercent(row);
+  if (percent === null) return null;
+  return <Badge tone="reported">{percent}% verified</Badge>;
 }
 
 export interface BoardTableProps {
@@ -97,7 +104,7 @@ export function BoardTable({
                 <Link href={`/@${row.handle}`} className="truncate hover:text-primary-text">
                   {row.handle}
                 </Link>
-                {row.reported ? <Badge tone="reported">reported</Badge> : null}
+                <VerifiedBadge row={row} />
               </span>
               <span className="type-data text-right text-[0.95rem] tabular-nums">
                 {formatMetric(row.value, metric)}

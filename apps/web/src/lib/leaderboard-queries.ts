@@ -87,6 +87,9 @@ export async function boardEntries(
       .select({
         builderId: builderDays.builderId,
         costUsd: sql<number>`sum(${builderDays.costUsd})::double precision`.as("cost_usd"),
+        verifiedCostUsd: sql<number>`sum(${builderDays.verifiedCostUsd})::double precision`.as(
+          "verified_cost_usd",
+        ),
         totalTokens: sql<number>`sum(${builderDays.totalTokens})::double precision`.as(
           "total_tokens",
         ),
@@ -134,6 +137,7 @@ export async function boardEntries(
       handle: builders.handle,
       avatarUrl: builders.avatarUrl,
       costUsd: sql<number>`coalesce(${burn.costUsd}, 0)`,
+      verifiedCostUsd: sql<number>`coalesce(${burn.verifiedCostUsd}, 0)`,
       totalTokens: sql<number>`coalesce(${burn.totalTokens}, 0)`,
       creditsWon: sql<number>`coalesce(${won.creditsWon}, 0)`,
       reported: sql<boolean>`coalesce(${burn.reported}, false)`,
@@ -150,6 +154,7 @@ export async function boardEntries(
     handle: row.handle,
     avatarUrl: row.avatarUrl,
     costUsd: Number(row.costUsd),
+    verifiedCostUsd: Number(row.verifiedCostUsd),
     totalTokens: Number(row.totalTokens),
     creditsWon: Number(row.creditsWon),
     reported: Boolean(row.reported),

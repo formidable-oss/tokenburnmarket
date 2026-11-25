@@ -5,6 +5,7 @@ import {
   periodRange,
   previousPeriodRange,
   rankEntries,
+  verifiedPercent,
   type BoardEntry,
 } from "./leaderboard";
 
@@ -14,12 +15,34 @@ function entry(handle: string, values: Partial<BoardEntry> = {}): BoardEntry {
     handle,
     avatarUrl: null,
     costUsd: 0,
+    verifiedCostUsd: 0,
     totalTokens: 0,
     creditsWon: 0,
     reported: false,
     ...values,
   };
 }
+
+describe("verifiedPercent", () => {
+  it("shows nothing for a Builder with no Reported Usage", () => {
+    expect(verifiedPercent(entry("a", { costUsd: 50, verifiedCostUsd: 50 }))).toBeNull();
+  });
+
+  it("is the verified share of cost, rounded down", () => {
+    expect(verifiedPercent(entry("a", { costUsd: 200, verifiedCostUsd: 150, reported: true }))).toBe(75);
+    // A dollar of Reported in two thousand must not read as fully verified.
+    expect(verifiedPercent(entry("a", { costUsd: 2227, verifiedCostUsd: 2226, reported: true }))).toBe(99);
+  });
+
+  it("shows nothing when the Reported part cost nothing", () => {
+    expect(verifiedPercent(entry("a", { costUsd: 80, verifiedCostUsd: 80, reported: true }))).toBeNull();
+  });
+
+  it("is zero when everything is Reported", () => {
+    expect(verifiedPercent(entry("a", { costUsd: 40, verifiedCostUsd: 0, reported: true }))).toBe(0);
+    expect(verifiedPercent(entry("a", { reported: true }))).toBe(0);
+  });
+});
 
 describe("periodRange", () => {
   it("runs a week from Monday to Sunday UTC", () => {
