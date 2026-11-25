@@ -150,9 +150,16 @@ export function grokRoots(env: NodeJS.ProcessEnv, home: string): string[] {
 /**
  * Claude Code: sha256(`message.id:requestId`) per assistant message.
  *
- * Lines without both identifiers are skipped. Resumed and compacted sessions
- * repeat messages across files, so the same hash arriving twice is expected and
- * the set collapses it.
+ * Claude Code copies `requestId` from the `request-id` response header. A proxy
+ * in front of the API, such as CLIProxyAPI behind `ANTHROPIC_BASE_URL`, does not
+ * send that header, so every message has `requestId: null`. `message.id` is still
+ * the upstream response id (`msg_…`, `chatcmpl-…`, a Gemini response id), so the
+ * receipt falls back to it, in its own hash shape. Both identifiers come from the
+ * same local file, so the fallback is no easier to fake than the pair. It needs a
+ * `usage` record, so it only files receipts for lines that ccusage counts.
+ *
+ * Resumed and compacted sessions repeat messages across files, so the same hash
+ * arriving twice is expected and the set collapses it.
  */
 export function readClaudeStreams(roots: readonly string[], sinceDay?: string): ReceiptIndex {
   const index: ReceiptIndex = new Map();
@@ -172,14 +179,19 @@ export function readClaudeStreams(roots: readonly string[], sinceDay?: string): 
 
         const messageId = entry.message.id;
         const requestId = entry.requestId;
-        if (typeof messageId !== "string" || typeof requestId !== "string") continue;
+        if (typeof messageId !== "string" || !messageId) continue;
+        const proxied = typeof requestId !== "string" || !requestId;
+        if (proxied && !isRecord(entry.message.usage)) continue;
 
         const day = utcDay(entry.timestamp);
         const model = typeof entry.message.model === "string" ? entry.message.model : "";
         if (!day || !model) continue;
         if (sinceDay && day < sinceDay) continue;
 
-        add(index, day, "claude", model, sha256(`${messageId}:${requestId}`));
+        const hash = proxied
+          ? sha256(JSON.stringify(["claude-message", messageId]))
+          : sha256(`${messageId}:${requestId}`);
+        add(index, day, "claude", model, hash);
       }
     }
   }
