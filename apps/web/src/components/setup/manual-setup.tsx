@@ -5,11 +5,17 @@ import { useEffect, useRef, type ReactNode } from "react";
 export function ManualSetup({ children }: { children: ReactNode }) {
   const details = useRef<HTMLDetailsElement>(null);
 
+  // On load and on in-page links: not every browser opens a closed <details> for a fragment.
   useEffect(() => {
-    if (window.location.hash === "#manual" && details.current) {
-      details.current.open = true;
-      details.current.querySelector("#manual")?.scrollIntoView();
-    }
+    const openForHash = () => {
+      if (window.location.hash === "#manual" && details.current) {
+        details.current.open = true;
+        details.current.querySelector("#manual")?.scrollIntoView();
+      }
+    };
+    openForHash();
+    window.addEventListener("hashchange", openForHash);
+    return () => window.removeEventListener("hashchange", openForHash);
   }, []);
 
   // Fragment navigation can open the native disclosure before React hydrates it.
