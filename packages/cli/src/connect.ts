@@ -17,7 +17,7 @@ import {
   type DeviceConfig,
 } from "./config.js";
 import { describeError } from "./errors.js";
-import { mcpSetupLines } from "./setup.js";
+import { afterConnectLines } from "./setup.js";
 import { sync } from "./sync.js";
 
 /** How often the CLI asks whether the code was approved. */
@@ -196,7 +196,7 @@ export async function connect(options: ConnectOptions): Promise<DeviceConfig> {
     log(`Your profile: ${options.serverUrl}/@${result.handle}`);
     log("Boards catch up within five minutes.");
     log("");
-    for (const line of mcpSetupLines()) log(line);
+    for (const line of afterConnectLines()) log(line);
     return config;
   }
 
