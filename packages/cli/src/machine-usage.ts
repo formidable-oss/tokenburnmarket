@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { readUsageAggregates, type CcusageOptions, type UsageAggregate } from "./ccusage.js";
+import { readCodexSessionModels, readUsageAggregates, type CcusageOptions, type UsageAggregate } from "./ccusage.js";
 import { readCursorUsage } from "./cursor.js";
 import { readOpenCodeDetails, type OpenCodeReadResult } from "./opencode.js";
 import { readReceiptStreams, receiptKey, type ReceiptIndex } from "./receipts.js";
@@ -12,6 +12,7 @@ export interface MachineUsage {
 
 export interface MachineUsageOptions extends CcusageOptions {
   readBase?: typeof readUsageAggregates;
+  readCodexSessionModels?: typeof readCodexSessionModels;
   readCursor?: typeof readCursorUsage;
   readOpenCode?: typeof readOpenCodeDetails;
   readReceipts?: typeof readReceiptStreams;
@@ -24,7 +25,11 @@ export async function readMachineUsage(options: MachineUsageOptions = {}): Promi
   const sourceOptions = { ...options, home, env, signal };
   const base = await (options.readBase ?? readUsageAggregates)(sourceOptions);
   signal.throwIfAborted();
-  const receipts = (options.readReceipts ?? readReceiptStreams)(env, home, options.since);
+  const codexSessionModels = base.some((row) => row.provider === "codex")
+    ? await (options.readCodexSessionModels ?? readCodexSessionModels)(sourceOptions)
+    : new Map<string, string[]>();
+  signal.throwIfAborted();
+  const receipts = (options.readReceipts ?? readReceiptStreams)(env, home, options.since, { codexSessionModels });
   // The single warning below names the reader's incomplete sources.
   const details = base.some((row) => row.provider === "opencode")
     ? await (options.readOpenCode ?? readOpenCodeDetails)({ ...sourceOptions, warn: () => {} })

@@ -5,7 +5,7 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { checkPlausibility } from "@tokenburnmarket/core";
-import { ccusageCommand, parseCodexReasoning, parseUnifiedDaily, readUsageAggregates } from "./ccusage.js";
+import { ccusageCommand, parseCodexReasoning, parseCodexSessionModels, parseUnifiedDaily, readCodexSessionModels, readUsageAggregates } from "./ccusage.js";
 import { buildSyncDays, shiftDay, windowStart } from "./collect.js";
 import { readReceiptStreams } from "./receipts.js";
 
@@ -189,6 +189,81 @@ describe("parseUnifiedDaily", () => {
 describe("parseCodexReasoning", () => {
   it("keys reasoning tokens by day and model", () => {
     expect(parseCodexReasoning(CODEX).get("2026-08-16 gpt-5.6-sol")).toBe(200);
+  });
+});
+
+describe("parseCodexSessionModels", () => {
+  it("parses, sorts and deduplicates priced model names by session file", () => {
+    const report: unknown = JSON.parse(`{"sessions":[{"sessionFile":"rollout-alias","sessionId":"alias-session",
+      "models":{"gpt-5.6-sol":{},"gpt-5.6-luna":{},"gpt-5.6-sol":{}}}]}`);
+    expect(parseCodexSessionModels(report)).toEqual(new Map([
+      ["rollout-alias", ["gpt-5.6-luna", "gpt-5.6-sol"]],
+    ]));
+  });
+
+  it("keeps sessions with an empty models record", () => {
+    expect(parseCodexSessionModels({ sessions: [{ sessionFile: "rollout-empty", models: {} }] }))
+      .toEqual(new Map([["rollout-empty", []]]));
+  });
+
+  it("skips malformed sessions", () => {
+    expect(parseCodexSessionModels({ sessions: [
+      null, [], "rollout", {},
+      { sessionFile: 42, models: {} },
+      { sessionFile: "", models: {} },
+      { sessionFile: "rollout-null", models: null },
+      { sessionFile: "rollout-array", models: [] },
+      { sessionFile: "rollout-string", models: "gpt-5.6-luna" },
+      { sessionFile: "rollout-missing" },
+      { sessionFile: "rollout-valid", models: { "gpt-5.6-luna": {} } },
+    ] })).toEqual(new Map([["rollout-valid", ["gpt-5.6-luna"]]]));
+  });
+
+  it("returns an empty map when the sessions array is missing", () => {
+    for (const report of [undefined, null, [], {}, { sessions: {} }, { sessions: null }]) {
+      expect(parseCodexSessionModels(report)).toEqual(new Map());
+    }
+  });
+});
+
+describe("readCodexSessionModels", () => {
+  it("reads session models over the requested UTC window", async () => {
+    const calls: string[][] = [];
+    const models = await readCodexSessionModels({ since: "2026-11-02",
+      exec: async (args) => {
+        calls.push(args);
+        return JSON.stringify({ sessions: [{ sessionFile: "rollout-alias", models: { "gpt-5.6-luna": {} } }] });
+      },
+    });
+    expect(calls).toEqual([["codex", "session", "--json", "--timezone", "UTC", "--since", "20261102"]]);
+    expect(models).toEqual(new Map([["rollout-alias", ["gpt-5.6-luna"]]]));
+  });
+
+  it.each(["exec error", "invalid JSON"])("warns and returns no session models on %s", async (failure) => {
+    const warnings: string[] = [];
+    const models = await readCodexSessionModels({ warn: (message) => warnings.push(message),
+      exec: async () => {
+        if (failure === "exec error") throw new Error("collector failed");
+        return "{";
+      },
+    });
+    expect(models).toEqual(new Map());
+    expect(warnings).toEqual([
+      "Codex session models are unavailable. Rollouts that record only a model alias stay Reported.",
+    ]);
+  });
+
+  it("propagates cancellation instead of warning that session models are unavailable", async () => {
+    const controller = new AbortController();
+    const reason = new Error("cancelled");
+    const warnings: string[] = [];
+    await expect(readCodexSessionModels({ signal: controller.signal, warn: (message) => warnings.push(message),
+      exec: async () => {
+        controller.abort(reason);
+        throw reason;
+      },
+    })).rejects.toBe(reason);
+    expect(warnings).toEqual([]);
   });
 });
 
