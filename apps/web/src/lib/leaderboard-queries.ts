@@ -3,17 +3,17 @@
 
   Every board is the same query with a different scope predicate: the world, a
   continent, a country, or a Community. It reads `builder_days`, the Builder-day
-  rollup, so a board never touches per-Device rows, and it joins the Credit
-  ledger for the credits-won metric.
+  rollup, so a board never touches per-Device rows, and it joins trades on
+  settled Markets for the credits-won metric.
 
   Boards are public, so nothing here depends on the viewer and the result is
   safe to cache. `cachedBoard` holds one for a Sync Slot (ADR 0005).
 */
 import { SYNC_SLOT_HOURS } from "@tokenburnmarket/core";
-import { and, eq, gte, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, lte, or, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { db } from "@/db";
-import { builderDays, builders, creditLedger, memberships } from "@/db/schema";
+import { builderDays, builders, markets, memberships, trades } from "@/db/schema";
 import {
   periodRange,
   previousPeriodRange,
@@ -44,21 +44,32 @@ export function scopeForRegion(region: Region): BoardScope {
   return { kind: "countries", countries: [region.country] };
 }
 
-/**
- * Credits won over a Season: what Markets paid out plus what selling shares
- * returned, less what buying them cost. Minting and the signup grant are not
- * winnings, so they are not in it.
- *
- * Markets land in a later ticket, so today every Builder scores zero. This is
- * the one place the definition lives, so that ticket inherits it rather than
- * inventing a second one.
- */
-const creditsWonSum = sql<number>`(
-  coalesce(sum(case when ${creditLedger.reason} in ('payout', 'sell') then ${creditLedger.delta} else 0 end), 0)
-  - coalesce(sum(case when ${creditLedger.reason} = 'buy' then abs(${creditLedger.delta}) else 0 end), 0)
+/*
+  Credits won over a Season: for every Market due to settle in it (its
+  `resolves_at`; a held Market keeps the Season it was due in), what settling paid
+  (winnings, or the refund of a voided Market) plus what selling shares raised,
+  less what buying them cost. Minting and the signup grant are not winnings.
+
+  It is counted per Market at its settlement time, not per ledger row at its
+  own time, because a weekly Market is bought into during one week and paid the
+  next: counting rows would show every bettor a loss this week and a windfall
+  the next. A stake still riding on an open Market counts for nothing yet.
+
+  Written with table names rather than interpolated columns, because a column in
+  a select projection renders unqualified and would bind to the wrong table
+  inside the correlated subquery.
+*/
+const betNetPerMarket = sql<number>`(
+  coalesce(sum(case when trades.side = 'sell' then trades.credits else -trades.credits end), 0)
+  + coalesce((
+    select sum(l.delta) from credit_ledger l
+    where l.builder_id = trades.builder_id
+      and l.ref_id = 'market:' || markets.id::text
+      and l.reason in ('payout', 'refund')
+  ), 0)
 )::double precision`;
 
-/** A day range as the half-open timestamp window the ledger is stamped in. */
+/** A day range as the half-open timestamp window a Market has to settle in. */
 function ledgerWindow(range: DayRange): { from: string | null; until: string } {
   const until = new Date(Date.parse(`${range.end}T00:00:00.000Z`) + 86_400_000);
   return {
@@ -106,21 +117,31 @@ export async function boardEntries(
       .groupBy(builderDays.builderId),
   );
 
+  const bet = db
+    .select({
+      builderId: trades.builderId,
+      net: betNetPerMarket.as("net"),
+    })
+    .from(trades)
+    .innerJoin(markets, eq(markets.id, trades.marketId))
+    .where(
+      and(
+        inArray(markets.status, ["resolved", "voided"]),
+        window.from ? gte(markets.resolvesAt, new Date(window.from)) : undefined,
+        lt(markets.resolvesAt, new Date(window.until)),
+      ),
+    )
+    .groupBy(trades.builderId, markets.id)
+    .as("bet");
+
   const won = db.$with("won").as(
     db
       .select({
-        builderId: creditLedger.builderId,
-        creditsWon: creditsWonSum.as("credits_won"),
+        builderId: bet.builderId,
+        creditsWon: sql<number>`sum(${bet.net})::double precision`.as("credits_won"),
       })
-      .from(creditLedger)
-      .where(
-        and(
-          inArray(creditLedger.reason, ["payout", "sell", "buy"]),
-          window.from ? gte(creditLedger.createdAt, new Date(window.from)) : undefined,
-          sql`${creditLedger.createdAt} < ${window.until}`,
-        ),
-      )
-      .groupBy(creditLedger.builderId),
+      .from(bet)
+      .groupBy(bet.builderId),
   );
 
   const value =

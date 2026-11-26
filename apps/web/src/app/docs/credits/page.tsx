@@ -133,9 +133,11 @@ export default function DocsCreditsPage() {
 
       <h2 className="type-heading">Credits won</h2>
       <p className="mt-3 text-[0.95rem] text-muted">
-        Over a period, credits won is what markets paid out plus what selling shares returned, less
-        what buying them cost. The signup grant and the daily mint are not winnings. It is the
-        third leaderboard metric, next to cost and tokens, and the only one that rewards being
+        Over a period, credits won adds up every market that settled in it: what the market paid
+        out or refunded, plus what selling its shares returned, less what buying them cost. A bet
+        counts once, in the week it settles, so a stake still riding counts for nothing yet and a
+        voided market is not a loss. The signup grant and the daily mint are not winnings. It is
+        the third leaderboard metric, next to cost and tokens, and the only one that rewards being
         right rather than spending.
       </p>
 

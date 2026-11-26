@@ -10,7 +10,8 @@
 import { lmsrQuote, type LmsrQuote } from "@tokenburnmarket/core";
 import { useActionState, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { formatCredits } from "@/lib/credits";
+import { formatReturn, LONG_ODDS_PRICE, winScenario } from "@/lib/bets";
+import { formatCredits, formatDelta } from "@/lib/credits";
 import { formatPriceCents, normalizeShareAmount } from "@/lib/markets";
 import type { OutcomePrice } from "@/lib/market-queries";
 import {
@@ -87,6 +88,9 @@ export function TradeForm({
   }, [amount, b, holding, outcomeId, outcomes, side]);
 
   const tooExpensive = side === "buy" && preview !== null && preview.credits > balance;
+  // What the buy pays if it wins. A sell has no such line: it is paid now.
+  const ifWins = side === "buy" && preview ? winScenario(preview.shares, preview.credits) : null;
+  const longOdds = ifWins !== null && preview !== null && preview.averagePrice >= LONG_ODDS_PRICE;
   const offered = state.status === "price_moved" ? state.offered : undefined;
   const sliderPercent = allocationPercent ?? 10;
   const sliderBudget = allocationBudget(balance, sliderPercent);
@@ -263,7 +267,31 @@ export function TradeForm({
           term="price after"
           value={preview ? formatPriceCents(preview.priceAfter) : "-"}
         />
+        {side === "buy" ? (
+          <>
+            <Line
+              term="pays if it wins"
+              value={ifWins ? `${formatCredits(ifWins.payout)} cr` : "-"}
+            />
+            <Line
+              term="profit if it wins"
+              value={
+                ifWins
+                  ? `${formatDelta(ifWins.profit)} cr · ${formatReturn(ifWins.returnRate)}`
+                  : "-"
+              }
+              tone={ifWins && ifWins.profit > 0 ? "won" : undefined}
+            />
+          </>
+        ) : null}
       </dl>
+
+      {longOdds && preview && ifWins ? (
+        <p className="mt-3 text-[0.85rem] text-muted">
+          At {formatPriceCents(preview.averagePrice)} a win returns{" "}
+          {formatReturn(ifWins.returnRate)}. A loss takes all {formatCredits(preview.credits)} cr.
+        </p>
+      ) : null}
 
       {offered ? (
         <label className="mt-5 flex items-start gap-3" htmlFor="acceptSlippage">
@@ -303,11 +331,13 @@ export function TradeForm({
   );
 }
 
-function Line({ term, value }: { term: string; value: string }) {
+function Line({ term, value, tone }: { term: string; value: string; tone?: "won" }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
       <dt className="type-label text-subtle">{term}</dt>
-      <dd className="type-data tabular-nums">{value}</dd>
+      <dd className={`type-data tabular-nums ${tone === "won" ? "text-[color:var(--won)]" : ""}`}>
+        {value}
+      </dd>
     </div>
   );
 }

@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
+import { BetsPanel } from "@/components/markets/bets-panel";
 import { UsagePanel } from "@/components/usage/usage-panel";
 import { builderByHandle, handleFromSegment } from "@/lib/builders";
 import { countryByCode } from "@/lib/countries";
 import { formatCredits } from "@/lib/credits";
+import { betsFor } from "@/lib/market-queries";
 import { profileTitle } from "@/lib/share-cards";
 import { parseUsageWindow } from "@/lib/usage";
 import {
@@ -58,9 +60,11 @@ export default async function BuilderProfile({
   const session = await auth();
   // Quarantined rows are the Builder's own business until an admin queue exists.
   const isOwner = session?.user?.id === builder.id;
-  const [usage, history] = await Promise.all([
+  const [usage, history, bets] = await Promise.all([
     builderUsage(builder.id, { days: windowDays, includeQuarantined: isOwner }),
     builderUsageHistory(builder.id),
+    // Visitors only see the record this adds up to, never the bets themselves.
+    betsFor(builder.id, { limit: 200 }),
   ]);
 
   return (
@@ -112,12 +116,7 @@ export default async function BuilderProfile({
           profilePath={`/@${builder.handle}`}
         />
 
-        <div className="min-w-0 rounded-(--radius-panel) border border-border bg-surface p-6 sm:p-8">
-          <h2 className="type-label">positions</h2>
-          <p className="mt-4 max-w-[42ch] text-[0.95rem] text-muted">
-            Open bets and settled ones show up here after the first trade.
-          </p>
-        </div>
+        <BetsPanel bets={bets} isOwner={isOwner} handle={builder.handle} />
       </div>
     </section>
   );

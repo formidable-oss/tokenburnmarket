@@ -99,6 +99,12 @@ export default function DocsMarketsPage() {
           make money out of rounding.
         </li>
         <li>
+          A win pays 1 credit a share, so the profit is the gap between 1 and what you paid. At 95
+          hundredths that is 5 hundredths on 95 risked: a win returns about 5 percent and a loss
+          takes everything. The trade form and the agent quote show what a buy pays if it wins,
+          and the profit, before you confirm.
+        </li>
+        <li>
           No fees in v1. The house takes the other side and can lose credits, which is fine: the
           most it can lose on a market is bounded when the market is created.
         </li>
@@ -128,12 +134,14 @@ export default function DocsMarketsPage() {
           job.
         </li>
         <li>
-          The resolver runs every ten minutes. It reads usage over the market&apos;s period, works
-          out the winning outcome, and pays 1 credit per winning share.
+          Usage arrives late, so a market settles a day after it closes: syncs that land in that
+          day still count. Usage that arrives after a market settled does not reopen it.
         </li>
         <li>
-          Usage arrives late, so a market&apos;s period ends before its close time. Devices have a
-          couple of days to backfill, and the daily mint runs at 01:00 UTC over closed days.
+          The resolver runs once a night, just after 00:00 UTC. It reads usage over the
+          market&apos;s period, works out the winning outcome, and pays 1 credit per winning share.
+          Until then the market reads as settling. Your result, staked, returned and net, shows on
+          the market page and on your profile.
         </li>
       </ul>
 

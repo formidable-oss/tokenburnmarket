@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "@/db";
-import { builderDays, builders, creditLedger } from "@/db/schema";
+import { builderDays, builders, creditLedger, markets, outcomes, trades } from "@/db/schema";
 import { rankEntries } from "./leaderboard";
 import { boardEntries } from "./leaderboard-queries";
 
@@ -169,27 +169,77 @@ describe.skipIf(!connected)("leaderboard ranking against SQL", () => {
     expect(entries.every((entry) => entry.creditsWon === 0)).toBe(true);
   });
 
-  it("counts payouts and sales less what buying cost, and nothing else", async () => {
+  it("counts each settled market's net in the season it settled, refunds included", async () => {
     await cleanup();
     const ids = await seed();
-
     const one = ids.get(`${PREFIX}one`)!;
-    const inWeek = new Date("2019-03-06T12:00:00.000Z");
+    const two = ids.get(`${PREFIX}two`)!;
+    const three = ids.get(`${PREFIX}three`)!;
+
+    // Markets cascade from their creator, so the fixture cleanup takes them too.
+    const market = async (
+      status: "open" | "resolved" | "voided",
+      resolvesAt: string,
+    ): Promise<{ marketId: string; outcomeId: string }> => {
+      const marketId = crypto.randomUUID();
+      const outcomeId = crypto.randomUUID();
+      await db.insert(markets).values({
+        id: marketId,
+        scope: "global",
+        type: "top_burner",
+        question: "Who burns most in the fixture?",
+        b: 80,
+        closesAt: new Date(Date.parse(resolvesAt) - 86_400_000),
+        resolvesAt: new Date(resolvesAt),
+        status,
+        winningOutcomeId: null,
+        createdBy: one,
+      });
+      await db.insert(outcomes).values({ id: outcomeId, marketId, label: "yes", sort: 0 });
+      return { marketId, outcomeId };
+    };
+    const trade = (
+      builderId: string,
+      at: { marketId: string; outcomeId: string },
+      side: "buy" | "sell",
+      credits: number,
+      createdAt: string,
+    ) => ({
+      ...at,
+      builderId,
+      side,
+      shares: credits * 2,
+      credits,
+      priceAfter: 0.5,
+      createdAt: new Date(createdAt),
+    });
+
+    const won = await market("resolved", "2019-03-07T00:00:00.000Z");
+    const voided = await market("voided", "2019-03-08T00:00:00.000Z");
+    const nextWeek = await market("resolved", "2019-03-12T00:00:00.000Z");
+    const open = await market("open", "2019-03-09T00:00:00.000Z");
+
+    await db.insert(trades).values([
+      // Bought the week before it settled: the cost still lands with the payout.
+      trade(one, won, "buy", 50, "2019-02-27T12:00:00.000Z"),
+      trade(one, won, "sell", 30, "2019-03-05T12:00:00.000Z"),
+      trade(two, voided, "buy", 40, "2019-03-05T12:00:00.000Z"),
+      trade(one, nextWeek, "buy", 20, "2019-03-06T12:00:00.000Z"),
+      trade(three, open, "buy", 70, "2019-03-06T12:00:00.000Z"),
+    ]);
+    const inWeek = new Date("2019-03-07T00:10:00.000Z");
     await db.insert(creditLedger).values([
-      { builderId: one, delta: 100, reason: "payout", refId: "t1", createdAt: inWeek },
-      { builderId: one, delta: 30, reason: "sell", refId: "t2", createdAt: inWeek },
-      { builderId: one, delta: -50, reason: "buy", refId: "t3", createdAt: inWeek },
-      // Minting is a faucet, not a winning, and a refund is neither.
-      { builderId: one, delta: 900, reason: "mint", refId: "t4", createdAt: inWeek },
-      { builderId: one, delta: 7, reason: "refund", refId: "t5", createdAt: inWeek },
-      // Outside the Season, so outside the number.
+      { builderId: one, delta: 100, reason: "payout", refId: `market:${won.marketId}`, createdAt: inWeek },
+      { builderId: two, delta: 40, reason: "refund", refId: `market:${voided.marketId}`, createdAt: inWeek },
       {
         builderId: one,
         delta: 500,
         reason: "payout",
-        refId: "t6",
-        createdAt: new Date("2019-03-11T00:00:00.000Z"),
+        refId: `market:${nextWeek.marketId}`,
+        createdAt: new Date("2019-03-12T00:10:00.000Z"),
       },
+      // Minting is a faucet, not a winning.
+      { builderId: one, delta: 900, reason: "mint", refId: "2019-03-06:fixture", createdAt: inWeek },
     ]);
 
     const entries = await boardEntries(
@@ -199,7 +249,11 @@ describe.skipIf(!connected)("leaderboard ranking against SQL", () => {
       100,
     );
     const byHandle = new Map(entries.map((entry) => [entry.handle, entry]));
+    // 100 paid + 30 sold - 50 bought; the market settling next week is not in it.
     expect(byHandle.get(`${PREFIX}one`)?.creditsWon).toBe(80);
+    // A refunded stake is not a loss.
     expect(byHandle.get(`${PREFIX}two`)?.creditsWon).toBe(0);
+    // A stake on a market still open counts for nothing yet.
+    expect(byHandle.get(`${PREFIX}three`)?.creditsWon).toBe(0);
   });
 });

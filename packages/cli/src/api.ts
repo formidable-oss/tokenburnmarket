@@ -18,12 +18,29 @@ export interface UsageWindow {
   tokens: number;
 }
 
+export interface BetSummary {
+  marketId: string;
+  question: string;
+  state: "open" | "settling" | "won" | "lost" | "even" | "refunded";
+  staked: number;
+  /** Realised result; null until the market settles. */
+  net: number | null;
+  winner: string | null;
+  /** What an unsettled bet's biggest holding pays if it wins. */
+  paysIfWins: { label: string; credits: number } | null;
+}
+
 export interface Stats {
   handle: string;
   credits: { balance: number };
   usage: { today: UsageWindow; week: UsageWindow; month: UsageWindow };
   trust: { provider: string; level: string }[];
   quarantinedDays: number;
+  /** Absent from servers older than the bets panel. */
+  bets?: {
+    record: { settled: number; won: number; lost: number; net: number };
+    recent: BetSummary[];
+  };
 }
 
 export interface CommunityRow {

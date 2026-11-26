@@ -14,7 +14,6 @@ import {
   builderDays,
   builders,
   communities,
-  creditLedger,
   devices,
   markets,
   memberships,
@@ -24,9 +23,9 @@ import {
   usageDays,
   type MarketParams,
 } from "@/db/schema";
+import { betNet, betState, isSettled, type BetFlows, type BetState } from "./bets";
 import { periodRange } from "./leaderboard";
 import type { MarketScope, MarketStatus } from "./markets";
-import { marketRef } from "./resolution";
 
 export interface OutcomePrice {
   id: string;
@@ -220,29 +219,118 @@ export async function positionsIn(marketId: string, builderId: string): Promise<
     .where(and(eq(positions.marketId, marketId), eq(positions.builderId, builderId), gt(positions.shares, 0)));
 }
 
-/** What settling paid the viewer on this Market, if anything. Their business alone. */
-export interface ViewerSettlement {
-  reason: "payout" | "refund";
-  credits: number;
+/** One outcome a Builder holds on a Market, by label. */
+export interface BetHolding {
+  outcomeId: string;
+  label: string;
+  shares: number;
+  costBasis: number;
 }
 
-export async function settlementFor(
-  marketId: string,
+/** One Builder's bet on one Market: what went in, what came back, where it stands. */
+export interface BetRow extends BetFlows {
+  marketId: string;
+  question: string;
+  status: MarketStatus;
+  closesAt: Date;
+  resolvesAt: Date;
+  state: BetState;
+  /** Realised result once settled; null while the Market can still move. */
+  net: number | null;
+  winnerLabel: string | null;
+  /** Outcomes still held, which is what pays if the Market settles on one. */
+  holdings: BetHolding[];
+}
+
+/*
+  Every Market a Builder has traded, newest close first, with the flows that
+  decide its result. Buys and sells come from the trade tape; what settling paid
+  comes from the ledger rows keyed by `market:<id>`. Only ever called for the
+  Builder themselves, like `positionsIn`.
+*/
+export async function betsFor(
   builderId: string,
-): Promise<ViewerSettlement | null> {
-  const [row] = await db
-    .select({ reason: creditLedger.reason, credits: creditLedger.delta })
-    .from(creditLedger)
-    .where(
-      and(
-        eq(creditLedger.builderId, builderId),
-        eq(creditLedger.refId, marketRef(marketId)),
-        inArray(creditLedger.reason, ["payout", "refund"]),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
-  return { reason: row.reason as ViewerSettlement["reason"], credits: row.credits };
+  options: { limit?: number; marketId?: string; now?: Date } = {},
+): Promise<BetRow[]> {
+  const { limit = 50, marketId, now = new Date() } = options;
+  /*
+    Spelled out with table names rather than interpolated columns: a column in a
+    select projection renders unqualified, and inside this subquery `id` would
+    quietly bind to the ledger's own id (see lib/trade-store.ts).
+  */
+  const paid = sql<number>`coalesce((
+    select sum(l.delta) from credit_ledger l
+    where l.builder_id = ${builderId}
+      and l.ref_id = 'market:' || markets.id::text
+      and l.reason in ('payout', 'refund')
+  ), 0)::double precision`;
+
+  const rows = await db
+    .select({
+      marketId: markets.id,
+      question: markets.question,
+      status: markets.status,
+      closesAt: markets.closesAt,
+      resolvesAt: markets.resolvesAt,
+      winningOutcomeId: markets.winningOutcomeId,
+      bought: sql<number>`coalesce(sum(trades.credits) filter (where trades.side = 'buy'), 0)::double precision`,
+      sold: sql<number>`coalesce(sum(trades.credits) filter (where trades.side = 'sell'), 0)::double precision`,
+      paid,
+    })
+    .from(trades)
+    .innerJoin(markets, eq(markets.id, trades.marketId))
+    .where(and(eq(trades.builderId, builderId), marketId ? eq(markets.id, marketId) : undefined))
+    .groupBy(markets.id)
+    .orderBy(desc(markets.closesAt))
+    .limit(limit);
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((row) => row.marketId);
+  const [held, winners] = await Promise.all([
+    db
+      .select({
+        marketId: positions.marketId,
+        outcomeId: positions.outcomeId,
+        label: outcomes.label,
+        shares: positions.shares,
+        costBasis: positions.costBasis,
+      })
+      .from(positions)
+      .innerJoin(outcomes, eq(outcomes.id, positions.outcomeId))
+      .where(
+        and(
+          eq(positions.builderId, builderId),
+          inArray(positions.marketId, ids),
+          gt(positions.shares, 0),
+        ),
+      )
+      .orderBy(asc(outcomes.sort)),
+    db
+      .select({ id: outcomes.id, label: outcomes.label })
+      .from(outcomes)
+      .innerJoin(markets, eq(markets.winningOutcomeId, outcomes.id))
+      .where(inArray(markets.id, ids)),
+  ]);
+  const winnerLabels = new Map(winners.map((row) => [row.id, row.label]));
+
+  return rows.map((row) => {
+    const flows = { bought: Number(row.bought), sold: Number(row.sold), paid: Number(row.paid) };
+    const state = betState(row.status, row.closesAt, flows, now);
+    return {
+      marketId: row.marketId,
+      question: row.question,
+      status: row.status,
+      closesAt: row.closesAt,
+      resolvesAt: row.resolvesAt,
+      ...flows,
+      state,
+      net: isSettled(state) ? betNet(flows) : null,
+      winnerLabel: row.winningOutcomeId ? (winnerLabels.get(row.winningOutcomeId) ?? null) : null,
+      holdings: held
+        .filter((holding) => holding.marketId === row.marketId)
+        .map(({ outcomeId, label, shares, costBasis }) => ({ outcomeId, label, shares, costBasis })),
+    };
+  });
 }
 
 export interface TradeRow {

@@ -13,6 +13,7 @@
   by a ledger ref, so a second call in the same minute moves no Credits.
 */
 import { timingSafeEqual } from "node:crypto";
+import { revalidateTag } from "next/cache";
 import { runResolution } from "@/lib/resolution";
 import { drizzleResolutionStore } from "@/lib/resolution-store";
 
@@ -34,6 +35,8 @@ async function handle(request: Request) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
   const result = await runResolution(drizzleResolutionStore, new Date());
+  // Credits Won counts a Market once it settles, so the cached boards are stale now.
+  if (result.resolved + result.voided > 0) revalidateTag("leaderboard", "max");
   return Response.json(result, { status: 200 });
 }
 

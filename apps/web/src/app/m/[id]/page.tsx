@@ -9,11 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCredits, formatDelta } from "@/lib/credits";
 import {
+  betsFor,
   marketById,
   positionsIn,
   priceHistory,
   recentTrades,
-  settlementFor,
   type MarketDetail,
 } from "@/lib/market-queries";
 import {
@@ -76,18 +76,20 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
   const session = await auth();
   const viewerId = session?.user?.id ?? null;
 
-  const [history, tape, holdings, builder, settlement] = await Promise.all([
+  const [history, tape, holdings, builder, bets] = await Promise.all([
     priceHistory(market.id),
     recentTrades(market.id),
     viewerId ? positionsIn(market.id, viewerId) : Promise.resolve([]),
     viewerId ? currentBuilder() : Promise.resolve(null),
-    viewerId ? settlementFor(market.id, viewerId) : Promise.resolve(null),
+    viewerId ? betsFor(viewerId, { marketId: market.id, limit: 1 }) : Promise.resolve([]),
   ]);
+  const bet = bets[0] ?? null;
 
   const held = Object.fromEntries(holdings.map((row) => [row.outcomeId, row.shares]));
   const labels = new Map(market.outcomes.map((outcome) => [outcome.id, outcome.label]));
   const priced = new Map(market.outcomes.map((outcome) => [outcome.id, outcome.price]));
   const tradable = isTradable(market.status, market.closesAt);
+  const settled = market.status === "resolved" || market.status === "voided";
   const where = whereLine(market);
 
   return (
@@ -132,17 +134,24 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
         <div className="min-w-0">
           <ResolutionPanel
             status={market.status}
+            closesAt={market.closesAt}
+            resolvesAt={market.resolvesAt}
             winnerLabel={market.winningOutcomeId ? (labels.get(market.winningOutcomeId) ?? null) : null}
             note={market.resolutionNote}
             holdUntil={market.holdUntil}
-            settlement={settlement}
+            bet={bet}
           />
 
           <section className="mt-8 rounded-(--radius-panel) border border-border bg-surface px-5 py-4 first:mt-0 sm:px-6">
             <h2 className="type-label">outcomes</h2>
             <ol className="mt-2 divide-y divide-border-faint">
               {market.outcomes.map((outcome) => (
-                <OutcomeRow key={outcome.id} outcome={outcome} held={held[outcome.id]} />
+                <OutcomeRow
+                  key={outcome.id}
+                  outcome={outcome}
+                  held={held[outcome.id]}
+                  won={market.status === "resolved" && outcome.id === market.winningOutcomeId}
+                />
               ))}
             </ol>
           </section>
@@ -280,19 +289,30 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
             <div className="mt-6 rounded-(--radius-panel) border border-border bg-surface p-6">
               <h2 className="type-label">your position</h2>
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[24rem] border-collapse text-[0.85rem]">
+                <table className="w-full min-w-[20rem] border-collapse text-[0.85rem]">
                   <thead>
                     <tr className="type-label text-subtle">
                       <th className="py-1 text-left font-normal">outcome</th>
                       <th className="py-1 text-right font-normal">shares</th>
                       <th className="py-1 text-right font-normal">cost</th>
-                      <th className="py-1 text-right font-normal">value</th>
+                      <th className="py-1 text-right font-normal">{settled ? "paid" : "value"}</th>
                     </tr>
                   </thead>
                   <tbody className="type-data">
                     {holdings.map((row) => {
-                      // What the shares are worth if sold at the current price, before impact.
-                      const value = row.shares * (priced.get(row.outcomeId) ?? 0);
+                      /*
+                        Open: what the shares fetch at the current price, before
+                        impact. Settled: what they actually paid, 1 a share on
+                        the winner, nothing on the rest, cost on a void.
+                      */
+                      const value =
+                        market.status === "resolved"
+                          ? row.outcomeId === market.winningOutcomeId
+                            ? row.shares
+                            : 0
+                          : market.status === "voided"
+                            ? row.costBasis
+                            : row.shares * (priced.get(row.outcomeId) ?? 0);
                       return (
                         <tr key={row.outcomeId} className="border-t border-border-faint">
                           <td className="py-1.5 pr-3">{labels.get(row.outcomeId) ?? "unknown"}</td>
@@ -312,8 +332,11 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
                 </table>
               </div>
               <p className="mt-4 text-[0.85rem] text-subtle">
-                Value is the price right now, before your own sell moves it. A winning share pays 1
-                credit.
+                {market.status === "voided"
+                  ? "Voided. Every share still held was refunded at what it cost."
+                  : settled
+                    ? "Settled. A winning share paid 1 credit, the rest paid nothing."
+                    : "Value is the price right now, before your own sell moves it. A winning share pays 1 credit."}
               </p>
             </div>
           ) : null}
