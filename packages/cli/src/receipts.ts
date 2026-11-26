@@ -147,9 +147,14 @@ export function grokRoots(env: NodeJS.ProcessEnv, home: string): string[] {
   return configured ? [expandUsagePath(configured, home)] : [join(home, ".grok")];
 }
 
-/** The usage shape ccusage 20 requires before it counts a Claude Code line. */
+/**
+ * The usage shape ccusage 20 requires before it counts a Claude Code line. The
+ * cache counts may be absent, but a `null` or a string makes ccusage skip the line.
+ */
 function countedByCcusage(usage: unknown): boolean {
-  return isRecord(usage) && typeof usage.input_tokens === "number" && typeof usage.output_tokens === "number";
+  const optionalCount = (value: unknown) => value === undefined || typeof value === "number";
+  return isRecord(usage) && typeof usage.input_tokens === "number" && typeof usage.output_tokens === "number" &&
+    optionalCount(usage.cache_creation_input_tokens) && optionalCount(usage.cache_read_input_tokens);
 }
 
 /**

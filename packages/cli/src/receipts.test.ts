@@ -114,8 +114,23 @@ describe("readClaudeStreams", () => {
       line("msg_empty", {}),
       line("msg_no_input", { output_tokens: 7 }),
       line("msg_string", { input_tokens: "3", output_tokens: 7 }),
+      line("msg_null_cache_read", { input_tokens: 3, output_tokens: 7, cache_read_input_tokens: null }),
+      line("msg_string_cache_write", { input_tokens: 3, output_tokens: 7, cache_creation_input_tokens: "5" }),
     ], (root) => {
       expect(readClaudeStreams([root]).size).toBe(0);
+    });
+  });
+
+  it("files a fallback receipt when the cache counts are absent or numeric", () => {
+    const line = (id: string, usage: unknown) => ({
+      type: "assistant", requestId: null, timestamp: "2026-11-20T10:00:00.000Z",
+      message: { id, model: "claude-opus-5-5", usage },
+    });
+    withTranscript("projects/p/s.jsonl", [
+      line("msg_no_cache", { input_tokens: 3, output_tokens: 7 }),
+      line("msg_cache", { input_tokens: 3, output_tokens: 7, cache_read_input_tokens: 5, cache_creation_input_tokens: 0 }),
+    ], (root) => {
+      expect(readClaudeStreams([root]).get(receiptKey("2026-11-20", "claude", "claude-opus-5-5"))?.size).toBe(2);
     });
   });
 
