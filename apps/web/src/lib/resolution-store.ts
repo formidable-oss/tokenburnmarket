@@ -249,7 +249,7 @@ export const drizzleResolutionStore: ResolutionStore = {
 
   async snapshotFor(market): Promise<ResolutionSnapshot> {
     const params = parseTemplateParams(market.params);
-    // Only a template can be settled; the caller skips the rest on the same test.
+    // Only a template can be read from Usage; the caller voids the rest on the same test.
     if (!params) return { builders: [], models: [] };
 
     const [buildersInScope, models] = await Promise.all([

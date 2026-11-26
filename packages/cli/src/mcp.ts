@@ -13,7 +13,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { ApiClient, type MarketRow, type TradeAnswer } from "./api.js";
+import { ApiClient, type MarketRow, type Stats, type TradeAnswer } from "./api.js";
 import { currentConfigPath, readConfig, type DeviceConfig } from "./config.js";
 import { msUntilScheduledSync, sync, type SyncOptions } from "./sync.js";
 import {
@@ -94,17 +94,58 @@ function marketLines(markets: readonly MarketRow[]): string[] {
   });
 }
 
+/** Above this average price a buy risks far more than it can win (web lib/bets.ts). */
+const LONG_ODDS_PRICE = 0.9;
+
 function quoteLines(answer: Extract<TradeAnswer, { placed: false }>): string[] {
   const { quote } = answer;
+  /*
+    A winning share pays 1 credit, so a buy pays its share count if it wins.
+    Said up front because at 95c the profit is a twentieth of the stake, and a
+    small payout read after the fact looks like no payout at all.
+  */
+  const profit = quote.shares - quote.credits;
+  const rate = quote.credits > 0 ? (profit / quote.credits) * 100 : 0;
+  const winLines =
+    quote.side === "buy"
+      ? [
+          `  if it wins     pays ${credits(quote.shares)} credits, profit +${credits(profit)} (+${rate.toFixed(1)}%)`,
+          ...(quote.averagePrice >= LONG_ODDS_PRICE
+            ? [`  long odds: a loss takes all ${credits(quote.credits)} credits for that ${rate.toFixed(1)}%`]
+            : []),
+        ]
+      : [];
   return [
     `${quote.side} ${quote.shares} shares`,
     // A sell is paid, not charged, and calling that a cost would read as a loss.
     `  ${quote.side === "sell" ? "proceeds      " : "cost          "} ${credits(quote.credits)} credits`,
     `  average price  ${cents(quote.averagePrice)}`,
     `  price after    ${cents(quote.priceAfter)} (now ${cents(quote.priceBefore)})`,
+    ...winLines,
     `  balance after  ${credits(quote.balanceAfter)} credits (now ${credits(quote.balance)})`,
     "",
     "Nothing was spent. Call again with confirm: true to place it.",
+  ];
+}
+
+/** The bets block of my_stats: the record, then the newest few by name. */
+function betLines(bets: NonNullable<Stats["bets"]>): string[] {
+  const { record, recent } = bets;
+  if (recent.length === 0) return ["  bets    none yet"];
+  const signed = (value: number) => `${value < 0 ? "-" : "+"}${credits(Math.abs(value))}`;
+  return [
+    record.settled > 0
+      ? `  bets    won ${record.won} of ${record.settled} settled, net ${signed(record.net)} credits`
+      : "  bets    none settled yet",
+    ...recent.map((bet) => {
+      const detail =
+        bet.net !== null
+          ? `net ${signed(bet.net)}`
+          : bet.paysIfWins
+            ? `pays ${credits(bet.paysIfWins.credits)} if ${bet.paysIfWins.label} wins`
+            : `staked ${credits(bet.staked)}`;
+      return `    ${bet.state.padEnd(8)} ${detail}  ${bet.question}`;
+    }),
   ];
 }
 
@@ -238,7 +279,7 @@ export function createMcpServer(dependencies: McpDependencies = {}): McpServer {
     {
       title: "My stats",
       description:
-        "Today, this week and this month of agent spend and tokens for the connected builder, plus their credit balance and how their usage is trusted.",
+        "Today, this week and this month of agent spend and tokens for the connected builder, plus their credit balance, how their usage is trusted, and how their bets went: won, lost, net, and what open ones pay if they win.",
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
@@ -258,6 +299,7 @@ export function createMcpServer(dependencies: McpDependencies = {}): McpServer {
         stats.quarantinedDays > 0
           ? `  ${stats.quarantinedDays} day rows are quarantined and visible only to you`
           : "",
+        ...(stats.bets ? betLines(stats.bets) : []),
       ].filter((line) => line !== ""));
     }),
   );

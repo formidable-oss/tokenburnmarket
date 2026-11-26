@@ -160,6 +160,27 @@ describe("place_bet", () => {
     expect(calls[0]!.body).toMatchObject({ confirm: false, credits: 10 });
     expect(textOf(result)).toContain("Call again with confirm: true to place it");
     expect(textOf(result)).toContain("Nothing was spent");
+    // 12.5 shares for 8 credits pays 12.5 if it wins.
+    expect(textOf(result)).toContain("pays 12.50 credits, profit +4.50 (+56.3%)");
+    expect(textOf(result)).not.toContain("long odds");
+    await close();
+  });
+
+  it("warns that a near-certain buy risks the whole stake for a sliver", async () => {
+    const { client, close } = await connectedClient({
+      "/api/me/trade": {
+        placed: false,
+        quote: { ...QUOTE.quote, shares: 100, credits: 95, averagePrice: 0.95 },
+      },
+    });
+    const printed = textOf(
+      await client.callTool({
+        name: "place_bet",
+        arguments: { marketId: "m1", outcomeId: "o1", side: "buy", credits: 95 },
+      }),
+    );
+    expect(printed).toContain("profit +5.00 (+5.3%)");
+    expect(printed).toContain("long odds: a loss takes all 95.00 credits");
     await close();
   });
 
@@ -217,6 +238,29 @@ describe("read tools", () => {
         },
         trust: [{ provider: "claude-code", level: "verified" }],
         quarantinedDays: 1,
+        bets: {
+          record: { settled: 2, won: 1, lost: 1, net: -479.66 },
+          recent: [
+            {
+              marketId: "m2",
+              question: "Who burns most this week?",
+              state: "open",
+              staked: 12924.11,
+              net: null,
+              winner: null,
+              paysIfWins: { label: "someone else", credits: 13090.47 },
+            },
+            {
+              marketId: "m1",
+              question: "Who burned most last week?",
+              state: "won",
+              staked: 666.08,
+              net: 166.34,
+              winner: "@ada",
+              paysIfWins: null,
+            },
+          ],
+        },
       },
     });
 
@@ -226,6 +270,9 @@ describe("read tools", () => {
     expect(printed).toContain("$3.40");
     expect(printed).toContain("claude-code verified");
     expect(printed).toContain("quarantined");
+    expect(printed).toContain("won 1 of 2 settled, net -479.66 credits");
+    expect(printed).toContain("open     pays 13090.47 if someone else wins  Who burns most this week?");
+    expect(printed).toContain("won      net +166.34  Who burned most last week?");
     await close();
   });
 

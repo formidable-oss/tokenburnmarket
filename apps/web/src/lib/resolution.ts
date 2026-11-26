@@ -54,6 +54,10 @@ export interface SettlementPosition {
   costBasis: number;
 }
 
+function floorToHour(date: Date): Date {
+  return new Date(Math.floor(date.getTime() / 3_600_000) * 3_600_000);
+}
+
 /** One Credit movement a settlement owes a Builder. Always positive. */
 export interface CreditWrite {
   builderId: string;
@@ -63,9 +67,11 @@ export interface CreditWrite {
 export type ResolutionAction =
   | { kind: "resolve"; winningOutcomeId: string }
   | { kind: "hold"; until: Date; reason: string }
-  | { kind: "void"; reason: string }
-  /** Nothing this job can settle: a Market opened before templates existed. */
-  | { kind: "skip"; reason: string };
+  | { kind: "void"; reason: string };
+
+/** Why a Market opened before templates existed is voided: nothing can read its answer. */
+export const NOT_A_TEMPLATE_REASON =
+  "This market was not opened from a template, so usage cannot settle it.";
 
 /** Sums one Credit amount per Builder, dropping anyone owed nothing. */
 function totalPerBuilder(
@@ -111,7 +117,11 @@ export function planResolution(
   now: Date,
 ): ResolutionAction {
   const params: MarketTemplateParams | null = parseTemplateParams(market.params);
-  if (!params) return { kind: "skip", reason: "This market was not opened from a template." };
+  /*
+    Nothing can read an answer for it, and leaving it closed forever would lock
+    its stakes away for good. Voiding refunds them at cost.
+  */
+  if (!params) return { kind: "void", reason: NOT_A_TEMPLATE_REASON };
 
   const resolution = resolveMarket(params, snapshot);
 
@@ -119,8 +129,13 @@ export function planResolution(
     if (market.holdUntil && now.getTime() >= market.holdUntil.getTime()) {
       return { kind: "void", reason: HOLD_EXPIRED_REASON };
     }
+    /*
+      Floored to the hour, because the job runs once a night a few minutes past
+      midnight: a deadline of "exactly 24h after this run" would sit seconds
+      after the next run and turn a day's wait into two.
+    */
     const until =
-      market.holdUntil ?? new Date(now.getTime() + RESOLUTION_HOLD_HOURS * 3_600_000);
+      market.holdUntil ?? floorToHour(new Date(now.getTime() + RESOLUTION_HOLD_HOURS * 3_600_000));
     return { kind: "hold", until, reason: resolution.reason };
   }
 
@@ -170,7 +185,6 @@ export interface ResolutionRun {
   resolved: number;
   voided: number;
   held: number;
-  skipped: number;
   /** Credits paid to winners, and Credits returned by voided Markets. */
   paid: number;
   refunded: number;
@@ -186,7 +200,6 @@ export async function runResolution(
     resolved: 0,
     voided: 0,
     held: 0,
-    skipped: 0,
     paid: 0,
     refunded: 0,
   };
@@ -211,9 +224,6 @@ export async function runResolution(
       case "hold":
         await store.hold(market.id, action.until, action.reason);
         run.held += 1;
-        break;
-      case "skip":
-        run.skipped += 1;
         break;
     }
   }

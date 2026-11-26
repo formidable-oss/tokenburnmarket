@@ -9,6 +9,7 @@ import type { MarketParams } from "@/db/schema";
 import {
   HOLD_EXPIRED_REASON,
   marketRef,
+  NOT_A_TEMPLATE_REASON,
   planPayouts,
   planRefunds,
   planResolution,
@@ -140,13 +141,31 @@ describe("planRefunds", () => {
 });
 
 describe("planResolution", () => {
-  it("skips a market that was not opened from a template", () => {
+  it("voids a market that was not opened from a template, so its stakes come back", () => {
     const action = planResolution(
       market({ params: { rules: "handwritten" } }),
       snapshot([]),
       new Date(),
     );
-    expect(action).toMatchObject({ kind: "skip" });
+    expect(action).toEqual({ kind: "void", reason: NOT_A_TEMPLATE_REASON });
+  });
+
+  it("ends a hold before the next nightly run, whatever minute this one ran at", () => {
+    const quarantined = snapshot([
+      { builderId: ADA, handle: "ada", costUsd: 60, totalTokens: 0, quarantined: true },
+    ]);
+    const first = planResolution(market(), quarantined, new Date("2026-08-25T00:10:07Z"));
+    expect(first).toMatchObject({ kind: "hold" });
+    if (first.kind !== "hold") return;
+    expect(first.until.toISOString()).toBe("2026-08-26T00:00:00.000Z");
+
+    // The next run fires a few seconds earlier in its minute, and still voids.
+    const second = planResolution(
+      market({ holdUntil: first.until }),
+      quarantined,
+      new Date("2026-08-26T00:10:02Z"),
+    );
+    expect(second).toEqual({ kind: "void", reason: HOLD_EXPIRED_REASON });
   });
 
   it("holds the first time a participant is quarantined", () => {

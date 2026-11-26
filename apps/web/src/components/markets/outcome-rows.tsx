@@ -6,23 +6,28 @@
   The bar carries a word next to it in the accessible name, because a length is
   not a label.
 */
+import { Badge } from "@/components/ui/badge";
 import { formatPriceCents, formatProbability } from "@/lib/markets";
 import type { OutcomePrice } from "@/lib/market-queries";
 
 export function OutcomeRow({
   outcome,
   held,
+  won,
   children,
 }: {
   outcome: OutcomePrice;
   /** Shares the viewer holds, shown inline so a position reads next to its price. */
   held?: number;
+  /** The Outcome a settled Market paid. Its price stays the last traded one. */
+  won?: boolean;
   children?: React.ReactNode;
 }) {
   return (
     <li className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 py-3">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.95rem]">
         <span>{outcome.label}</span>
+        {won ? <Badge tone="won">won</Badge> : null}
         {held ? (
           <span className="type-data text-[0.78rem] text-subtle tabular-nums">
             you hold {held.toLocaleString("en-US", { maximumFractionDigits: 2 })}
