@@ -5,6 +5,7 @@ import {
   lmsrCostToBuy,
   lmsrHouseProfit,
   lmsrLiquidityForMembers,
+  lmsrLiquidityForStakes,
   lmsrMaxHouseLoss,
   lmsrPrice,
   lmsrPrices,
@@ -237,5 +238,35 @@ describe("lmsrSharesForCredits", () => {
   it("agrees with lmsrQuote on what the shares cost", () => {
     const shares = lmsrSharesForCredits(book, b, 2, "buy", 25, 100_000);
     expect(lmsrQuote(book, b, 2, "buy", shares).credits).toBeLessThanOrEqual(25);
+  });
+});
+
+describe("lmsrLiquidityForStakes", () => {
+  it("deepens a market to half the audience's median balance", () => {
+    // Formidable Builders on 2026-11-26: 13 members, median balance 1,062.
+    expect(lmsrLiquidityForStakes(lmsrLiquidityForMembers(13), 1062.35, 13)).toBe(531);
+  });
+
+  it("never goes below the headcount rule", () => {
+    expect(lmsrLiquidityForStakes(85, 100, 13)).toBe(85);
+    expect(lmsrLiquidityForStakes(85, 0, 13)).toBe(85);
+    expect(lmsrLiquidityForStakes(85, Number.NaN, 13)).toBe(85);
+  });
+
+  it("caps the balance term so the house's worst case stays bounded", () => {
+    expect(lmsrLiquidityForStakes(205, 50_000, 21)).toBe(1_000);
+  });
+
+  it("keeps a tiny audience shallow, so two friends cannot farm a deep market about themselves", () => {
+    expect(lmsrLiquidityForStakes(lmsrLiquidityForMembers(2), 2_000, 2)).toBe(200);
+  });
+
+  it("lets one typical member move an eight-way market a long way without pinning it", () => {
+    const median = 1062.35;
+    const b = lmsrLiquidityForStakes(85, median, 13);
+    const shares = lmsrSharesForCredits(new Array(8).fill(0), b, 0, "buy", median, 1e9);
+    const price = lmsrPrices([shares, 0, 0, 0, 0, 0, 0, 0], b)[0]!;
+    expect(price).toBeGreaterThan(0.8);
+    expect(price).toBeLessThan(0.95);
   });
 });

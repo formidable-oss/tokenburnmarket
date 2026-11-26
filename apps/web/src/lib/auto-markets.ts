@@ -36,6 +36,8 @@ export interface AutoMarketStore {
   topModels(limit: number): Promise<string[]>;
   /** Everyone signed up, which is what sizes a global Market's liquidity. */
   builderCount(): Promise<number>;
+  /** Median balance of a Community's members, or of everyone; deepens a Market (ADR 0008). */
+  medianBalance(audience: { communityId: string } | { global: true }): Promise<number>;
   /** The Builder a global Market is opened as: an admin. Null when none exists yet. */
   adminBuilderId(): Promise<string | null>;
   /** Writes the Market and its Outcomes. False when the `auto_key` was already taken. */
@@ -79,7 +81,12 @@ export async function runAutoMarkets(
       period: week,
     };
     const plan = planTemplateMarket(
-      { params, members: community.members, audience: community.members.length },
+      {
+        params,
+        members: community.members,
+        audience: community.members.length,
+        medianBalance: await store.medianBalance({ communityId: community.id }),
+      },
       now,
     );
     if (!plan.ok) {
@@ -109,7 +116,14 @@ export async function runAutoMarkets(
     period: day,
     models,
   };
-  const plan = planTemplateMarket({ params, audience: await store.builderCount() }, now);
+  const plan = planTemplateMarket(
+    {
+      params,
+      audience: await store.builderCount(),
+      medianBalance: await store.medianBalance({ global: true }),
+    },
+    now,
+  );
   if (!plan.ok) {
     run.declined.push({ key: raceKey, reason: plan.error });
     return run;

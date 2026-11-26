@@ -197,4 +197,66 @@ describe.skipIf(!hasDatabase)("executeTrade against the dev database", async () 
     if (quote.ok) return;
     expect(quote.code).toBe("insufficient_shares");
   });
+  it("lets only members trade a community market", async () => {
+    const { communities, memberships } = await import("@/db/schema");
+    const { quoteTrade } = await import("./trade-store");
+    const ownerId = crypto.randomUUID();
+    const communityId = crypto.randomUUID();
+    const communityMarketId = crypto.randomUUID();
+    const outcomeId = crypto.randomUUID();
+    const tag = communityMarketId.slice(0, 8);
+    // The owner cascades to the Community and its Market, so one delete cleans up.
+    await db.insert(builders).values({ id: ownerId, githubId: `test:${ownerId}`, handle: `trade-owner-${tag}` });
+    try {
+      await db.insert(communities).values({
+        id: communityId,
+        slug: `trade-test-${tag}`,
+        name: "Trade test",
+        ownerId,
+        inviteCode: `trade-test-${tag}`,
+      });
+      await db.insert(markets).values({
+        id: communityMarketId,
+        scope: "community",
+        communityId,
+        type: "top_burner",
+        question: "Who trades a members-only market?",
+        b: B,
+        closesAt: new Date(Date.now() + 3_600_000),
+        resolvesAt: new Date(Date.now() + 7_200_000),
+        createdBy: ownerId,
+      });
+      await db.insert(outcomes).values([
+        { id: outcomeId, marketId: communityMarketId, label: "yes", sort: 0 },
+        { marketId: communityMarketId, label: "no", sort: 1 },
+      ]);
+
+      const request = {
+        outcomeId,
+        side: "buy" as const,
+        shares: 1,
+        previewAveragePrice: 0,
+        acceptSlippage: true,
+      };
+      const outsider = await executeTrade(builderId, communityMarketId, request);
+      expect(outsider).toMatchObject({ ok: false, code: "not_a_member" });
+      const outsiderQuote = await quoteTrade(builderId, communityMarketId, {
+        outcomeId,
+        side: "buy",
+        credits: 5,
+      });
+      expect(outsiderQuote).toMatchObject({ ok: false, code: "not_a_member" });
+
+      await db.insert(memberships).values({ communityId, builderId, role: "member" });
+      const member = await executeTrade(builderId, communityMarketId, request);
+      expect(member.ok).toBe(true);
+
+      // Removed from the Community, they can no longer buy but can still get out.
+      await db.delete(memberships).where(eq(memberships.builderId, builderId));
+      const sell = await executeTrade(builderId, communityMarketId, { ...request, side: "sell" });
+      expect(sell.ok).toBe(true);
+    } finally {
+      await db.delete(builders).where(eq(builders.id, ownerId));
+    }
+  });
 });

@@ -27,11 +27,17 @@ export function BetsPanel({
   bets,
   isOwner,
   handle,
+  limit = LIST_LIMIT,
+  moreHref,
   now = new Date(),
 }: {
   bets: readonly BetRow[];
   isOwner: boolean;
   handle: string;
+  /** How many bets the owner's list shows. */
+  limit?: number;
+  /** Where the rest of the list lives, when this panel shows only the newest. */
+  moreHref?: string;
   now?: Date;
 }) {
   const record = betRecord(bets);
@@ -82,7 +88,7 @@ export function BetsPanel({
 
           {isOwner ? (
             <ol className="mt-6 divide-y divide-border-faint border-t border-border-faint">
-              {bets.slice(0, LIST_LIMIT).map((bet) => (
+              {bets.slice(0, limit).map((bet) => (
                 <li key={bet.marketId} className="py-3">
                   <Link
                     href={`/m/${bet.marketId}`}
@@ -99,6 +105,14 @@ export function BetsPanel({
                 </li>
               ))}
             </ol>
+          ) : null}
+          {isOwner && moreHref && bets.length > limit ? (
+            <Link
+              href={moreHref}
+              className="type-label mt-4 inline-block text-subtle hover:text-foreground"
+            >
+              all {bets.length} bets
+            </Link>
           ) : null}
         </>
       )}

@@ -11,7 +11,7 @@ import { db } from "@/db";
 import { builders, markets, outcomes } from "@/db/schema";
 import { parseAdminHandles } from "./admin";
 import type { AutoCommunity, AutoMarketStore } from "./auto-markets";
-import { builderCount, communitiesForMarkets, modelsInPlay } from "./market-queries";
+import { builderCount, communitiesForMarkets, medianBalance, modelsInPlay } from "./market-queries";
 import type { MarketPlan } from "./market-templates";
 
 export function drizzleAutoMarketStore(now: Date = new Date()): AutoMarketStore {
@@ -25,6 +25,8 @@ export function drizzleAutoMarketStore(now: Date = new Date()): AutoMarketStore 
     },
 
     builderCount,
+
+    medianBalance,
 
     async adminBuilderId(): Promise<string | null> {
       const handles = [...parseAdminHandles(process.env.ADMIN_HANDLES)];

@@ -108,6 +108,9 @@ export function TradeForm({
 
       <fieldset>
         <legend className="type-label">outcome</legend>
+        <p className="mt-2 text-[0.85rem] text-muted">
+          Pick the outcome you think wins. Each share pays 1 credit if it does.
+        </p>
         <div className="mt-3 space-y-2">
           {outcomes.map((outcome) => (
             <label

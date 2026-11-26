@@ -28,12 +28,22 @@ function community(overrides: Partial<AutoCommunity> = {}): AutoCommunity {
   };
 }
 
+function member(index: number) {
+  const id = String(index).padStart(8, "0");
+  return { builderId: `${id}-0000-4000-8000-000000000000`, handle: `member${index}` };
+}
+
 interface Memory extends AutoMarketStore {
   written: { plan: MarketPlan; createdBy: string }[];
 }
 
 function memoryStore(
-  options: { communities?: AutoCommunity[]; models?: string[]; admin?: string | null } = {},
+  options: {
+    communities?: AutoCommunity[];
+    models?: string[];
+    admin?: string | null;
+    medianBalance?: number;
+  } = {},
 ): Memory {
   const written: { plan: MarketPlan; createdBy: string }[] = [];
   const keys = new Set<string>();
@@ -44,6 +54,9 @@ function memoryStore(
     topModels: async (limit) =>
       (options.models ?? ["gpt-5.6-sol", "claude-opus-5"]).slice(0, limit),
     builderCount: async () => 40,
+    // Different per audience, so a swapped argument shows up as a wrong `b`.
+    medianBalance: async (audience) =>
+      "communityId" in audience ? (options.medianBalance ?? 0) : (options.medianBalance ?? 0) * 2,
     adminBuilderId: async () => (options.admin === undefined ? ADMIN : options.admin),
     // The unique `auto_key` column, in one line.
     create: async (plan, createdBy) => {
@@ -143,6 +156,18 @@ describe("automatic market creation", () => {
 
     expect(topBurner.plan.b).toBe(30); // 20 + 5 * 2 members
     expect(modelRace.plan.b).toBe(300); // 100 + 5 * 40 builders
+  });
+
+  it("deepens a market to half the audience's median balance (ADR 0008)", async () => {
+    const store = memoryStore({
+      medianBalance: 1062.35,
+      communities: [community({ members: Array.from({ length: 13 }, (_, i) => member(i)) })],
+    });
+    await runAutoMarkets(store, MONDAY);
+    const [topBurner, modelRace] = store.written;
+
+    expect(topBurner.plan.b).toBe(531); // the members' median, halved
+    expect(modelRace.plan.b).toBe(1000); // everyone's median (2,124.7), halved, capped
   });
 
   it("skips a community with nobody in it rather than opening an empty board", async () => {
