@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ModelUsagePreview } from "@/components/landing/model-usage-preview";
+import { ModelBurnChart } from "@/components/landing/model-burn-chart";
 import { RegionBoards, type RegionBoardPreview } from "@/components/landing/region-boards";
 import { StatsStrip } from "@/components/landing/stats-strip";
 import { Steps } from "@/components/landing/steps";
 import { formatMetric } from "@/components/leaderboard/board-table";
-import { modelUsagePreviewData, statCells } from "@/lib/landing";
+import { modelBurnChartData, statCells } from "@/lib/landing";
 import { PERIOD_LABELS } from "@/lib/leaderboard";
 import { BOARD_PREVIEW_LIMIT, cachedBoard, scopeForRegion } from "@/lib/leaderboard-queries";
-import { cachedGlobalModelUsage, cachedSiteStats } from "@/lib/market-queries";
+import {
+  MODEL_BURN_SEASON,
+  cachedGlobalModelBurnDays,
+  cachedSiteStats,
+} from "@/lib/market-queries";
 import { regionBySlug } from "@/lib/regions";
 
 export const metadata: Metadata = {
@@ -53,40 +57,45 @@ async function previewBoards(): Promise<RegionBoardPreview[]> {
 }
 
 export default async function Home() {
-  const [boards, stats, modelUsage] = await Promise.all([
+  // One clock reading for the Season and for today, so both name the same month at midnight.
+  const now = new Date();
+  const [boards, stats, modelBurnDays] = await Promise.all([
     previewBoards(),
     cachedSiteStats(),
-    cachedGlobalModelUsage(),
+    cachedGlobalModelBurnDays(now),
   ]);
-  const modelPreview = modelUsagePreviewData(modelUsage);
+  const today = now.toISOString().slice(0, 10);
+  const modelBurn = modelBurnChartData(modelBurnDays, today, PERIOD_LABELS[MODEL_BURN_SEASON]);
 
   return (
     <>
       {/* Hero */}
-      <section className={`${shell} grid items-center gap-12 pb-20 pt-16 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:pb-28 lg:pt-24`}>
+      <section className={`${shell} grid items-end gap-14 pb-20 pt-14 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:pb-24 lg:pt-20`}>
         <div>
-          <p className="type-label rise" style={{ "--i": 0 } as React.CSSProperties}>
-            play-money prediction markets for AI coding agents
-          </p>
-          <h1 className="type-display rise mt-5" style={{ "--i": 1 } as React.CSSProperties}>
-            Bet your <span className="text-primary">burn</span>.
+          <h1 className="type-display type-display-hero rise" style={{ "--i": 0 } as React.CSSProperties}>
+            Bet your <span className="block">burn.</span>
           </h1>
-          <p className="rise mt-6 max-w-[42ch] text-[1.1rem] text-muted" style={{ "--i": 2 } as React.CSSProperties}>
-            Your agent usage becomes credits. Credits become bets on who burns what next.
+          <p className="rise mt-7 max-w-[44ch] text-[1.1rem] text-muted" style={{ "--i": 1 } as React.CSSProperties}>
+            Play-money prediction markets for AI coding agents. Your agent usage becomes credits. Credits become bets on who burns what next.
           </p>
 
-          <div className="rise mt-9 max-w-[30rem]" style={{ "--i": 3 } as React.CSSProperties}>
-            <Button as={Link} href="/docs/setup">
-              Get the setup prompt
-            </Button>
-            <p className="mt-3 text-[0.82rem] text-subtle">
+          <div className="rise mt-9" style={{ "--i": 2 } as React.CSSProperties}>
+            <div className="flex flex-wrap gap-3">
+              <Button as={Link} href="/docs/setup">
+                Get the setup prompt
+              </Button>
+              <Button as={Link} href="/leaderboard" variant="secondary">
+                See the leaderboards
+              </Button>
+            </div>
+            <p className="mt-4 max-w-[30rem] text-[0.82rem] text-subtle">
               Your agent installs the collector. Usage stays synced after that.
             </p>
           </div>
         </div>
 
-        <div className="rise" style={{ "--i": 2 } as React.CSSProperties}>
-          <ModelUsagePreview data={modelPreview} />
+        <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
+          <ModelBurnChart data={modelBurn} />
         </div>
       </section>
 
@@ -104,8 +113,22 @@ export default async function Home() {
       </div>
 
       {/* How it works */}
-      <section className={`${shell} py-20 lg:py-24`} aria-labelledby="how">
-        <h2 id="how" className="type-label mb-12">how it works</h2>
+      <section
+        className={`${shell} grid gap-x-16 gap-y-10 py-20 lg:grid-cols-[0.8fr_1.2fr] lg:py-24`}
+        aria-labelledby="how"
+      >
+        <div>
+          <h2 id="how" className="type-heading">
+            How it works.
+          </h2>
+          <p className="mt-3 max-w-[34ch] text-[0.95rem] text-muted">
+            Only token counts, cost, and hashed message IDs leave your machine. Prompts and paths
+            stay on it.
+          </p>
+          <Link href="/docs" className="mt-4 inline-block text-sm text-primary-text hover:underline">
+            Read the docs
+          </Link>
+        </div>
         <Steps />
       </section>
 

@@ -41,7 +41,7 @@ export default async function NewMarketPage({ searchParams }: PageProps<"/market
     <section className="mx-auto grid max-w-[1200px] gap-10 px-4 pb-24 pt-14 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:px-12">
       <div>
         <p className="type-label">new market</p>
-        <h1 className="type-heading mt-3">{picked ? picked.title : "Pick a question."}</h1>
+        <h1 className="type-title mt-3">{picked ? picked.title : "Pick a question."}</h1>
         <p className="mt-3 max-w-[46ch] text-[0.95rem] text-muted">
           {picked
             ? picked.blurb

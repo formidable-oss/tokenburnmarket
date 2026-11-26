@@ -70,7 +70,7 @@ export function BoardTable({
   return (
     <div id={id} className="rounded-(--radius-panel) border border-border bg-surface">
       <div className="flex flex-wrap items-center gap-3 border-b border-border-faint px-5 py-3">
-        <span className="type-label text-[0.66rem]">{label}</span>
+        <span className="type-label text-[0.7rem]">{label}</span>
         {caption ? (
           <span className="type-data ml-auto text-[0.72rem] text-subtle">{caption}</span>
         ) : null}
@@ -122,7 +122,7 @@ export function BoardTable({
       )}
 
       <div className="flex flex-wrap items-center gap-4 px-5 py-3">
-        <span className="type-label text-[0.66rem] text-subtle">
+        <span className="type-label text-[0.7rem] text-subtle">
           {METRIC_LABELS[metric]}
           {showRankChange ? " · places gained" : null}
         </span>

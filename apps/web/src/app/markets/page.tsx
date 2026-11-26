@@ -37,8 +37,7 @@ export default async function MarketsPage() {
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
       <header className="rise flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="type-label">markets</p>
-          <h1 className="type-heading mt-3">Bet on the burn.</h1>
+          <h1 className="type-title">Bet on the burn.</h1>
           <p className="mt-3 max-w-[52ch] text-[0.95rem] text-muted">
             Back the builder or model you think burns most. Every share pays 1 credit if its
             outcome wins, so the cheaper the price, the bigger the payout.

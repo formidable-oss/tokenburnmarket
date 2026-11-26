@@ -17,7 +17,7 @@ export default async function NewCommunityPage() {
     <section className="mx-auto grid max-w-[1200px] gap-10 px-4 pb-24 pt-14 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:px-12">
       <div>
         <p className="type-label">new community</p>
-        <h1 className="type-heading mt-3">Start a group.</h1>
+        <h1 className="type-title mt-3">Start a group.</h1>
         <p className="mt-3 max-w-[46ch] text-[0.95rem] text-muted">
           You own it. People join with the invite link, and you can rotate that link or remove
           someone at any time.

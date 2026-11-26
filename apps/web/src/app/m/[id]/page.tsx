@@ -7,6 +7,7 @@ import { PriceChart } from "@/components/markets/price-chart";
 import { ResolutionPanel } from "@/components/markets/resolution-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { GitHubIcon } from "@/components/ui/icons";
 import { isMember } from "@/lib/community-queries";
 import { formatCredits, formatDelta } from "@/lib/credits";
 import {
@@ -120,7 +121,7 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
             <Badge tone="neutral">{statusLabel(displayStatus(market.status, market.closesAt))}</Badge>
           )}
         </p>
-        <h1 className="type-heading mt-3 max-w-[26ch]">{market.question}</h1>
+        <h1 className="type-title mt-3 max-w-[26ch]">{market.question}</h1>
         <p className="mt-3 max-w-[62ch] text-[0.95rem] text-muted">
           {marketRulesText(market.params, market.resolvesAt)}
         </p>
@@ -198,13 +199,13 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
                       </p>
                       <dl className="mt-2 grid grid-cols-2 gap-4 text-[0.78rem]">
                         <div>
-                          <dt className="type-label text-[0.58rem] text-subtle">shares</dt>
+                          <dt className="type-label text-[0.7rem] text-subtle">shares</dt>
                           <dd className="type-data mt-1 tabular-nums">
                             {formatCredits(trade.shares)}
                           </dd>
                         </div>
                         <div className="text-right">
-                          <dt className="type-label text-[0.58rem] text-subtle">credits</dt>
+                          <dt className="type-label text-[0.7rem] text-subtle">credits</dt>
                           <dd className="type-data mt-1 tabular-nums">
                             {formatDelta(trade.side === "buy" ? -trade.credits : trade.credits)}
                           </dd>
@@ -289,6 +290,7 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
                   Sign in to trade. Credits come from your own usage, so connect a machine first.
                 </p>
                 <Button as={Link} href={`/signin?next=/m/${market.id}`} className="mt-5">
+                  <GitHubIcon />
                   Sign in with GitHub
                 </Button>
               </>

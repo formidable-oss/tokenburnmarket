@@ -47,7 +47,7 @@ export default async function CommunityLeaderboardPage({
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
       <header>
         <p className="type-label">community leaderboard</p>
-        <h1 className="type-heading mt-3">{community.name}</h1>
+        <h1 className="type-title mt-3">{community.name}</h1>
         <Link
           href={`/c/${community.slug}`}
           className="type-data mt-2 inline-block text-[0.8rem] text-subtle hover:text-foreground"

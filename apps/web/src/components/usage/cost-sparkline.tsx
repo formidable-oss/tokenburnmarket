@@ -96,7 +96,7 @@ export function CostSparkline({ points }: { points: readonly UsageDayPoint[] }) 
         {selected ? (
           <div
             aria-hidden="true"
-            className={`type-data pointer-events-none absolute top-0 z-10 flex h-7 items-center gap-2 whitespace-nowrap rounded-(--radius-control) border border-primary-border bg-surface-raised px-2.5 text-[0.68rem] shadow-[0_6px_18px_rgb(0_0_0/0.22)] ${tooltipAlignment(selectedIndex!, points.length)}`}
+            className={`type-data pointer-events-none absolute top-0 z-10 flex h-7 items-center gap-2 whitespace-nowrap rounded-(--radius-control) border border-primary-border bg-surface-raised px-2.5 text-[0.7rem] shadow-[0_6px_18px_rgb(0_0_0/0.22)] ${tooltipAlignment(selectedIndex!, points.length)}`}
             style={{ left: `${((selectedIndex! + 0.5) / points.length) * 100}%` }}
           >
             <span className="text-primary-text">{day.format(new Date(`${selected.day}T00:00:00Z`))}</span>
@@ -131,7 +131,7 @@ export function CostSparkline({ points }: { points: readonly UsageDayPoint[] }) 
         </div>
       </div>
 
-      <div className="type-label mt-2 flex min-h-4 items-center justify-between gap-3 text-[0.58rem] text-subtle">
+      <div className="type-label mt-2 flex min-h-4 items-center justify-between gap-3 text-[0.7rem] text-subtle">
         <span>
           {shortDay.format(new Date(`${points[0]!.day}T00:00:00Z`))} to{" "}
           {shortDay.format(new Date(`${points[points.length - 1]!.day}T00:00:00Z`))}

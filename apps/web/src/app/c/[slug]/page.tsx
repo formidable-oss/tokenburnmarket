@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { CommunityBoard } from "@/components/leaderboard/community-board";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { GitHubIcon } from "@/components/ui/icons";
 import { CommandLine } from "@/components/ui/command-line";
 import { inviteUrl } from "@/lib/communities";
 import { communityBySlug, membersOf } from "@/lib/community-queries";
@@ -73,7 +74,7 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
             community
             {community.visibility === "unlisted" ? <Badge tone="neutral">unlisted</Badge> : null}
           </p>
-          <h1 className="type-heading mt-3">{community.name}</h1>
+          <h1 className="type-title mt-3">{community.name}</h1>
           <p className="type-data mt-2 text-[0.8rem] text-subtle">
             /c/{community.slug} · started {dateFormat.format(community.createdAt)}
           </p>
@@ -149,7 +150,7 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
                         <input type="hidden" name="builderId" value={member.id} />
                         <button
                           type="submit"
-                          className="type-label text-[0.62rem] text-subtle hover:text-[color:var(--destructive)]"
+                          className="type-label text-[0.7rem] text-subtle hover:text-[color:var(--destructive)]"
                         >
                           remove
                         </button>
@@ -201,6 +202,7 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
                   variant="secondary"
                   className="mt-6"
                 >
+                  <GitHubIcon />
                   Sign in with GitHub
                 </Button>
               )}

@@ -24,7 +24,7 @@ import {
   type MarketParams,
 } from "@/db/schema";
 import { betNet, betState, isSettled, type BetFlows, type BetState } from "./bets";
-import { periodRange } from "./leaderboard";
+import { periodRange, type Period } from "./leaderboard";
 import type { MarketScope, MarketStatus } from "./markets";
 
 export interface OutcomePrice {
@@ -626,54 +626,61 @@ export const cachedSiteStats = unstable_cache(
   { revalidate: SYNC_SLOT_HOURS * 3600, tags: ["leaderboard"] },
 );
 
-export interface GlobalModelUsage {
-  totalTokens: number;
-  models: { model: string; tokens: number }[];
+export interface ModelBurnDay {
+  day: string;
+  model: string;
+  tokens: number;
 }
 
-export const GLOBAL_MODEL_PREVIEW_LIMIT = 5;
+/**
+ * The Season the landing hero chart covers. A month has enough days for a lead
+ * to change hands, and it is one of the Seasons the Leaderboards already use.
+ */
+export const MODEL_BURN_SEASON = "month" satisfies Period;
 
-/** Current-week global model totals for the landing hero. */
-export async function globalModelUsage(
-  limit = GLOBAL_MODEL_PREVIEW_LIMIT,
-  now = new Date(),
-): Promise<GlobalModelUsage> {
-  const week = periodRange("week", now);
+/**
+ * Global tokens per model and UTC day from `start` to `end`, for the landing
+ * hero. Every model is returned: the mapper in landing.ts picks the leaders,
+ * and the total has to count the models it leaves out.
+ */
+export async function globalModelBurnDays(start: string, end: string): Promise<ModelBurnDay[]> {
   const tokens = sql<number>`sum(
     ${usageDays.inputTokens} + ${usageDays.cachedInputTokens} + ${usageDays.cacheWriteTokens}
     + ${usageDays.outputTokens} + ${usageDays.reasoningTokens}
   )`;
-  const totalTokens = sql<number>`sum(sum(
-    ${usageDays.inputTokens} + ${usageDays.cachedInputTokens} + ${usageDays.cacheWriteTokens}
-    + ${usageDays.outputTokens} + ${usageDays.reasoningTokens}
-  )) over ()`;
 
   const rows = await db
-    .select({ model: usageDays.model, tokens, totalTokens })
+    .select({ day: usageDays.day, model: usageDays.model, tokens })
     .from(usageDays)
     .where(
       and(
-        gte(usageDays.day, week.start!),
-        lte(usageDays.day, week.end),
+        gte(usageDays.day, start),
+        lte(usageDays.day, end),
         isNull(usageDays.duplicateOfDeviceId),
         sql`${usageDays.trustLevel} <> 'quarantined'`,
       ),
     )
-    .groupBy(usageDays.model)
-    .orderBy(desc(tokens))
-    .limit(limit);
+    .groupBy(usageDays.day, usageDays.model)
+    .orderBy(asc(usageDays.day));
 
-  return {
-    totalTokens: Number(rows[0]?.totalTokens ?? 0),
-    models: rows.map((row) => ({ model: row.model, tokens: Number(row.tokens) })),
-  };
+  return rows.map((row) => ({ day: row.day, model: row.model, tokens: Number(row.tokens) }));
 }
 
-export const cachedGlobalModelUsage = unstable_cache(
-  async () => globalModelUsage(),
-  ["global-model-usage"],
+/*
+  The Season's dates are arguments, so they are part of the cache key. A new
+  month gets a new entry at once, instead of showing the last month's rows
+  until the entry expires.
+*/
+const cachedModelBurnDays = unstable_cache(
+  async (start: string, end: string) => globalModelBurnDays(start, end),
+  ["global-model-burn-days"],
   { revalidate: SYNC_SLOT_HOURS * 3600, tags: ["leaderboard"] },
 );
+
+export function cachedGlobalModelBurnDays(now = new Date()): Promise<ModelBurnDay[]> {
+  const season = periodRange(MODEL_BURN_SEASON, now);
+  return cachedModelBurnDays(season.start!, season.end);
+}
 
 /** Seven calendar days keeps a daily race close to what people are using now. */
 export const MODEL_RANKING_WINDOW_DAYS = 7;

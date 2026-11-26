@@ -43,7 +43,7 @@ export default function DocsMarketsPage() {
   return (
     <article>
       <p className="type-label">docs / markets</p>
-      <h1 className="type-heading mt-3">A question, a clock, and a price.</h1>
+      <h1 className="type-title mt-3">A question, a clock, and a price.</h1>
       <p className="mt-4 text-[1.05rem] text-muted">
         Every market asks about future usage, closes at a fixed time, and settles from the same
         numbers that feed the leaderboards. A winning share pays 1 credit. Losing shares pay

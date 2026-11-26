@@ -48,7 +48,7 @@ export default async function SettingsPage() {
   return (
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
       <p className="type-label">settings</p>
-      <h1 className="type-heading mt-3">@{builder.handle}</h1>
+      <h1 className="type-title mt-3">@{builder.handle}</h1>
       <p className="mt-3 max-w-[46ch] text-[0.95rem] text-muted">
         Connect computers and manage their usage sync. Set your country and X handle here.
       </p>

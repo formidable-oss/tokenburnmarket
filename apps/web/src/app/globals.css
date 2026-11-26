@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* `theme-light:` applies a utility only in the light theme. Dark is the default and needs no variant. */
+@custom-variant theme-light (&:where([data-theme="light"], [data-theme="light"] *));
+
 /*
   tokenburnmarket design tokens.
   Contract: components use only these variables and the Tailwind theme below.
@@ -31,8 +34,9 @@
   --surface-raised: #1a1a2e;
   --surface-sunken: #0a0a1a;
   --foreground: #f0f0f5;
-  --muted-foreground: #9090a0;
-  --subtle-foreground: #767686;
+  /* Both pass WCAG AA on every surface: muted is 7.3:1 or more, subtle 5.3:1 or more. */
+  --muted-foreground: #a9a9b8;
+  --subtle-foreground: #8e8ea0;
   --border: #252535;
   --border-faint: rgb(240 240 245 / 0.07);
   --border-strong: rgb(240 240 245 / 0.18);
@@ -68,8 +72,9 @@
   --surface-raised: #ffffff;
   --surface-sunken: #f1eee2;
   --foreground: #14142b;
-  --muted-foreground: #5a5a70;
-  --subtle-foreground: #7c7c90;
+  /* On parchment: muted is 6.9:1 or more, subtle 4.7:1 or more. */
+  --muted-foreground: #4e4e64;
+  --subtle-foreground: #676779;
   --border: #dedacb;
   --border-faint: rgb(20 20 43 / 0.08);
   --border-strong: rgb(20 20 43 / 0.2);
@@ -175,6 +180,25 @@
     line-height: 1.02;
     letter-spacing: -0.01em;
   }
+  /*
+    The landing headline only: two lines that fill their column. Below 1024px
+    the hero is one column, so the headline can take more of the viewport.
+  */
+  .type-display-hero {
+    font-size: clamp(3.25rem, 15vw, 6.75rem);
+    line-height: 0.98;
+  }
+  @media (width >= 64rem) {
+    .type-display-hero {
+      font-size: clamp(3.25rem, 9.5vw, 6.75rem);
+    }
+  }
+  /* The title of a page. The pixel face is made of dots, so it needs size to read as white. */
+  .type-title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5.6vw, 2.5rem);
+    line-height: 1.08;
+  }
   .type-heading {
     font-family: var(--font-display);
     font-size: clamp(1.35rem, 2.4vw, 1.75rem);
@@ -244,6 +268,30 @@
     to { opacity: 1; transform: none; }
   }
 
+  /*
+    The hero chart draws one day per step, left to right. The wrapper
+    slides in from the left while its child slides the opposite way, so the
+    lines stay still and only the clip edge moves: a wipe from transforms alone.
+    The component sets the step count, the duration and the delay on both.
+  */
+  .tape-wipe {
+    overflow: hidden;
+    animation-name: tape-wipe-clip;
+    animation-fill-mode: both;
+  }
+  .tape-wipe > * {
+    animation-name: tape-wipe-hold;
+    animation-fill-mode: both;
+  }
+  @keyframes tape-wipe-clip {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes tape-wipe-hold {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+
   /* Ember pulse for the live dot; opacity only. */
   .ember-pulse {
     animation: ember 2.4s ease-in-out infinite;
@@ -269,7 +317,7 @@
     transition: transform 180ms var(--ease-out-expo);
   }
   .nav-link:hover::after,
-  .nav-link[aria-current="page"]::after {
+  .nav-link[aria-current]::after {
     transform: scaleX(1);
   }
 }

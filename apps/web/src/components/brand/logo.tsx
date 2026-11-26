@@ -71,7 +71,7 @@ export function LogoMark({
 export function Wordmark({ className }: { className?: string }) {
   return (
     <span
-      className={`font-sans font-semibold tracking-tight text-foreground ${className ?? ""}`}
+      className={`font-sans font-semibold leading-none tracking-tight text-foreground ${className ?? ""}`}
     >
       token<span className="text-primary-text">burn</span>market
     </span>

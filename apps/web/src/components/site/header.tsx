@@ -3,51 +3,45 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
+import { GitHubIcon } from "@/components/ui/icons";
 import { isAdmin } from "@/lib/admin";
+import { NavLinks } from "./nav-links";
 import { ThemeToggle } from "./theme-toggle";
-
-const nav = [
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/communities", label: "Communities" },
-  { href: "/markets", label: "Markets" },
-  { href: "/docs", label: "Docs" },
-];
 
 export async function SiteHeader() {
   const session = await auth();
   const handle = session?.user?.handle;
 
+  /* Settings and Admin sit in the bar when it has room, and in the second row when it does not. */
+  const account = handle
+    ? [
+        ...(isAdmin(handle) ? [{ href: "/admin", label: "Admin" }] : []),
+        { href: "/settings", label: "Settings" },
+      ]
+    : [];
+
   return (
     <header className="sticky top-0 z-40 border-b border-border-faint bg-[color:var(--backdrop)] backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-2 px-4 sm:gap-6 sm:px-6 lg:px-12">
-        <Link href="/" className="rounded-sm" aria-label="tokenburnmarket home">
+        <Link href="/" className="flex items-center rounded-sm" aria-label="tokenburnmarket home">
           <Logo />
         </Link>
-        <nav className="hidden items-center gap-5 text-sm text-muted sm:flex" aria-label="Primary">
-          {nav.map((n) => (
-            <Link key={n.href} href={n.href} className="nav-link hover:text-foreground">
-              {n.label}
-            </Link>
-          ))}
+        <nav className="hidden items-center gap-5 text-sm text-muted lg:flex" aria-label="Primary">
+          <NavLinks />
         </nav>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
           {handle ? (
             <>
-              {isAdmin(handle) ? (
+              {account.map((a) => (
                 <Link
-                  href="/admin"
-                  className="nav-link hidden px-2 text-[0.82rem] text-muted hover:text-foreground sm:block"
+                  key={a.href}
+                  href={a.href}
+                  className="nav-link hidden px-2 text-[0.82rem] text-muted hover:text-foreground lg:block"
                 >
-                  Admin
+                  {a.label}
                 </Link>
-              ) : null}
-              <Link
-                href="/settings"
-                className="nav-link hidden px-2 text-[0.82rem] text-muted hover:text-foreground sm:block"
-              >
-                Settings
-              </Link>
+              ))}
               <Link
                 href={`/@${handle}`}
                 className="flex h-9 items-center gap-2 rounded-(--radius-control) px-2 hover:bg-surface-raised"
@@ -64,7 +58,7 @@ export async function SiteHeader() {
                 ) : (
                   <span
                     aria-hidden
-                    className="type-data flex size-[22px] items-center justify-center rounded-full border border-border bg-surface-sunken text-[0.68rem]"
+                    className="type-data flex size-[22px] items-center justify-center rounded-full border border-border bg-surface-sunken text-[0.7rem]"
                   >
                     {handle.slice(0, 1).toUpperCase()}
                   </span>
@@ -73,12 +67,32 @@ export async function SiteHeader() {
               </Link>
             </>
           ) : (
-            <Button as={Link} href="/signin" variant="secondary" className="h-9 px-2 text-[0.78rem] sm:px-3 sm:text-[0.82rem]">
-              Sign in<span className="hidden min-[400px]:inline"> with GitHub</span>
+            <Button as={Link} href="/signin" variant="secondary" className="h-9 px-2.5 text-[0.78rem] sm:px-3 sm:text-[0.82rem]">
+              <GitHubIcon />
+              <span>
+                {/* With the icon, the full label needs 440px. Below that it would scroll the page sideways. */}
+                Sign in<span className="hidden min-[440px]:inline"> with GitHub</span>
+              </span>
             </Button>
           )}
         </div>
       </div>
+
+      {/* Below 1024px the bar has no room for the links, so they take a second row. */}
+      <nav className="border-t border-border-faint lg:hidden" aria-label="Primary">
+        <div className="mx-auto flex h-11 max-w-[1200px] items-center gap-5 overflow-x-auto px-4 text-sm text-muted sm:px-6">
+          <NavLinks />
+          {account.length > 0 ? (
+            <span className="ml-auto flex shrink-0 gap-5">
+              {account.map((a) => (
+                <Link key={a.href} href={a.href} className="nav-link hover:text-foreground">
+                  {a.label}
+                </Link>
+              ))}
+            </span>
+          ) : null}
+        </div>
+      </nav>
     </header>
   );
 }

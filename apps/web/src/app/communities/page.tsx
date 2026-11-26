@@ -19,8 +19,7 @@ export default async function CommunitiesPage() {
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
       <div className="flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="type-label">communities</p>
-          <h1 className="type-heading mt-3">Groups that burn together.</h1>
+          <h1 className="type-title">Groups that burn together.</h1>
           <p className="mt-3 max-w-[52ch] text-[0.95rem] text-muted">
             A community has its own leaderboards and markets. Public ones are listed here. Unlisted
             ones exist only for the people holding the invite link.

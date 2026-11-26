@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth, devSignInHandle, signIn } from "@/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { GitHubIcon } from "@/components/ui/icons";
 import { safeInternalPath } from "@/lib/profile";
 
 export const metadata: Metadata = {
@@ -24,7 +25,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
         <p className="type-label rise" style={{ "--i": 0 } as React.CSSProperties}>
           step one of three
         </p>
-        <h1 className="type-heading rise mt-4" style={{ "--i": 1 } as React.CSSProperties}>
+        <h1 className="type-title rise mt-4" style={{ "--i": 1 } as React.CSSProperties}>
           Claim your handle.
         </h1>
         <p className="rise mt-4 max-w-[38ch] text-[0.95rem] text-muted" style={{ "--i": 2 } as React.CSSProperties}>
@@ -69,6 +70,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
               One click. No password, no email. Sign out any time from settings.
             </p>
             <Button type="submit" className="mt-6 w-full sm:w-auto">
+              <GitHubIcon />
               Sign in with GitHub
             </Button>
           </form>

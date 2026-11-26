@@ -27,8 +27,7 @@ export async function RegionBoard({ region, query }: { region: Region; query: Bo
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="type-label">leaderboard</p>
-          <h1 className="type-heading mt-3">{region.name}</h1>
+          <h1 className="type-title">{region.name} leaderboard</h1>
           <p className="type-data mt-2 text-[0.8rem] text-subtle">
             {board.range.start ? `${board.range.start} to ${board.range.end}` : "every day so far"}
             {" UTC"}

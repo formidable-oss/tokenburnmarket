@@ -81,7 +81,7 @@ export default async function BuilderProfile({
           />
         ) : null}
         <div>
-          <h1 className="type-heading">{builder.handle}</h1>
+          <h1 className="type-title">{builder.handle}</h1>
           <p className="type-data mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.8rem] text-subtle">
             <span>joined {dateFormat.format(builder.createdAt)}</span>
             {region ? <span>region {region.name}</span> : null}

@@ -97,7 +97,7 @@ export function ResolutionPanel({
       {bet && result && bet.net !== null ? (
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border-faint pt-4 sm:grid-cols-4">
           <div>
-            <dt className="type-label text-[0.62rem] text-subtle">result</dt>
+            <dt className="type-label text-[0.7rem] text-subtle">result</dt>
             <dd className="mt-1">
               <Badge tone={bet.state === "won" ? "won" : "neutral"}>{result}</Badge>
             </dd>
@@ -127,7 +127,7 @@ export function ResolutionPanel({
 function Figure({ term, value, won }: { term: string; value: string; won?: boolean }) {
   return (
     <div>
-      <dt className="type-label text-[0.62rem] text-subtle">{term}</dt>
+      <dt className="type-label text-[0.7rem] text-subtle">{term}</dt>
       <dd
         className={`type-data mt-1 text-[1.05rem] tabular-nums ${won ? "text-[color:var(--won)]" : ""}`}
       >

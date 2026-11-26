@@ -44,7 +44,7 @@ export default async function AdminPage() {
   return (
     <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
       <p className="type-label">admin</p>
-      <h1 className="type-heading mt-3">Quarantine</h1>
+      <h1 className="type-title mt-3">Quarantine</h1>
       <p className="mt-3 max-w-[52ch] text-[0.95rem] text-muted">
         Usage that failed a check, held out of leaderboards, credits and market resolution until
         someone looks. Approving recounts the day and mints what it is now worth. Credits already

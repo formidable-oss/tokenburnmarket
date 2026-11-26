@@ -30,7 +30,7 @@ export default function DocsVerificationPage() {
   return (
     <article>
       <p className="type-label">docs / verification</p>
-      <h1 className="type-heading mt-3">Verified means signed and plausible.</h1>
+      <h1 className="type-title mt-3">Verified means signed and plausible.</h1>
       <p className="mt-4 text-[1.05rem] text-muted">
         Not proof. Usage comes from files on your own machine, and no provider publishes per-person
         token totals for a subscription account. Nobody can prove what you burned. What we can do
