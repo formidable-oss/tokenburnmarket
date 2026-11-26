@@ -639,12 +639,11 @@ export interface ModelBurnDay {
 export const MODEL_BURN_SEASON = "month" satisfies Period;
 
 /**
- * Global tokens per model and UTC day over the current Season, for the landing
+ * Global tokens per model and UTC day from `start` to `end`, for the landing
  * hero. Every model is returned: the mapper in landing.ts picks the leaders,
  * and the total has to count the models it leaves out.
  */
-export async function globalModelBurnDays(now = new Date()): Promise<ModelBurnDay[]> {
-  const season = periodRange(MODEL_BURN_SEASON, now);
+export async function globalModelBurnDays(start: string, end: string): Promise<ModelBurnDay[]> {
   const tokens = sql<number>`sum(
     ${usageDays.inputTokens} + ${usageDays.cachedInputTokens} + ${usageDays.cacheWriteTokens}
     + ${usageDays.outputTokens} + ${usageDays.reasoningTokens}
@@ -655,8 +654,8 @@ export async function globalModelBurnDays(now = new Date()): Promise<ModelBurnDa
     .from(usageDays)
     .where(
       and(
-        gte(usageDays.day, season.start!),
-        lte(usageDays.day, season.end),
+        gte(usageDays.day, start),
+        lte(usageDays.day, end),
         isNull(usageDays.duplicateOfDeviceId),
         sql`${usageDays.trustLevel} <> 'quarantined'`,
       ),
@@ -667,11 +666,21 @@ export async function globalModelBurnDays(now = new Date()): Promise<ModelBurnDa
   return rows.map((row) => ({ day: row.day, model: row.model, tokens: Number(row.tokens) }));
 }
 
-export const cachedGlobalModelBurnDays = unstable_cache(
-  async () => globalModelBurnDays(),
+/*
+  The Season's dates are arguments, so they are part of the cache key. A new
+  month gets a new entry at once, instead of showing the last month's rows
+  until the entry expires.
+*/
+const cachedModelBurnDays = unstable_cache(
+  async (start: string, end: string) => globalModelBurnDays(start, end),
   ["global-model-burn-days"],
   { revalidate: SYNC_SLOT_HOURS * 3600, tags: ["leaderboard"] },
 );
+
+export function cachedGlobalModelBurnDays(now = new Date()): Promise<ModelBurnDay[]> {
+  const season = periodRange(MODEL_BURN_SEASON, now);
+  return cachedModelBurnDays(season.start!, season.end);
+}
 
 /** Seven calendar days keeps a daily race close to what people are using now. */
 export const MODEL_RANKING_WINDOW_DAYS = 7;
