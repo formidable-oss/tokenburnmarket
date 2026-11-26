@@ -57,12 +57,14 @@ async function previewBoards(): Promise<RegionBoardPreview[]> {
 }
 
 export default async function Home() {
+  // One clock reading for the Season and for today, so both name the same month at midnight.
+  const now = new Date();
   const [boards, stats, modelBurnDays] = await Promise.all([
     previewBoards(),
     cachedSiteStats(),
-    cachedGlobalModelBurnDays(),
+    cachedGlobalModelBurnDays(now),
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = now.toISOString().slice(0, 10);
   const modelBurn = modelBurnChartData(modelBurnDays, today, PERIOD_LABELS[MODEL_BURN_SEASON]);
 
   return (
