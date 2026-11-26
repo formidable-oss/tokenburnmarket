@@ -74,7 +74,7 @@ export async function SiteHeader() {
             </>
           ) : (
             <Button as={Link} href="/signin" variant="secondary" className="h-9 px-2 text-[0.78rem] sm:px-3 sm:text-[0.82rem]">
-              Sign in<span className="hidden min-[390px]:inline"> with GitHub</span>
+              Sign in<span className="hidden min-[400px]:inline"> with GitHub</span>
             </Button>
           )}
         </div>

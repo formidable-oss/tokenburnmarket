@@ -186,3 +186,22 @@ test("manual setup opens from direct and recovery links after being closed", asy
   await expect(manual).not.toHaveAttribute("open");
   await expect(page.getByRole("heading", { name: "Already connected? Update and sync.", exact: true })).toBeInViewport();
 });
+
+for (const path of ["/", "/markets", "/leaderboard", "/docs"]) {
+  test(`${path} has no sideways scroll at phone width`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(path);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBe(0);
+  });
+}
+
+test("markets explain how to play to someone who has not bet yet", async ({ page }) => {
+  await page.goto("/markets");
+  const rules = page.locator("details", { hasText: "how to play" });
+  await expect(rules).toHaveAttribute("open", "");
+  await expect(rules.getByRole("heading", { name: "Back an outcome" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "recently settled" })).toBeVisible();
+});
