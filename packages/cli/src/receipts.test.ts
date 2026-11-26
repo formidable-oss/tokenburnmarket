@@ -105,6 +105,20 @@ describe("readClaudeStreams", () => {
     });
   });
 
+  it("files no fallback receipt for usage that ccusage does not count", () => {
+    const line = (id: string, usage: unknown) => ({
+      type: "assistant", requestId: null, timestamp: "2026-11-20T10:00:00.000Z",
+      message: { id, model: "claude-opus-5-5", usage },
+    });
+    withTranscript("projects/p/s.jsonl", [
+      line("msg_empty", {}),
+      line("msg_no_input", { output_tokens: 7 }),
+      line("msg_string", { input_tokens: "3", output_tokens: 7 }),
+    ], (root) => {
+      expect(readClaudeStreams([root]).size).toBe(0);
+    });
+  });
+
   it("drops days before the window", () => {
     const recent = readClaudeStreams([fixture("claude")], "2026-08-17");
     expect([...recent.keys()]).toEqual([receiptKey("2026-08-17", "claude", "claude-haiku-4-5")]);

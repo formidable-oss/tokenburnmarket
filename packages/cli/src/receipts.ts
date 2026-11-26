@@ -147,6 +147,11 @@ export function grokRoots(env: NodeJS.ProcessEnv, home: string): string[] {
   return configured ? [expandUsagePath(configured, home)] : [join(home, ".grok")];
 }
 
+/** The usage shape ccusage 20 requires before it counts a Claude Code line. */
+function countedByCcusage(usage: unknown): boolean {
+  return isRecord(usage) && typeof usage.input_tokens === "number" && typeof usage.output_tokens === "number";
+}
+
 /**
  * Claude Code: sha256(`message.id:requestId`) per assistant message.
  *
@@ -155,8 +160,9 @@ export function grokRoots(env: NodeJS.ProcessEnv, home: string): string[] {
  * send that header, so every message has `requestId: null`. `message.id` is still
  * the upstream response id (`msg_…`, `chatcmpl-…`, a Gemini response id), so the
  * receipt falls back to it, in its own hash shape. Both identifiers come from the
- * same local file, so the fallback is no easier to fake than the pair. It needs a
- * `usage` record, so it only files receipts for lines that ccusage counts.
+ * same local file, so the fallback is no easier to fake than the pair. It needs
+ * numeric `usage.input_tokens` and `usage.output_tokens`, because ccusage skips a
+ * line without them, and a receipt must not stand for a line ccusage skipped.
  *
  * Resumed and compacted sessions repeat messages across files, so the same hash
  * arriving twice is expected and the set collapses it.
@@ -181,7 +187,7 @@ export function readClaudeStreams(roots: readonly string[], sinceDay?: string): 
         const requestId = entry.requestId;
         if (typeof messageId !== "string" || !messageId) continue;
         const proxied = typeof requestId !== "string" || !requestId;
-        if (proxied && !isRecord(entry.message.usage)) continue;
+        if (proxied && !countedByCcusage(entry.message.usage)) continue;
 
         const day = utcDay(entry.timestamp);
         const model = typeof entry.message.model === "string" ? entry.message.model : "";
