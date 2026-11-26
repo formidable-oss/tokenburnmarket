@@ -53,9 +53,11 @@ function labelTops(ends: readonly number[]): number[] {
 }
 
 export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
-  const [selected, setSelected] = useState<number | null>(null);
+  const [picked, setPicked] = useState<number | null>(null);
 
   const count = data.days.length;
+  // New data can have fewer days than the day that was picked. Then nothing is selected.
+  const selected = picked !== null && picked < count ? picked : null;
   const active = selected ?? count - 1;
   const leader = data.lines[0];
   const y = (value: number) => (data.top > 0 ? (1 - value / data.top) * 100 : 100);
@@ -63,7 +65,7 @@ export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
   function selectFromPointer(event: PointerEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     const relativeX = Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width - 1);
-    setSelected(Math.floor((relativeX / bounds.width) * count));
+    setPicked(Math.floor((relativeX / bounds.width) * count));
   }
 
   function selectFromKeyboard(event: KeyboardEvent<HTMLDivElement>) {
@@ -75,7 +77,7 @@ export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
     else return;
 
     event.preventDefault();
-    setSelected(next);
+    setPicked(next);
   }
 
   const tops = labelTops(data.lines.map((line) => (y(line.cumulative[count - 1]!) / 100) * PLOT_PX));
@@ -118,13 +120,13 @@ export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
                 role="img"
                 tabIndex={0}
                 aria-label={`Running total of tokens per model, ${data.season}. ${leader.label} leads with ${leader.values[count - 1]}. Focus the chart and use the arrow keys to read each day.`}
-                onFocus={() => setSelected((current) => current ?? count - 1)}
-                onBlur={() => setSelected(null)}
+                onFocus={() => setPicked(active)}
+                onBlur={() => setPicked(null)}
                 onKeyDown={selectFromKeyboard}
                 onPointerDown={selectFromPointer}
                 onPointerMove={selectFromPointer}
                 onPointerLeave={(event) => {
-                  if (event.pointerType === "mouse") setSelected(null);
+                  if (event.pointerType === "mouse") setPicked(null);
                 }}
               >
                 {data.ticks.map((tick) => (
