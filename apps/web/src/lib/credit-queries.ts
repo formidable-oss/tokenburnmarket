@@ -2,7 +2,7 @@
   Reading a Builder's Credits for their own pages. The ledger is private: it
   says what someone holds and how they got it, which is nobody else's business.
 */
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { creditLedger } from "@/db/schema";
 
@@ -15,6 +15,8 @@ export interface CreditEntry {
   reason: (typeof creditLedger.$inferSelect)["reason"];
   refId: string | null;
   createdAt: Date;
+  /** The Market a buy or sell traded, from its trade row. Settlements carry theirs in the ref. */
+  tradeMarketId: string | null;
 }
 
 export async function recentCreditEntries(
@@ -28,6 +30,13 @@ export async function recentCreditEntries(
       reason: creditLedger.reason,
       refId: creditLedger.refId,
       createdAt: creditLedger.createdAt,
+      // Literal table name: an interpolated column renders unqualified in a projection.
+      tradeMarketId: sql<string | null>`(
+        select t.market_id from trades t
+        where t.id = case
+          when credit_ledger.reason in ('buy', 'sell') then credit_ledger.ref_id::uuid
+        end
+      )`,
     })
     .from(creditLedger)
     .where(eq(creditLedger.builderId, builderId))

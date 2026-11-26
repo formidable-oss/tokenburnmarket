@@ -85,9 +85,10 @@ export default function DocsMarketsPage() {
         </li>
         <li>
           Buying an outcome pushes its price up and the others down. Selling does the reverse. How
-          hard your trade moves the price depends on the market&apos;s depth, which is set from how
-          many people can trade it: a five-person community moves on a small bet, a world market
-          barely notices one.
+          hard your trade moves the price depends on the market&apos;s depth, which is set when the
+          market opens from what the people who can trade it hold: half their median balance, never
+          less than a floor that grows with headcount. A typical member going all in on one outcome
+          moves it a long way without pinning it at 100.
         </li>
         <li>
           Because the price moves while you buy, you pay an average of the prices you walked

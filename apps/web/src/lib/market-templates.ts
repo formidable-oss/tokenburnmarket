@@ -11,6 +11,7 @@ import {
   buildTemplateOutcomes,
   lmsrLiquidityForAudience,
   lmsrLiquidityForMembers,
+  lmsrLiquidityForStakes,
   marketTemplateQuestion,
   nextUtcWeek,
   periodClosesAt,
@@ -106,16 +107,21 @@ export interface PlanInput {
   members?: readonly MemberSnapshot[];
   /** How many people can trade it: Community members, or Builders in the wider scope. */
   audience: number;
+  /** Median Credit balance of that audience, which deepens the Market (ADR 0008). */
+  medianBalance?: number;
   autoKey?: string | null;
 }
 
 /*
-  Liquidity is fixed at creation from the size of the audience (ADR 0002) and
-  never moves: changing `b` would reprice every Position already held. A
-  Community is sized by its members, a wider scope starts deeper and is capped.
+  Liquidity is fixed at creation and never moves: changing `b` would reprice
+  every Position already held. The headcount rule (ADR 0002) is the floor; half
+  the audience's median balance (ADR 0008) is what usually sets it, so a bet of
+  a typical size moves the price without pinning it.
 */
-export function liquidityFor(scope: MarketScope, audience: number): number {
-  return scope === "community" ? lmsrLiquidityForMembers(audience) : lmsrLiquidityForAudience(audience);
+export function liquidityFor(scope: MarketScope, audience: number, medianBalance = 0): number {
+  const headcount =
+    scope === "community" ? lmsrLiquidityForMembers(audience) : lmsrLiquidityForAudience(audience);
+  return lmsrLiquidityForStakes(headcount, medianBalance, audience);
 }
 
 function scopeOf(params: MarketTemplateParams): MarketScope {
@@ -155,7 +161,7 @@ export function planTemplateMarket(
       type: params.template,
       question: marketTemplateQuestion(params),
       params: params as unknown as MarketParams,
-      b: liquidityFor(scope, input.audience),
+      b: liquidityFor(scope, input.audience, input.medianBalance),
       closesAt,
       resolvesAt: resolutionTimeFor(closesAt),
       outcomes,

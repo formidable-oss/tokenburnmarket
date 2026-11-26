@@ -1,6 +1,6 @@
 # ADR 0002 — LMSR house-backed automated market maker
 
-Status: accepted · 2026-08-17
+Status: accepted · 2026-08-17 · sizing amended by ADR 0008
 
 ## Context
 Markets are play-money with thin liquidity (communities of 5–50). An order book (Polymarket CLOB) would leave most markets untradeable; CPMM needs seeded liquidity and handles many outcomes poorly.

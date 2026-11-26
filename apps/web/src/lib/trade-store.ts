@@ -16,7 +16,15 @@
 import { lmsrSharesForCredits, type TradeSide } from "@tokenburnmarket/core";
 import { and, eq, sql } from "drizzle-orm";
 import { db, dbTx } from "@/db";
-import { builders, creditLedger, markets, outcomes, positions, trades } from "@/db/schema";
+import {
+  builders,
+  creditLedger,
+  markets,
+  memberships,
+  outcomes,
+  positions,
+  trades,
+} from "@/db/schema";
 import { MAX_TRADE_SHARES } from "./markets";
 import { planTrade, type TradePlan, type TradeRejection, type TradeRequest } from "./trade";
 
@@ -55,6 +63,35 @@ const missingMarket: TradeRejection = {
   message: "That market does not exist.",
 };
 
+const notAMember: TradeRejection = {
+  ok: false,
+  code: "not_a_member",
+  message: "Only members of this community trade its markets. Ask a member for the invite link.",
+};
+
+/*
+  A Community Market is a bet among friends about each other, and its depth is
+  sized from the members (ADR 0008), so only members buy into it. Selling is
+  always allowed: someone removed from the Community must still be able to get
+  out of what they hold. Anyone can read it from a shared link.
+*/
+async function mayTrade(
+  reader: Pick<typeof db, "select">,
+  market: { scope: string; communityId: string | null },
+  builderId: string,
+  side: TradeSide,
+): Promise<boolean> {
+  if (side === "sell" || market.scope !== "community" || !market.communityId) return true;
+  const [member] = await reader
+    .select({ builderId: memberships.builderId })
+    .from(memberships)
+    .where(
+      and(eq(memberships.communityId, market.communityId), eq(memberships.builderId, builderId)),
+    )
+    .limit(1);
+  return Boolean(member);
+}
+
 /**
  * Price and settle one trade, or refuse it. Returns rather than throws for every
  * refusal a trader can cause, so the form can say what happened.
@@ -71,11 +108,14 @@ export async function executeTrade(
         status: markets.status,
         closesAt: markets.closesAt,
         b: markets.b,
+        scope: markets.scope,
+        communityId: markets.communityId,
       })
       .from(markets)
       .where(eq(markets.id, marketId))
       .for("update");
     if (!market) return missingMarket;
+    if (!(await mayTrade(tx, market, builderId, request.side))) return notAMember;
 
     // Taken after the Market lock, always, or two trades could wait on each other.
     const [balanceRow] = await tx
@@ -221,11 +261,18 @@ export async function quoteTrade(
   now: Date = new Date(),
 ): Promise<TradeQuote | TradeRejection> {
   const [market] = await db
-    .select({ status: markets.status, closesAt: markets.closesAt, b: markets.b })
+    .select({
+      status: markets.status,
+      closesAt: markets.closesAt,
+      b: markets.b,
+      scope: markets.scope,
+      communityId: markets.communityId,
+    })
     .from(markets)
     .where(eq(markets.id, marketId))
     .limit(1);
   if (!market) return missingMarket;
+  if (!(await mayTrade(db, market, builderId, intent.side))) return notAMember;
 
   const [balanceRow] = await db
     .select({ balance: currentBalance })

@@ -31,6 +31,43 @@ export function lmsrLiquidityForAudience(participants: number): number {
   return Math.min(LMSR_GLOBAL_MAX, LMSR_GLOBAL_BASE + 5 * Math.max(0, Math.floor(participants)));
 }
 
+/*
+  ADR 0008: depth follows what people can actually stake. Sized from headcount
+  alone, a Market went flat while the mint kept filling balances: by late 2026
+  a weekly Community market had b = 85 against balances in the thousands, so
+  one bet pinned it at 100c for the rest of the week and a win paid at most
+  b * ln(n), about 170 credits, on any stake. Half the audience's median balance
+  means one typical member going all in on one of eight outcomes moves it from
+  12c to about 88c: a real move, not a lock.
+*/
+export const LMSR_BALANCE_SHARE = 0.5;
+
+/*
+  The balance term never exceeds this much per person in the audience. Two
+  friends with fat balances would otherwise open a deep weekly market about
+  themselves, buy the known winner late and farm the house subsidy (up to
+  b * ln(n)) every week; a big audience is what makes depth safe to give.
+*/
+export const LMSR_DEPTH_PER_MEMBER = 100;
+
+/**
+ * `b` from the headcount rule and the audience's median Credit balance: the
+ * larger of the two. The balance term is capped by the audience's size and by
+ * `LMSR_GLOBAL_MAX`, so the house's worst case on one Market stays bounded.
+ */
+export function lmsrLiquidityForStakes(
+  headcountB: number,
+  medianBalance: number,
+  audience: number,
+): number {
+  const fromBalance =
+    Number.isFinite(medianBalance) && medianBalance > 0
+      ? Math.round(medianBalance * LMSR_BALANCE_SHARE)
+      : 0;
+  const perHead = LMSR_DEPTH_PER_MEMBER * Math.max(0, Math.floor(audience));
+  return Math.max(headcountB, Math.min(LMSR_GLOBAL_MAX, perHead, fromBalance));
+}
+
 function assertMarket(shares: readonly number[], b: number): void {
   if (shares.length < 2) throw new RangeError("a Market needs at least 2 outcomes");
   if (!Number.isFinite(b) || b <= 0) throw new RangeError("b must be a positive finite number");

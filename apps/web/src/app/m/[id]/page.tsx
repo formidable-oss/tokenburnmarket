@@ -7,6 +7,7 @@ import { PriceChart } from "@/components/markets/price-chart";
 import { ResolutionPanel } from "@/components/markets/resolution-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { isMember } from "@/lib/community-queries";
 import { formatCredits, formatDelta } from "@/lib/credits";
 import {
   betsFor,
@@ -76,12 +77,16 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
   const session = await auth();
   const viewerId = session?.user?.id ?? null;
 
-  const [history, tape, holdings, builder, bets] = await Promise.all([
+  const [history, tape, holdings, builder, bets, member] = await Promise.all([
     priceHistory(market.id),
     recentTrades(market.id),
     viewerId ? positionsIn(market.id, viewerId) : Promise.resolve([]),
     viewerId ? currentBuilder() : Promise.resolve(null),
     viewerId ? betsFor(viewerId, { marketId: market.id, limit: 1 }) : Promise.resolve([]),
+    // A Community Market is traded by its members only; everyone else can read it.
+    viewerId && market.scope === "community" && market.communityId
+      ? isMember(market.communityId, viewerId)
+      : Promise.resolve(true),
   ]);
   const bet = bets[0] ?? null;
 
@@ -262,6 +267,11 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
                   : `This market stopped taking trades. Positions settle from Usage at ${stamp.format(
                       market.resolvesAt,
                     )} UTC.`}
+              </p>
+            ) : viewerId && builder && !member && holdings.length === 0 ? (
+              <p className="mt-4 text-[0.95rem] text-muted">
+                Members of {market.communityName ?? "this community"} trade this market. Ask one of
+                them for the invite link to join.
               </p>
             ) : viewerId && builder ? (
               <div className="mt-5">

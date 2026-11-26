@@ -49,7 +49,8 @@ export function CreditsPanel({
           <ol className="mt-6 divide-y divide-border-faint sm:hidden">
             {entries.map((entry) => {
               const day = creditEntryDay(entry.reason, entry.refId);
-              const marketId = creditEntryMarketId(entry.reason, entry.refId);
+              const marketId =
+                entry.tradeMarketId ?? creditEntryMarketId(entry.reason, entry.refId);
               const reason = creditReasonLabel(entry.reason);
               return (
                 <li key={entry.id} className="py-3 first:pt-0">
@@ -86,7 +87,8 @@ export function CreditsPanel({
           <tbody className="type-data">
             {entries.map((entry) => {
               const day = creditEntryDay(entry.reason, entry.refId);
-              const marketId = creditEntryMarketId(entry.reason, entry.refId);
+              const marketId =
+                entry.tradeMarketId ?? creditEntryMarketId(entry.reason, entry.refId);
               return (
                 <tr key={entry.id} className="border-t border-border-faint">
                   <td className="py-1.5 pr-3 text-muted tabular-nums">

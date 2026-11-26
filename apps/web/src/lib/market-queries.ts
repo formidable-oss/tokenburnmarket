@@ -117,10 +117,8 @@ async function summarize(rows: MarketRow[]): Promise<MarketSummary[]> {
   and the Communities they belong to. A signed-out viewer sees the global ones,
   which is enough to understand what the page is for.
 */
-export async function openMarketsFor(
-  viewerId: string | null,
-  country: string | null,
-): Promise<MarketSummary[]> {
+/** Global Markets, the viewer's country's, and their Communities': what /markets lists. */
+function visibleTo(viewerId: string | null, country: string | null) {
   const visible = [eq(markets.scope, "global")];
   if (country) visible.push(and(eq(markets.scope, "country"), eq(markets.country, country))!);
   if (viewerId) {
@@ -135,15 +133,92 @@ export async function openMarketsFor(
       )!,
     );
   }
+  return or(...visible);
+}
 
+export async function openMarketsFor(
+  viewerId: string | null,
+  country: string | null,
+): Promise<MarketSummary[]> {
   const rows = await db
     .select(marketColumns)
     .from(markets)
     .leftJoin(communities, eq(communities.id, markets.communityId))
-    .where(and(eq(markets.status, "open"), gt(markets.closesAt, sql`now()`), or(...visible)))
+    .where(
+      and(eq(markets.status, "open"), gt(markets.closesAt, sql`now()`), visibleTo(viewerId, country)),
+    )
     .orderBy(asc(markets.closesAt));
 
   return summarize(rows);
+}
+
+/** A settled Market as the "recently settled" list shows it: who won and who got paid. */
+export interface SettledMarket {
+  id: string;
+  question: string;
+  status: "resolved" | "voided";
+  scope: MarketScope;
+  communityName: string | null;
+  resolvesAt: Date;
+  winnerLabel: string | null;
+  /** Credits paid to winning shares, or refunded on a void. */
+  paidOut: number;
+  /** Builders who got a payout or a refund. */
+  paidBuilders: number;
+  /** Builders who traded it at all. */
+  traders: number;
+}
+
+/*
+  The latest settled Markets the viewer can see, traded ones only: a Market
+  nobody bet on settled into silence and is not news. Literal table names in
+  the subqueries for the same reason as `betsFor`.
+*/
+export async function recentlySettledFor(
+  viewerId: string | null,
+  country: string | null,
+  limit = 6,
+): Promise<SettledMarket[]> {
+  const rows = await db
+    .select({
+      id: markets.id,
+      question: markets.question,
+      status: markets.status,
+      scope: markets.scope,
+      communityName: communities.name,
+      resolvesAt: markets.resolvesAt,
+      winnerLabel: sql<string | null>`(select o.label from outcomes o where o.id = markets.winning_outcome_id)`,
+      paidOut: sql<number>`coalesce((
+        select sum(l.delta) from credit_ledger l
+        where l.ref_id = 'market:' || markets.id::text and l.reason in ('payout', 'refund')
+      ), 0)::double precision`,
+      paidBuilders: sql<number>`(
+        select count(*) from credit_ledger l
+        where l.ref_id = 'market:' || markets.id::text and l.reason in ('payout', 'refund')
+      )::int`,
+      traders: sql<number>`(
+        select count(distinct t.builder_id) from trades t where t.market_id = markets.id
+      )::int`,
+    })
+    .from(markets)
+    .leftJoin(communities, eq(communities.id, markets.communityId))
+    .where(
+      and(
+        inArray(markets.status, ["resolved", "voided"]),
+        sql`exists (select 1 from trades t where t.market_id = markets.id)`,
+        visibleTo(viewerId, country),
+      ),
+    )
+    .orderBy(desc(markets.resolvesAt))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    ...row,
+    status: row.status as SettledMarket["status"],
+    paidOut: Number(row.paidOut),
+    paidBuilders: Number(row.paidBuilders),
+    traders: Number(row.traders),
+  }));
 }
 
 /** A Community's own open Markets, for the panel on /c/:slug. */
@@ -159,6 +234,7 @@ export async function openMarketsForCommunity(communityId: string): Promise<Mark
 }
 
 export interface MarketDetail extends MarketSummary {
+  communityId: string | null;
   type: string;
   params: MarketParams;
   opensAt: Date;
@@ -174,6 +250,7 @@ export async function marketById(id: string): Promise<MarketDetail | null> {
   const [row] = await db
     .select({
       ...marketColumns,
+      communityId: markets.communityId,
       type: markets.type,
       params: markets.params,
       opensAt: markets.opensAt,
@@ -407,6 +484,32 @@ export async function memberCount(communityId: string): Promise<number> {
 }
 
 /** Global Markets have no Community to size, so liquidity is counted over everyone. */
+/**
+ * Median Credit balance of a Market's audience: a Community's members, one
+ * country's Builders, or everyone. Sizes a new Market's depth (ADR 0008).
+ */
+export async function medianBalance(
+  audience: { communityId: string } | { country: string } | { global: true },
+): Promise<number> {
+  const where =
+    "communityId" in audience
+      ? sql`exists (
+          select 1 from ${memberships}
+          where ${memberships.communityId} = ${audience.communityId}
+            and ${memberships.builderId} = ${builders.id}
+        )`
+      : "country" in audience
+        ? eq(builders.country, audience.country)
+        : undefined;
+  const [row] = await db
+    .select({
+      median: sql<number>`coalesce(percentile_cont(0.5) within group (order by ${builders.creditBalance}), 0)::double precision`,
+    })
+    .from(builders)
+    .where(where);
+  return Number(row?.median ?? 0);
+}
+
 export async function builderCount(): Promise<number> {
   const [row] = await db.select({ builders: sql<number>`count(*)::int` }).from(builders);
   return row?.builders ?? 0;

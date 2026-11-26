@@ -55,7 +55,8 @@ export type TradeRejectionCode =
   | "unknown_outcome"
   | "insufficient_balance"
   | "insufficient_shares"
-  | "price_moved";
+  | "price_moved"
+  | "not_a_member";
 
 export interface TradeRejection {
   ok: false;

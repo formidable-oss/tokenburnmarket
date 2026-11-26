@@ -25,6 +25,7 @@ import { isAdmin } from "@/lib/admin";
 import { countryByCode } from "@/lib/countries";
 import {
   builderCount,
+  medianBalance,
   communitiesForMarkets,
   modelsInPlay,
   type CommunityForMarkets,
@@ -88,6 +89,8 @@ export async function createMarket(
 
   let params: MarketTemplateParams;
   let audience: number;
+  /** Median balance of that audience, which deepens the Market (ADR 0008). */
+  let depth: number;
   /** Only a Top Burner needs these: its Outcomes are not named in its params. */
   let members: CommunityForMarkets["members"] | undefined;
 
@@ -113,6 +116,7 @@ export async function createMarket(
       models,
     };
     audience = await builderCount();
+    depth = await medianBalance(country ? { country: country.code } : { global: true });
   } else {
     const communityId = formData.get("communityId")?.toString().trim() ?? "";
     // Reading the Builder's own Communities is the membership check.
@@ -133,6 +137,7 @@ export async function createMarket(
       communityName: community.name,
     };
     audience = community.members.length;
+    depth = await medianBalance({ communityId: community.id });
     const memberById = new Map(
       community.members.map((member) => [member.builderId, member] as const),
     );
@@ -163,7 +168,12 @@ export async function createMarket(
   const validated = MarketTemplateParamsSchema.safeParse(params);
   if (!validated.success) return fail("Those parameters do not make a market.");
 
-  const plan = planTemplateMarket({ params: validated.data, members, audience });
+  const plan = planTemplateMarket({
+    params: validated.data,
+    members,
+    audience,
+    medianBalance: depth,
+  });
   if (!plan.ok) return fail(NOTHING_OPENED, { period: plan.error });
 
   const id = await insertMarket(plan.value, builderId);
