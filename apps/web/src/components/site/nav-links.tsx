@@ -19,13 +19,15 @@ export function NavLinks() {
   const path = usePathname();
 
   return nav.map((n) => {
-    const current = n.under.some((prefix) => path === prefix || path.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`));
+    const inSection = n.under.some((prefix) => path === prefix || path.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`));
+    // "page" only on the link's own page. Inside the section, such as /docs/setup, the link is the current section.
+    const current = path === n.href ? "page" : inSection ? "true" : undefined;
     return (
       <Link
         key={n.href}
         href={n.href}
-        aria-current={current ? "page" : undefined}
-        className="nav-link shrink-0 hover:text-foreground aria-[current=page]:text-foreground"
+        aria-current={current}
+        className="nav-link shrink-0 hover:text-foreground [&[aria-current]]:text-foreground"
       >
         {n.label}
       </Link>

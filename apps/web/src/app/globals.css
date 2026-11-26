@@ -317,7 +317,7 @@
     transition: transform 180ms var(--ease-out-expo);
   }
   .nav-link:hover::after,
-  .nav-link[aria-current="page"]::after {
+  .nav-link[aria-current]::after {
     transform: scaleX(1);
   }
 }
