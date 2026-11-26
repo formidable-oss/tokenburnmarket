@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { MoonIcon, SunIcon } from "@/components/ui/icons";
 
 /*
   Explicit light/dark choice stored in localStorage under "tbm-theme".
@@ -28,14 +29,21 @@ export function ThemeToggle() {
     listeners.forEach((l) => l());
   }
 
+  /*
+    The icon shows the mode you are in, moon for dark and sun for light. CSS
+    picks it from data-theme, so the right one is there before hydration.
+  */
+  const icon = "absolute transition-[opacity,transform] duration-200 ease-(--ease-out-expo)";
+
   return (
     <button
       type="button"
       onClick={toggle}
-      className="type-label h-10 rounded-(--radius-control) px-2.5 text-[0.66rem] text-muted transition-colors hover:bg-surface-raised hover:text-foreground"
+      className="relative flex size-10 shrink-0 items-center justify-center rounded-(--radius-control) border border-border-strong text-muted transition-colors hover:border-primary-border hover:bg-primary-subtle hover:text-foreground"
       aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
     >
-      {theme === "dark" ? "day" : "night"}
+      <MoonIcon className={`${icon} theme-light:-rotate-90 theme-light:scale-50 theme-light:opacity-0`} />
+      <SunIcon className={`${icon} rotate-90 scale-50 opacity-0 theme-light:rotate-0 theme-light:scale-100 theme-light:opacity-100`} />
     </button>
   );
 }

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth, devSignInHandle, signIn } from "@/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { GitHubIcon } from "@/components/ui/icons";
 import { safeInternalPath } from "@/lib/profile";
 
 export const metadata: Metadata = {
@@ -69,6 +70,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
               One click. No password, no email. Sign out any time from settings.
             </p>
             <Button type="submit" className="mt-6 w-full sm:w-auto">
+              <GitHubIcon />
               Sign in with GitHub
             </Button>
           </form>

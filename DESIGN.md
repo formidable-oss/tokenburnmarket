@@ -61,7 +61,8 @@ Pixel faces are for titles and big numerals, never for paragraphs. Mono is for l
 - **Button** `ui/button.tsx`: primary, secondary, ghost. 40px target. Accepts `as={Link}`.
 - **Badge** `ui/badge.tsx`: verified, reported, quarantined, won, neutral. Always contains a word. Quarantined is the one place ember appears outside the honesty strip.
 - **CommandLine** `ui/command-line.tsx`: `$ command [copy]`. Inline copy feedback, no toast. `prompt={null}` drops the sigil for text that is not a command, such as an invite link.
-- **SiteHeader / SiteFooter / ThemeToggle** `site/*`: sticky translucent bar, primary nav with the left-growing underline, day/night toggle.
+- **SiteHeader / SiteFooter / ThemeToggle** `site/*`: sticky translucent bar, primary nav with the left-growing underline, which stays on the section you are in (`aria-current`, set in `site/nav-links.tsx`). From 1024px the nav sits in the bar; below that it takes a second row under the bar. The theme toggle is a 40px outlined icon button that shows the mode you are in: moon for dark, sun for light. The footer credits Formidable Builders with their mark from `public/brand/`, in their colors, one file per theme. It is the one place a color that is not a token appears.
+- **Icons** `ui/icons.tsx`: GitHub, sun, moon. Inline SVG that takes the text color. Every "Sign in with GitHub" button carries the GitHub mark. `theme-light:` is the Tailwind variant for a utility that applies only in the light theme.
 - **CostSparkline**, **UsagePanel** `usage/*`: thirty days of burn as server-rendered bars, then totals by agent and by model. No client JavaScript.
 - **BoardTable**, **RegionTabs**, **BoardSwitches** `leaderboard/*`: the one leaderboard row anatomy (rank, avatar + handle, trust badge, value, places gained) and the link-only region tabs and season/metric switches. Every board renders through them, including the landing preview, so two boards can never disagree about a rank.
 - **ModelUsagePreview**, **StatsStrip**, **Steps** `landing/*`: current-week global model totals from synced Usage in the hero; four site numbers below it; the three-step explainer. **MarketPreview** keeps the compact Market anatomy for Market contexts. **RegionBoards** `landing/*` is the same tab strip over real data.
@@ -72,6 +73,7 @@ Pixel faces are for titles and big numerals, never for paragraphs. Mono is for l
 
 - Curve: `--ease-out-expo` `cubic-bezier(0.16, 1, 0.3, 1)`. Exits faster than entrances.
 - Page load: `.rise` (0.5rem up, 420ms) staggered by `--i` at 70ms steps. One orchestrated entrance, then quiet.
+- The theme icon turns and fades in 200ms when the mode changes.
 - The ember dot pulses opacity only. Nav underline scales in from the left in 180ms.
 - Transform and opacity only. `prefers-reduced-motion` collapses everything to instant.
 

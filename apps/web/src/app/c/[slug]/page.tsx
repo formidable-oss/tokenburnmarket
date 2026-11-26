@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { CommunityBoard } from "@/components/leaderboard/community-board";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { GitHubIcon } from "@/components/ui/icons";
 import { CommandLine } from "@/components/ui/command-line";
 import { inviteUrl } from "@/lib/communities";
 import { communityBySlug, membersOf } from "@/lib/community-queries";
@@ -201,6 +202,7 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
                   variant="secondary"
                   className="mt-6"
                 >
+                  <GitHubIcon />
                   Sign in with GitHub
                 </Button>
               )}

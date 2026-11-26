@@ -7,6 +7,7 @@ import { PriceChart } from "@/components/markets/price-chart";
 import { ResolutionPanel } from "@/components/markets/resolution-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { GitHubIcon } from "@/components/ui/icons";
 import { isMember } from "@/lib/community-queries";
 import { formatCredits, formatDelta } from "@/lib/credits";
 import {
@@ -289,6 +290,7 @@ export default async function MarketPage({ params }: PageProps<"/m/[id]">) {
                   Sign in to trade. Credits come from your own usage, so connect a machine first.
                 </p>
                 <Button as={Link} href={`/signin?next=/m/${market.id}`} className="mt-5">
+                  <GitHubIcon />
                   Sign in with GitHub
                 </Button>
               </>

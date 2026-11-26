@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* `theme-light:` applies a utility only in the light theme. Dark is the default and needs no variant. */
+@custom-variant theme-light (&:where([data-theme="light"], [data-theme="light"] *));
+
 /*
   tokenburnmarket design tokens.
   Contract: components use only these variables and the Tailwind theme below.
