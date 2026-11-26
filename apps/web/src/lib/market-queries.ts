@@ -24,7 +24,7 @@ import {
   type MarketParams,
 } from "@/db/schema";
 import { betNet, betState, isSettled, type BetFlows, type BetState } from "./bets";
-import { periodRange } from "./leaderboard";
+import { periodRange, type Period } from "./leaderboard";
 import type { MarketScope, MarketStatus } from "./markets";
 
 export interface OutcomePrice {
@@ -626,52 +626,50 @@ export const cachedSiteStats = unstable_cache(
   { revalidate: SYNC_SLOT_HOURS * 3600, tags: ["leaderboard"] },
 );
 
-export interface GlobalModelUsage {
-  totalTokens: number;
-  models: { model: string; tokens: number }[];
+export interface ModelBurnDay {
+  day: string;
+  model: string;
+  tokens: number;
 }
 
-export const GLOBAL_MODEL_PREVIEW_LIMIT = 5;
+/**
+ * The Season the landing hero chart covers. A month has enough days for a lead
+ * to change hands, and it is one of the Seasons the Leaderboards already use.
+ */
+export const MODEL_BURN_SEASON = "month" satisfies Period;
 
-/** Current-week global model totals for the landing hero. */
-export async function globalModelUsage(
-  limit = GLOBAL_MODEL_PREVIEW_LIMIT,
-  now = new Date(),
-): Promise<GlobalModelUsage> {
-  const week = periodRange("week", now);
+/**
+ * Global tokens per model and UTC day over the current Season, for the landing
+ * hero. Every model is returned: the mapper in landing.ts picks the leaders,
+ * and the total has to count the models it leaves out.
+ */
+export async function globalModelBurnDays(now = new Date()): Promise<ModelBurnDay[]> {
+  const season = periodRange(MODEL_BURN_SEASON, now);
   const tokens = sql<number>`sum(
     ${usageDays.inputTokens} + ${usageDays.cachedInputTokens} + ${usageDays.cacheWriteTokens}
     + ${usageDays.outputTokens} + ${usageDays.reasoningTokens}
   )`;
-  const totalTokens = sql<number>`sum(sum(
-    ${usageDays.inputTokens} + ${usageDays.cachedInputTokens} + ${usageDays.cacheWriteTokens}
-    + ${usageDays.outputTokens} + ${usageDays.reasoningTokens}
-  )) over ()`;
 
   const rows = await db
-    .select({ model: usageDays.model, tokens, totalTokens })
+    .select({ day: usageDays.day, model: usageDays.model, tokens })
     .from(usageDays)
     .where(
       and(
-        gte(usageDays.day, week.start!),
-        lte(usageDays.day, week.end),
+        gte(usageDays.day, season.start!),
+        lte(usageDays.day, season.end),
         isNull(usageDays.duplicateOfDeviceId),
         sql`${usageDays.trustLevel} <> 'quarantined'`,
       ),
     )
-    .groupBy(usageDays.model)
-    .orderBy(desc(tokens))
-    .limit(limit);
+    .groupBy(usageDays.day, usageDays.model)
+    .orderBy(asc(usageDays.day));
 
-  return {
-    totalTokens: Number(rows[0]?.totalTokens ?? 0),
-    models: rows.map((row) => ({ model: row.model, tokens: Number(row.tokens) })),
-  };
+  return rows.map((row) => ({ day: row.day, model: row.model, tokens: Number(row.tokens) }));
 }
 
-export const cachedGlobalModelUsage = unstable_cache(
-  async () => globalModelUsage(),
-  ["global-model-usage"],
+export const cachedGlobalModelBurnDays = unstable_cache(
+  async () => globalModelBurnDays(),
+  ["global-model-burn-days"],
   { revalidate: SYNC_SLOT_HOURS * 3600, tags: ["leaderboard"] },
 );
 

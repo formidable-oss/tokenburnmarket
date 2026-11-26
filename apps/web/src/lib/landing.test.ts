@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { marketPreviewData, modelUsagePreviewData, statCells } from "./landing";
+import { marketPreviewData, modelBurnChartData, statCells } from "./landing";
 
 const now = new Date("2026-08-17T12:00:00.000Z");
 
@@ -46,31 +46,70 @@ describe("marketPreviewData", () => {
   });
 });
 
-describe("modelUsagePreviewData", () => {
-  it("turns current global usage into model names, token totals and honest bar shares", () => {
-    const preview = modelUsagePreviewData({
-      totalTokens: 1_498_914_428,
-      models: [
-        { model: "gpt-5.6-sol", tokens: 703_353_949 },
-        { model: "claude-fable-5", tokens: 108_034_583 },
-      ],
-    });
+describe("modelBurnChartData", () => {
+  const rows = [
+    { day: "2026-08-14", model: "gpt-5.6-sol", tokens: 300_000_000 },
+    { day: "2026-08-14", model: "claude-fable-5", tokens: 100_000_000 },
+    { day: "2026-08-16", model: "gpt-5.6-sol", tokens: 400_000_000 },
+    { day: "2026-08-16", model: "claude-fable-5", tokens: 8_000_000 },
+  ];
 
-    expect(preview).toEqual({
-      live: true,
-      where: "global · this week",
-      total: "1.5B tokens",
-      question: "Models burning this week.",
-      source: "synced usage · quarantined rows excluded",
-      models: [
-        { label: "GPT-5.6 Sol", value: "703.4M", share: 703_353_949 / 1_498_914_428 },
-        { label: "Claude Fable 5", value: "108M", share: 108_034_583 / 1_498_914_428 },
-      ],
-    });
+  it("draws a running total per model, leader first, over every day up to today", () => {
+    const chart = modelBurnChartData(rows, "2026-08-17", "this month");
+
+    expect(chart.days).toEqual(["2026-08-14", "2026-08-15", "2026-08-16", "2026-08-17"]);
+    expect(chart.lines).toEqual([
+      {
+        label: "GPT-5.6 Sol",
+        cumulative: [300_000_000, 300_000_000, 700_000_000, 700_000_000],
+        values: ["300M", "300M", "700M", "700M"],
+      },
+      {
+        label: "Claude Fable 5",
+        cumulative: [100_000_000, 100_000_000, 108_000_000, 108_000_000],
+        values: ["100M", "100M", "108M", "108M"],
+      },
+    ]);
+  });
+
+  it("names the Season and counts every model in the total", () => {
+    const chart = modelBurnChartData(rows, "2026-08-17", "this month");
+    expect(chart.live).toBe(true);
+    expect(chart.total).toBe("808M tokens");
+    expect(chart.season).toBe("this month");
+  });
+
+  it("keeps the leader inside the chart and puts round numbers on the axis", () => {
+    const chart = modelBurnChartData(rows, "2026-08-17", "this month");
+    expect(chart.top).toBeGreaterThan(700_000_000);
+    expect(chart.ticks).toEqual([
+      { value: 200_000_000, label: "200M" },
+      { value: 400_000_000, label: "400M" },
+      { value: 600_000_000, label: "600M" },
+    ]);
+  });
+
+  it("draws only the leaders but still counts the rest", () => {
+    const crowd = Array.from({ length: 7 }, (_, index) => ({
+      day: "2026-08-17",
+      model: `model-${index}`,
+      tokens: (index + 1) * 1_000_000,
+    }));
+    const chart = modelBurnChartData(crowd, "2026-08-17", "this month");
+    expect(chart.lines.map((line) => line.label)).toEqual([
+      "Model 6",
+      "Model 5",
+      "Model 4",
+      "Model 3",
+      "Model 2",
+    ]);
+    expect(chart.total).toBe("28M tokens");
   });
 
   it("does not claim an empty global board is live", () => {
-    expect(modelUsagePreviewData({ totalTokens: 0, models: [] }).live).toBe(false);
+    const chart = modelBurnChartData([], "2026-08-17", "this month");
+    expect(chart.live).toBe(false);
+    expect(chart.lines).toEqual([]);
   });
 });
 

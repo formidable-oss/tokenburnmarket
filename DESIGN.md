@@ -40,6 +40,7 @@ Rules:
 | Level | Class | Face | Size |
 | --- | --- | --- | --- |
 | Display | `.type-display` | Geist Pixel Circle | `clamp(2.5rem, 6vw, 5rem)` |
+| Landing headline | `.type-display-hero` | Geist Pixel Circle | `clamp(3.25rem, 15vw, 6.75rem)` in one column, `9.5vw` from 1024px; landing page only |
 | Title | `.type-title` | Geist Pixel Circle | `clamp(2rem, 5.6vw, 2.5rem)`. The `h1` of every page except the landing page. |
 | Heading | `.type-heading` | Geist Pixel Circle | `clamp(1.35rem, 2.4vw, 1.75rem)`. Section headings. |
 | Body | default | Geist | 1rem, line-height 1.55 |
@@ -70,7 +71,8 @@ A label above a title must add something the title and the navbar do not say, su
 - **Icons** `ui/icons.tsx`: GitHub, sun, moon. Inline SVG that takes the text color. Every "Sign in with GitHub" button carries the GitHub mark. `theme-light:` is the Tailwind variant for a utility that applies only in the light theme.
 - **CostSparkline**, **UsagePanel** `usage/*`: thirty days of burn as server-rendered bars, then totals by agent and by model. No client JavaScript.
 - **BoardTable**, **RegionTabs**, **BoardSwitches** `leaderboard/*`: the one leaderboard row anatomy (rank, avatar + handle, trust badge, value, places gained) and the link-only region tabs and season/metric switches. Every board renders through them, including the landing preview, so two boards can never disagree about a rank.
-- **ModelUsagePreview**, **StatsStrip**, **Steps** `landing/*`: current-week global model totals from synced Usage in the hero; four site numbers below it; the three-step explainer. **MarketPreview** keeps the compact Market anatomy for Market contexts. **RegionBoards** `landing/*` is the same tab strip over real data.
+- **ModelBurnChart** `landing/*`: the hero chart. A running total of Usage tokens for the five most-burned models over the current month Season, as stepped lines inside the two open corners. The leader takes the yellow and the ember at its tip; the other lines are gray. Each line ends in a label with the total and the model name, so the labels are the ranking and there is no legend. Pointing at a day, or the arrow keys, moves the labels to the totals up to that day. It has no panel. It is not a Market, so it never uses the name Model Race.
+- **StatsStrip**, **Steps** `landing/*`: four site numbers below the hero; the three steps as ledger rows (numeral, name, what happens), not cards. **MarketPreview** keeps the compact Market anatomy for Market contexts. **RegionBoards** `landing/*` is the same tab strip over real data.
 - **Share cards** `app/og-card.tsx` with `lib/share-cards.ts`: one 1200x630 composition for every card. Mark and wordmark top left, a mono eyebrow, a headline in the pixel face with at most one word in primary, an optional panel of rows on the right, one quiet line at the bottom. A route maps its data to a `ShareCard` and never lays out pixels. Cyan is reserved for prices there too, and the ember dot only appears next to numbers that move.
 - **LogoMark / Wordmark / Logo** `brand/logo.tsx`.
 
@@ -78,6 +80,7 @@ A label above a title must add something the title and the navbar do not say, su
 
 - Curve: `--ease-out-expo` `cubic-bezier(0.16, 1, 0.3, 1)`. Exits faster than entrances.
 - Page load: `.rise` (0.5rem up, 420ms) staggered by `--i` at 70ms steps. One orchestrated entrance, then quiet.
+- The hero chart draws one day per step, left to right (`.tape-wipe`, 45ms a day, 900ms at most). Its markers and labels arrive when the wipe ends. This is part of the same entrance.
 - The theme icon turns and fades in 200ms when the mode changes.
 - The ember dot pulses opacity only. Nav underline scales in from the left in 180ms.
 - Transform and opacity only. `prefers-reduced-motion` collapses everything to instant.

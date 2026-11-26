@@ -47,19 +47,36 @@ export function marketPreviewData(
   };
 }
 
-export interface GlobalModelUsageInput {
-  totalTokens: number;
-  models: readonly { model: string; tokens: number }[];
+export interface ModelBurnDayInput {
+  day: string;
+  model: string;
+  tokens: number;
 }
 
-export interface ModelUsagePreviewData {
-  live: boolean;
-  where: string;
-  total: string;
-  question: string;
-  source: string;
-  models: readonly { label: string; value: string; share: number }[];
+export interface ModelBurnLine {
+  label: string;
+  /** Running total of tokens at the end of each day in `days`. */
+  cumulative: readonly number[];
+  /** The same running totals, formatted, so the chart needs no formatter. */
+  values: readonly string[];
 }
+
+export interface ModelBurnChartData {
+  live: boolean;
+  /** Every model in the Season, not only the lines drawn, such as "924.5M tokens". */
+  total: string;
+  /** The Season the chart covers, in the words the Leaderboards use: "this month". */
+  season: string;
+  /** Consecutive UTC days, from the first day with Usage to today. */
+  days: readonly string[];
+  /** The value at the top of the chart, a little above the leader. */
+  top: number;
+  ticks: readonly { value: number; label: string }[];
+  /** The leaders, first place first. */
+  lines: readonly ModelBurnLine[];
+}
+
+export const MODEL_BURN_LINES = 5;
 
 const compactTokens = new Intl.NumberFormat("en-US", {
   notation: "compact",
@@ -74,18 +91,70 @@ function modelLabel(model: string): string {
   return [name, ...words].join(" ");
 }
 
-/** Current global model Usage, formatted for the live hero card. */
-export function modelUsagePreviewData(usage: GlobalModelUsageInput): ModelUsagePreviewData {
+function nextDay(day: string): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+
+/** The largest of 1, 2 or 5 times a power of ten that is not above `value`. */
+function roundStep(value: number): number {
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const lead = value / magnitude;
+  return (lead >= 5 ? 5 : lead >= 2 ? 2 : 1) * magnitude;
+}
+
+/**
+ * The landing hero chart: a running total of tokens per model over one Season.
+ * A Market on who burns most settles on a total, so the chart shows the lead
+ * and the gap between models. It does not show which day was the largest.
+ */
+export function modelBurnChartData(
+  rows: readonly ModelBurnDayInput[],
+  today: string,
+  season: string,
+): ModelBurnChartData {
+  const burnt = rows.filter((row) => row.tokens > 0 && row.day <= today);
+  if (burnt.length === 0) {
+    return { live: false, total: "0 tokens", season, days: [], top: 0, ticks: [], lines: [] };
+  }
+
+  const days: string[] = [];
+  const first = burnt.reduce((earliest, row) => (row.day < earliest ? row.day : earliest), today);
+  for (let day = first; day <= today; day = nextDay(day)) days.push(day);
+
+  const byModel = new Map<string, Map<string, number>>();
+  for (const row of burnt) {
+    const perDay = byModel.get(row.model) ?? new Map<string, number>();
+    perDay.set(row.day, (perDay.get(row.day) ?? 0) + row.tokens);
+    byModel.set(row.model, perDay);
+  }
+
+  const totals = [...byModel].map(([model, perDay]) => {
+    let running = 0;
+    const cumulative = days.map((day) => (running += perDay.get(day) ?? 0));
+    return { model, cumulative, total: running };
+  });
+  // Ties break on the name, so two reloads never draw two different orders.
+  totals.sort((a, b) => b.total - a.total || a.model.localeCompare(b.model));
+
+  const leaders = totals.slice(0, MODEL_BURN_LINES);
+  const peak = leaders[0]!.total;
+  const step = roundStep(peak / 2);
+  const ticks = [];
+  for (let value = step; value <= peak; value += step) {
+    ticks.push({ value, label: compactTokens.format(value) });
+  }
+
   return {
-    live: usage.models.length > 0,
-    where: "global · this week",
-    total: `${compactTokens.format(usage.totalTokens)} tokens`,
-    question: "Models burning this week.",
-    source: "synced usage · quarantined rows excluded",
-    models: usage.models.map((row) => ({
+    live: true,
+    total: `${compactTokens.format(totals.reduce((sum, row) => sum + row.total, 0))} tokens`,
+    season,
+    days,
+    top: peak * 1.08,
+    ticks,
+    lines: leaders.map((row) => ({
       label: modelLabel(row.model),
-      value: compactTokens.format(row.tokens),
-      share: usage.totalTokens > 0 ? row.tokens / usage.totalTokens : 0,
+      cumulative: row.cumulative,
+      values: row.cumulative.map((value) => compactTokens.format(value)),
     })),
   };
 }

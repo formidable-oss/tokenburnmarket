@@ -1,6 +1,7 @@
 /*
-  Three steps, asymmetric: the number is the visual anchor, copy stays short.
-  Numerals use the pixel face; body copy never does.
+  Three steps as ledger rows, not cards: numeral, name, what happens. The
+  numbers stay because the steps are a real sequence. Numerals use the pixel
+  face; body copy never does.
 */
 import { SYNC_SLOT_HOURS } from "@tokenburnmarket/core";
 
@@ -27,17 +28,20 @@ const steps = [
 
 export function Steps() {
   return (
-    <ol className="grid gap-x-10 gap-y-12 md:grid-cols-3">
-      {steps.map((s, i) => (
-        <li key={s.n} className="rise" style={{ "--i": i + 3 } as React.CSSProperties}>
-          <div className="flex items-baseline gap-4">
-            <span className="font-display text-[3.25rem] leading-none text-primary" aria-hidden>
-              {s.n}
-            </span>
-            <h3 className="type-heading">{s.title}</h3>
+    <ol className="border-b border-border-faint">
+      {steps.map((s) => (
+        <li
+          key={s.n}
+          className="grid grid-cols-[3.25rem_1fr] items-baseline gap-x-5 gap-y-2 border-t border-border-faint py-7 sm:grid-cols-[3.75rem_7.5rem_1fr] sm:gap-x-6"
+        >
+          <span className="font-display text-[2rem] leading-none text-primary" aria-hidden>
+            {s.n}
+          </span>
+          <h3 className="type-heading">{s.title}</h3>
+          <div className="col-start-2 sm:col-start-3">
+            <p className="max-w-[48ch] text-[0.95rem] text-muted">{s.body}</p>
+            <p className="type-data mt-3 text-[0.78rem] text-subtle">{s.detail}</p>
           </div>
-          <p className="mt-4 max-w-[34ch] text-[0.95rem] text-muted">{s.body}</p>
-          <p className="type-data mt-4 text-[0.78rem] text-subtle">{s.detail}</p>
         </li>
       ))}
     </ol>

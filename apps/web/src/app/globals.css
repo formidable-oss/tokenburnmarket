@@ -180,6 +180,19 @@
     line-height: 1.02;
     letter-spacing: -0.01em;
   }
+  /*
+    The landing headline only: two lines that fill their column. Below 1024px
+    the hero is one column, so the headline can take more of the viewport.
+  */
+  .type-display-hero {
+    font-size: clamp(3.25rem, 15vw, 6.75rem);
+    line-height: 0.98;
+  }
+  @media (width >= 64rem) {
+    .type-display-hero {
+      font-size: clamp(3.25rem, 9.5vw, 6.75rem);
+    }
+  }
   /* The title of a page. The pixel face is made of dots, so it needs size to read as white. */
   .type-title {
     font-family: var(--font-display);
@@ -253,6 +266,30 @@
   @keyframes rise {
     from { opacity: 0; transform: translateY(0.5rem); }
     to { opacity: 1; transform: none; }
+  }
+
+  /*
+    The hero chart draws one day per step, left to right. The wrapper
+    slides in from the left while its child slides the opposite way, so the
+    lines stay still and only the clip edge moves: a wipe from transforms alone.
+    The component sets the step count, the duration and the delay on both.
+  */
+  .tape-wipe {
+    overflow: hidden;
+    animation-name: tape-wipe-clip;
+    animation-fill-mode: both;
+  }
+  .tape-wipe > * {
+    animation-name: tape-wipe-hold;
+    animation-fill-mode: both;
+  }
+  @keyframes tape-wipe-clip {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes tape-wipe-hold {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
   }
 
   /* Ember pulse for the live dot; opacity only. */
