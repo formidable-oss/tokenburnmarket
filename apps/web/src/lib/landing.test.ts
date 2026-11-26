@@ -60,11 +60,13 @@ describe("modelBurnChartData", () => {
     expect(chart.days).toEqual(["2026-08-14", "2026-08-15", "2026-08-16", "2026-08-17"]);
     expect(chart.lines).toEqual([
       {
+        model: "gpt-5.6-sol",
         label: "GPT-5.6 Sol",
         cumulative: [300_000_000, 300_000_000, 700_000_000, 700_000_000],
         values: ["300M", "300M", "700M", "700M"],
       },
       {
+        model: "claude-fable-5",
         label: "Claude Fable 5",
         cumulative: [100_000_000, 100_000_000, 108_000_000, 108_000_000],
         values: ["100M", "100M", "108M", "108M"],

@@ -54,6 +54,8 @@ export interface ModelBurnDayInput {
 }
 
 export interface ModelBurnLine {
+  /** The model as Usage names it. Unique, unlike `label`: two ids can read the same. */
+  model: string;
   label: string;
   /** Running total of tokens at the end of each day in `days`. */
   cumulative: readonly number[];
@@ -152,6 +154,7 @@ export function modelBurnChartData(
     top: peak * 1.08,
     ticks,
     lines: leaders.map((row) => ({
+      model: row.model,
       label: modelLabel(row.model),
       cumulative: row.cumulative,
       values: row.cumulative.map((value) => compactTokens.format(value)),

@@ -53,19 +53,21 @@ function labelTops(ends: readonly number[]): number[] {
 }
 
 export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
-  const [picked, setPicked] = useState<number | null>(null);
+  // The picked UTC date, not its index, so new data that starts on another day keeps the same date.
+  const [picked, setPicked] = useState<string | null>(null);
 
   const count = data.days.length;
-  // New data can have fewer days than the day that was picked. Then nothing is selected.
-  const selected = picked !== null && picked < count ? picked : null;
+  const pickedIndex = picked === null ? -1 : data.days.indexOf(picked);
+  const selected = pickedIndex === -1 ? null : pickedIndex;
   const active = selected ?? count - 1;
   const leader = data.lines[0];
   const y = (value: number) => (data.top > 0 ? (1 - value / data.top) * 100 : 100);
+  const pick = (index: number) => setPicked(data.days[index] ?? null);
 
   function selectFromPointer(event: PointerEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     const relativeX = Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width - 1);
-    setPicked(Math.floor((relativeX / bounds.width) * count));
+    pick(Math.floor((relativeX / bounds.width) * count));
   }
 
   function selectFromKeyboard(event: KeyboardEvent<HTMLDivElement>) {
@@ -77,7 +79,7 @@ export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
     else return;
 
     event.preventDefault();
-    setPicked(next);
+    pick(next);
   }
 
   const tops = labelTops(data.lines.map((line) => (y(line.cumulative[count - 1]!) / 100) * PLOT_PX));
@@ -120,13 +122,16 @@ export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
                 role="img"
                 tabIndex={0}
                 aria-label={`Running total of tokens per model, ${data.season}. ${leader.label} leads with ${leader.values[count - 1]}. Focus the chart and use the arrow keys to read each day.`}
-                onFocus={() => setPicked(active)}
+                onFocus={() => pick(active)}
                 onBlur={() => setPicked(null)}
                 onKeyDown={selectFromKeyboard}
                 onPointerDown={selectFromPointer}
                 onPointerMove={selectFromPointer}
                 onPointerLeave={(event) => {
-                  if (event.pointerType === "mouse") setPicked(null);
+                  // While the chart has focus, the keyboard owns the selection.
+                  if (event.pointerType === "mouse" && document.activeElement !== event.currentTarget) {
+                    setPicked(null);
+                  }
                 }}
               >
                 {data.ticks.map((tick) => (
@@ -166,7 +171,7 @@ export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
                           .join(" ");
                         return (
                           <path
-                            key={line.label}
+                            key={line.model}
                             d={steps}
                             fill="none"
                             vectorEffect="non-scaling-stroke"
@@ -182,7 +187,7 @@ export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
 
                 {data.lines.map((line, place) => (
                   <span
-                    key={line.label}
+                    key={line.model}
                     aria-hidden
                     className="rise absolute z-10 size-0"
                     style={{
@@ -203,7 +208,7 @@ export function ModelBurnChart({ data }: { data: ModelBurnChartData }) {
               <ol className="relative h-64">
                 {data.lines.map((line, place) => (
                   <li
-                    key={line.label}
+                    key={line.model}
                     className="rise absolute inset-x-0 pl-3 min-[480px]:pl-3.5"
                     style={{ ...afterWipe, top: tops[place] }}
                   >
