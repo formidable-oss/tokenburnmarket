@@ -81,9 +81,57 @@ describe("readClaudeStreams", () => {
     expect(day?.size).toBe(3);
   });
 
-  it("skips messages with no request id and a half written last line", () => {
+  it("skips a message with neither request id nor usage, and a half written last line", () => {
     const every = [...streams.values()].flatMap((hashes) => [...hashes]);
     expect(every).toHaveLength(4);
+  });
+
+  it("falls back to message.id when a proxy drops the request id", () => {
+    const usage = { input_tokens: 10, output_tokens: 50 };
+    const line = (id: string, model: string, timestamp: string) => ({
+      type: "assistant", requestId: null, timestamp, message: { id, model, usage },
+    });
+    withTranscript("projects/p/s.jsonl", [
+      line("msg_A", "claude-opus-5-5", "2026-11-20T10:00:01.000Z"),
+      // Claude Code writes one line per content block, all with the same message.
+      line("msg_A", "claude-opus-5-5", "2026-11-20T10:00:02.000Z"),
+      line("chatcmpl-B", "gpt-6.1-sol", "2026-11-20T11:00:00.000Z"),
+    ], (root) => {
+      const proxied = readClaudeStreams([root]);
+      expect([...(proxied.get(receiptKey("2026-11-20", "claude", "claude-opus-5-5")) ?? [])]).toEqual([
+        "80fb7e60c740f7692ba87eeedfb510b88274a6a90a3fdb50cc731ce6f92c1985",
+      ]);
+      expect(proxied.get(receiptKey("2026-11-20", "claude", "gpt-6.1-sol"))?.size).toBe(1);
+    });
+  });
+
+  it("files no fallback receipt for usage that ccusage does not count", () => {
+    const line = (id: string, usage: unknown) => ({
+      type: "assistant", requestId: null, timestamp: "2026-11-20T10:00:00.000Z",
+      message: { id, model: "claude-opus-5-5", usage },
+    });
+    withTranscript("projects/p/s.jsonl", [
+      line("msg_empty", {}),
+      line("msg_no_input", { output_tokens: 7 }),
+      line("msg_string", { input_tokens: "3", output_tokens: 7 }),
+      line("msg_null_cache_read", { input_tokens: 3, output_tokens: 7, cache_read_input_tokens: null }),
+      line("msg_string_cache_write", { input_tokens: 3, output_tokens: 7, cache_creation_input_tokens: "5" }),
+    ], (root) => {
+      expect(readClaudeStreams([root]).size).toBe(0);
+    });
+  });
+
+  it("files a fallback receipt when the cache counts are absent or numeric", () => {
+    const line = (id: string, usage: unknown) => ({
+      type: "assistant", requestId: null, timestamp: "2026-11-20T10:00:00.000Z",
+      message: { id, model: "claude-opus-5-5", usage },
+    });
+    withTranscript("projects/p/s.jsonl", [
+      line("msg_no_cache", { input_tokens: 3, output_tokens: 7 }),
+      line("msg_cache", { input_tokens: 3, output_tokens: 7, cache_read_input_tokens: 5, cache_creation_input_tokens: 0 }),
+    ], (root) => {
+      expect(readClaudeStreams([root]).get(receiptKey("2026-11-20", "claude", "claude-opus-5-5"))?.size).toBe(2);
+    });
   });
 
   it("drops days before the window", () => {
