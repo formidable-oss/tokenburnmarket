@@ -22,7 +22,7 @@ export default function DocsCreditsPage() {
   return (
     <article>
       <p className="type-label">docs / credits</p>
-      <h1 className="type-heading mt-3">Whales earn more, not proportionally more.</h1>
+      <h1 className="type-title mt-3">Whales earn more, not proportionally more.</h1>
       <p className="mt-4 text-[1.05rem] text-muted">
         Credits are the play currency. They come from what your agents cost, on a curve that
         flattens above a daily kink, so a bigger bill buys you a head start rather than the whole

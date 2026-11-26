@@ -43,7 +43,7 @@ export function CommandLine({
       <button
         type="button"
         onClick={copy}
-        className="type-label shrink-0 border-l border-border-strong px-3 text-[0.66rem] text-muted transition-colors hover:bg-primary-subtle hover:text-primary-text"
+        className="type-label shrink-0 border-l border-border-strong px-3 text-[0.7rem] text-muted transition-colors hover:bg-primary-subtle hover:text-primary-text"
         aria-live="polite"
       >
         {copied ? "copied" : "copy"}

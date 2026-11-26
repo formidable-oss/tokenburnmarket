@@ -34,8 +34,9 @@
   --surface-raised: #1a1a2e;
   --surface-sunken: #0a0a1a;
   --foreground: #f0f0f5;
-  --muted-foreground: #9090a0;
-  --subtle-foreground: #767686;
+  /* Both pass WCAG AA on every surface: muted is 7.3:1 or more, subtle 5.3:1 or more. */
+  --muted-foreground: #a9a9b8;
+  --subtle-foreground: #8e8ea0;
   --border: #252535;
   --border-faint: rgb(240 240 245 / 0.07);
   --border-strong: rgb(240 240 245 / 0.18);
@@ -71,8 +72,9 @@
   --surface-raised: #ffffff;
   --surface-sunken: #f1eee2;
   --foreground: #14142b;
-  --muted-foreground: #5a5a70;
-  --subtle-foreground: #7c7c90;
+  /* On parchment: muted is 6.9:1 or more, subtle 4.7:1 or more. */
+  --muted-foreground: #4e4e64;
+  --subtle-foreground: #676779;
   --border: #dedacb;
   --border-faint: rgb(20 20 43 / 0.08);
   --border-strong: rgb(20 20 43 / 0.2);
@@ -177,6 +179,12 @@
     font-size: clamp(2.5rem, 6vw, 5rem);
     line-height: 1.02;
     letter-spacing: -0.01em;
+  }
+  /* The title of a page. The pixel face is made of dots, so it needs size to read as white. */
+  .type-title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5.6vw, 2.5rem);
+    line-height: 1.08;
   }
   .type-heading {
     font-family: var(--font-display);

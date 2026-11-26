@@ -64,18 +64,18 @@ export function BetsPanel({
         <>
           <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-3">
             <div>
-              <dt className="type-label text-[0.62rem] text-subtle">won</dt>
+              <dt className="type-label text-[0.7rem] text-subtle">won</dt>
               <dd className="type-data mt-1 text-[1.25rem] tabular-nums">
                 {record.won}
                 <span className="text-[0.8rem] text-subtle">/{record.settled}</span>
               </dd>
             </div>
             <div>
-              <dt className="type-label text-[0.62rem] text-subtle">lost</dt>
+              <dt className="type-label text-[0.7rem] text-subtle">lost</dt>
               <dd className="type-data mt-1 text-[1.25rem] tabular-nums">{record.lost}</dd>
             </div>
             <div>
-              <dt className="type-label text-[0.62rem] text-subtle">net</dt>
+              <dt className="type-label text-[0.7rem] text-subtle">net</dt>
               <dd
                 className={`type-data mt-1 text-[1.25rem] tabular-nums ${
                   record.net > 0 ? "text-[color:var(--won)]" : ""

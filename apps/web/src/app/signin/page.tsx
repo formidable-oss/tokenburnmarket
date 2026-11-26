@@ -25,7 +25,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/signin">)
         <p className="type-label rise" style={{ "--i": 0 } as React.CSSProperties}>
           step one of three
         </p>
-        <h1 className="type-heading rise mt-4" style={{ "--i": 1 } as React.CSSProperties}>
+        <h1 className="type-title rise mt-4" style={{ "--i": 1 } as React.CSSProperties}>
           Claim your handle.
         </h1>
         <p className="rise mt-4 max-w-[38ch] text-[0.95rem] text-muted" style={{ "--i": 2 } as React.CSSProperties}>

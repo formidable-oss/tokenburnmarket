@@ -112,7 +112,7 @@ function UsagePeriodSwitch({
             key={days}
             href={days === 30 ? profilePath : `${profilePath}?days=${days}`}
             aria-current={selected ? "page" : undefined}
-            className={`type-label flex h-10 items-center px-3 text-[0.62rem] transition-colors first:rounded-l-(--radius-control) last:rounded-r-(--radius-control) ${
+            className={`type-label flex h-10 items-center px-3 text-[0.7rem] transition-colors first:rounded-l-(--radius-control) last:rounded-r-(--radius-control) ${
               selected ? "bg-surface-raised text-primary-text" : "text-muted hover:text-foreground"
             }`}
           >
@@ -142,13 +142,13 @@ function Totals({ rows, label }: { rows: readonly UsageGroup[]; label: string })
             </div>
             <dl className="mt-2 grid grid-cols-2 gap-4">
               <div>
-                <dt className="type-label text-[0.58rem] text-subtle">cost</dt>
+                <dt className="type-label text-[0.7rem] text-subtle">cost</dt>
                 <dd className="type-data mt-1 whitespace-nowrap text-[0.78rem] tabular-nums min-[360px]:text-[0.85rem]">
                   {money(row.costUsd)}
                 </dd>
               </div>
               <div className="text-right">
-                <dt className="type-label text-[0.58rem] text-subtle">tokens</dt>
+                <dt className="type-label text-[0.7rem] text-subtle">tokens</dt>
                 <dd className="type-data mt-1 whitespace-nowrap text-[0.72rem] text-muted tabular-nums min-[360px]:text-[0.8rem]">
                   {tokens(row.tokens)}
                 </dd>

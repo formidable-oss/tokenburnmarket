@@ -36,7 +36,7 @@ export default async function JoinPage({ params }: PageProps<"/join/[code]">) {
     return (
       <section className="mx-auto max-w-[1200px] px-4 pb-24 pt-14 sm:px-6 lg:px-12">
         <p className="type-label">invite</p>
-        <h1 className="type-heading mt-3">This link no longer works.</h1>
+        <h1 className="type-title mt-3">This link no longer works.</h1>
         <p className="mt-4 max-w-[46ch] text-[0.95rem] text-muted">
           The code was rotated or the community is gone. Ask a member for a fresh link.
         </p>

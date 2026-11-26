@@ -98,7 +98,7 @@ function Switch({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="type-label text-[0.62rem] text-subtle">{label}</span>
+      <span className="type-label text-[0.7rem] text-subtle">{label}</span>
       <div className="flex items-center rounded-(--radius-control) border border-border">
         {options.map((option) => {
           const next = build(option);
@@ -108,7 +108,7 @@ function Switch({
               key={option}
               href={boardHref(path, next)}
               aria-current={selected ? "true" : undefined}
-              className={`type-label flex h-8 items-center px-3 text-[0.62rem] transition-colors ${
+              className={`type-label flex h-8 items-center px-3 text-[0.7rem] transition-colors ${
                 selected ? "bg-surface-raised text-primary-text" : "text-muted hover:text-foreground"
               }`}
             >

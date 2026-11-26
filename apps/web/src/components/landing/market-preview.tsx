@@ -54,7 +54,7 @@ export function MarketPreview({ market }: { market?: MarketPreviewData }) {
     >
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <span aria-hidden className="ember-pulse size-1.5 rounded-full bg-ember" />
-        <span className="type-label whitespace-nowrap text-[0.66rem]">
+        <span className="type-label whitespace-nowrap text-[0.7rem]">
           {example ? "example" : "live"} · {data.where}
         </span>
         <span className="type-data ml-auto whitespace-nowrap text-[0.72rem] text-subtle">
@@ -86,7 +86,7 @@ export function MarketPreview({ market }: { market?: MarketPreviewData }) {
       </ol>
 
       <div className="mt-6 flex items-center gap-3">
-        <span className="type-label text-[0.66rem]">{data.closes}</span>
+        <span className="type-label text-[0.7rem]">{data.closes}</span>
         {top ? (
           example ? (
             <span className="ml-auto inline-flex h-9 items-center rounded-(--radius-control) bg-primary px-3.5 text-sm font-medium text-primary-foreground">

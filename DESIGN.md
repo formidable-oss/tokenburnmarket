@@ -19,8 +19,8 @@ A trading floor for token burn, drawn in the Formidable "Digital Heritage" langu
 | Raised | `--surface-raised` | `#1a1a2e` | `#ffffff` | Popovers, hover fills |
 | Sunken | `--surface-sunken` | `#0a0a1a` | `#f1eee2` | Inputs, bar tracks |
 | Text | `--foreground` | `#f0f0f5` | `#14142b` | Copy |
-| Muted | `--muted-foreground` | `#9090a0` | `#5a5a70` | Supporting copy |
-| Subtle | `--subtle-foreground` | `#767686` | `#7c7c90` | Metadata |
+| Muted | `--muted-foreground` | `#a9a9b8` | `#4e4e64` | Supporting copy. At least 6.9:1 on every surface. |
+| Subtle | `--subtle-foreground` | `#8e8ea0` | `#676779` | Metadata. At least 4.7:1 on every surface. |
 | Border | `--border` / `--border-faint` / `--border-strong` | tonal | tonal | Dividers, controls |
 | Primary | `--primary` | `#ffd900` | `#003399` | Action, selection, focus, burn bars |
 | Ember | `--ember` | `#c41e3a` | `#b3172f` | The live dot, the honesty strip, the mark's hot pixel. Sparse. |
@@ -40,13 +40,18 @@ Rules:
 | Level | Class | Face | Size |
 | --- | --- | --- | --- |
 | Display | `.type-display` | Geist Pixel Circle | `clamp(2.5rem, 6vw, 5rem)` |
-| Heading | `.type-heading` | Geist Pixel Circle | `clamp(1.35rem, 2.4vw, 1.75rem)` |
+| Title | `.type-title` | Geist Pixel Circle | `clamp(2rem, 5.6vw, 2.5rem)`. The `h1` of every page except the landing page. |
+| Heading | `.type-heading` | Geist Pixel Circle | `clamp(1.35rem, 2.4vw, 1.75rem)`. Section headings. |
 | Body | default | Geist | 1rem, line-height 1.55 |
 | Label | `.type-label` | Geist Mono, uppercase, +0.08em | 0.72rem |
 | Data | `.type-data` | Geist Mono, tabular | inherits |
 | Pattern | `--font-pattern` | Geist Pixel Square | decorative only |
 
 Pixel faces are for titles and big numerals, never for paragraphs. Mono is for labels and numbers, never for prose. Tabular numerals everywhere numbers stack.
+
+No text is smaller than 0.7rem (about 11px).
+
+A label above a title must add something the title and the navbar do not say, such as a breadcrumb (`docs / setup`) or a state (`community`, `unlisted`). The navbar marks the section you are in, so a top-level page does not repeat its section name above its title.
 
 ## 4. Space and layout
 

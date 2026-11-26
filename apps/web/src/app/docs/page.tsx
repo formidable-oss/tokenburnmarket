@@ -13,8 +13,7 @@ export const metadata: Metadata = {
 export default function DocsIndexPage() {
   return (
     <article>
-      <p className="type-label">docs</p>
-      <h1 className="type-heading mt-3">How this works.</h1>
+      <h1 className="type-title">How this works.</h1>
       <p className="mt-4 text-[1.05rem] text-muted">
         Start with setup. The other pages explain the numbers and how markets settle.
       </p>

@@ -227,7 +227,7 @@ export function TradeForm({
                 className="allocation-slider relative w-full"
               />
             </span>
-            <span className="type-data flex justify-between text-[0.68rem] text-subtle" aria-hidden="true">
+            <span className="type-data flex justify-between text-[0.7rem] text-subtle" aria-hidden="true">
               <span>1%</span>
               <span>100%</span>
             </span>

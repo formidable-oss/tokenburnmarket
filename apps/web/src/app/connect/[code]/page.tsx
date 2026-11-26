@@ -26,7 +26,7 @@ function Shell({ step, title, children }: { step: string; title: string; childre
         <p className="type-label rise" style={{ "--i": 0 } as React.CSSProperties}>
           {step}
         </p>
-        <h1 className="type-heading rise mt-4" style={{ "--i": 1 } as React.CSSProperties}>
+        <h1 className="type-title rise mt-4" style={{ "--i": 1 } as React.CSSProperties}>
           {title}
         </h1>
         <p

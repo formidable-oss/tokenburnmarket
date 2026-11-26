@@ -74,7 +74,7 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
             community
             {community.visibility === "unlisted" ? <Badge tone="neutral">unlisted</Badge> : null}
           </p>
-          <h1 className="type-heading mt-3">{community.name}</h1>
+          <h1 className="type-title mt-3">{community.name}</h1>
           <p className="type-data mt-2 text-[0.8rem] text-subtle">
             /c/{community.slug} · started {dateFormat.format(community.createdAt)}
           </p>
@@ -150,7 +150,7 @@ export default async function CommunityPage({ params }: PageProps<"/c/[slug]">) 
                         <input type="hidden" name="builderId" value={member.id} />
                         <button
                           type="submit"
-                          className="type-label text-[0.62rem] text-subtle hover:text-[color:var(--destructive)]"
+                          className="type-label text-[0.7rem] text-subtle hover:text-[color:var(--destructive)]"
                         >
                           remove
                         </button>

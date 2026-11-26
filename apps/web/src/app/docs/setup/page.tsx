@@ -24,7 +24,7 @@ export default function DocsSetupPage() {
   return (
     <article>
       <p className="type-label">docs / setup</p>
-      <h1 className="type-heading mt-3">Connect a computer.</h1>
+      <h1 className="type-title mt-3">Connect a computer.</h1>
       <p className="mt-4 text-[1.05rem] text-muted">
         Set up each computer once. Signing in to the website does not connect it.
         Run the setup on the computer whose usage you want to track.

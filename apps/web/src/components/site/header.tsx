@@ -58,7 +58,7 @@ export async function SiteHeader() {
                 ) : (
                   <span
                     aria-hidden
-                    className="type-data flex size-[22px] items-center justify-center rounded-full border border-border bg-surface-sunken text-[0.68rem]"
+                    className="type-data flex size-[22px] items-center justify-center rounded-full border border-border bg-surface-sunken text-[0.7rem]"
                   >
                     {handle.slice(0, 1).toUpperCase()}
                   </span>
